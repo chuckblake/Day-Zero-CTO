@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Engineering Risk"
+  short_description: "Find risks threatening startup goals."
+  default_prompt: "Review engineering risk for this startup."

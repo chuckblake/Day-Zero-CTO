@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write CEO Update"
+  short_description: "Draft CEO-facing engineering updates."
+  default_prompt: "Write a CEO update from current engineering context."

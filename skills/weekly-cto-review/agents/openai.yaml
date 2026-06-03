@@ -1,0 +1,4 @@
+interface:
+  display_name: "Weekly CTO Review"
+  short_description: "Run the recurring startup CTO review."
+  default_prompt: "Run a weekly CTO review for this startup."

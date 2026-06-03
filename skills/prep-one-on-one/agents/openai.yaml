@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prep One-on-One"
+  short_description: "Prepare useful CTO one-on-ones."
+  default_prompt: "Prepare a CTO one-on-one conversation."

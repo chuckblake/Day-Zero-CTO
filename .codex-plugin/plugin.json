@@ -1,0 +1,18 @@
+{
+  "name": "day-zero-cto",
+  "version": "0.1.0",
+  "description": "CTO operating skills for early-stage startups.",
+  "author": {
+    "name": "Chuck Blake"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Day Zero CTO",
+    "shortDescription": "CTO operating skills for startups.",
+    "longDescription": "Day Zero CTO helps early-stage technical leaders run the operating loop: context setup, hard decisions, weekly reviews, CEO updates, risk reviews, one-on-ones, and CTO-level code review.",
+    "developerName": "Chuck Blake",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Help me run Day Zero CTO for this startup."
+  }
+}

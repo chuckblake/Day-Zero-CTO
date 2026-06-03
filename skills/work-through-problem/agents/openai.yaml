@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Through Problem"
+  short_description: "Think through hard CTO problems."
+  default_prompt: "Help me work through this CTO problem."
