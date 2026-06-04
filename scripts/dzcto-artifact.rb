@@ -307,11 +307,20 @@ def report_name(path)
   File.basename(path, ".html").sub(/^\d{4}-\d{2}-\d{2}-/, "").tr("-", " ")
 end
 
-index_sections = REPORT_FOLDERS.map do |folder, label|
-  links = report_links(wiki_root, folder)
+def pluralize(count, singular, plural = nil)
+  "#{count} #{count == 1 ? singular : (plural || "#{singular}s")}"
+end
+
+report_entries = REPORT_FOLDERS.map do |folder, label|
+  [folder, label, report_links(wiki_root, folder)]
+end
+
+report_count = report_entries.sum { |_folder, _label, links| links.length }
+
+report_sections = report_entries.map do |folder, label, links|
   items =
     if links.empty?
-      "<li>No reports yet.</li>"
+      "<li class=\"empty-item\">No reports yet.</li>"
     else
       links.map do |path|
         relative = Pathname.new(path).relative_path_from(Pathname.new(wiki_root)).to_s
@@ -322,10 +331,10 @@ index_sections = REPORT_FOLDERS.map do |folder, label|
           </li>
         HTML
       end.join("\n")
-    end
+  end
 
   <<~HTML
-    <section>
+    <section class="report-section">
       <h2>#{escape(label)}</h2>
       <ul class="report-list">
         #{items}
@@ -360,7 +369,7 @@ end.join
 handoff_paths = Dir.glob(File.join(wiki_root, "handoffs", "**", "*")).select { |path| File.file?(path) }.sort
 handoff_links =
   if handoff_paths.empty?
-    "<li>No handoffs yet.</li>"
+    "<li class=\"empty-item\">No handoffs yet.</li>"
   else
     handoff_paths.map do |path|
       relative = Pathname.new(path).relative_path_from(Pathname.new(wiki_root)).to_s
@@ -379,10 +388,10 @@ cadence_status_html =
     ""
   elsif alerts.empty?
     <<~HTML
-      <section class="cadence-watch">
+      <div class="cadence-watch">
         <h2>Cadence Watch</h2>
         <p>All scheduled report cadences are current.</p>
-      </section>
+      </div>
     HTML
   else
     alert_cards = alerts.map do |alert|
@@ -398,24 +407,36 @@ cadence_status_html =
     end.join
 
     <<~HTML
-      <section class="cadence-watch cadence-watch-alert">
+      <div class="cadence-watch cadence-watch-alert">
         <h2>Cadence Alerts</h2>
         <p>Generated from <a href="core/OPERATING_CADENCE.md">OPERATING_CADENCE.md</a>.</p>
         <div class="cadence-list">
           #{alert_cards}
         </div>
-      </section>
+      </div>
     HTML
+  end
+
+report_status =
+  if cadence_rules.empty?
+    pluralize(report_count, "artifact")
+  elsif alerts.empty?
+    "#{pluralize(report_count, "artifact")} · All current"
+  else
+    "#{pluralize(report_count, "artifact")} · #{pluralize(alerts.length, "alert")}"
   end
 
 help_commands = (cadence_rules.map { |rule| [rule[:label], display_command(rule[:command])] } + default_help_commands(company))
 seen_commands = {}
-help_items = help_commands.filter_map do |label, command|
+help_entries = help_commands.filter_map do |label, command|
   normalized = command.downcase
   next if command.empty? || seen_commands[normalized]
 
   seen_commands[normalized] = true
+  [label, command]
+end
 
+help_items = help_entries.map do |label, command|
   <<~HTML
     <div class="help-command">
       <strong>#{escape(label)}</strong>
@@ -449,34 +470,39 @@ index_html = <<~HTML
         .company-description { font-size: 17px; margin-bottom: 12px; }
         .page-purpose { max-width: 840px; }
         .report-list { margin-left: 0; list-style: none; }
-        .report-link { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; }
-        .report-date { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
-        .cadence-watch { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
-        .cadence-watch p { margin-bottom: 12px; }
-        .cadence-list { display: grid; gap: 10px; }
-        .cadence-alert { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; border: 1px solid #e2b454; border-radius: 8px; background: #fff8e6; padding: 12px; }
+      .report-link { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; }
+      .report-date { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+      .cadence-watch { margin: 6px 0 22px; }
+      .cadence-watch p { margin-bottom: 12px; }
+      .cadence-list { display: grid; gap: 10px; }
+      .cadence-alert { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; border: 1px solid #e2b454; border-radius: 8px; background: #fff8e6; padding: 12px; }
         .cadence-alert strong { display: block; margin-bottom: 2px; }
         .cadence-alert span { color: var(--muted); font-size: 14px; }
         .cadence-alert code { display: block; white-space: normal; overflow-wrap: anywhere; background: #fff; border: 1px solid #ead49a; border-radius: 6px; padding: 8px; color: var(--ink); }
         .help-section p { max-width: 840px; }
-        .help-grid { display: grid; gap: 10px; margin-top: 14px; }
-        .help-command { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
-        .help-command code { white-space: normal; overflow-wrap: anywhere; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 7px; color: var(--ink); }
-        .core-details { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
-        .core-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
-        .core-details summary::-webkit-details-marker { display: none; }
-        .core-heading { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; line-height: 1.2; }
-        .core-chevron { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s ease; }
-        .core-details[open] .core-chevron { transform: rotate(45deg); }
-        .core-count { color: var(--muted); font-size: 14px; white-space: nowrap; }
-        .core-list { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
-        .core-card { display: grid; grid-template-columns: 220px minmax(0, 1fr) 190px; gap: 18px; align-items: center; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); }
-        .core-card:hover { text-decoration: none; background: var(--soft); }
+      .help-grid { display: grid; gap: 10px; margin-top: 14px; }
+      .help-command { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+      .help-command code { white-space: normal; overflow-wrap: anywhere; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 7px; color: var(--ink); }
+      .wiki-details { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
+      .wiki-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
+      .wiki-details summary::-webkit-details-marker { display: none; }
+      .wiki-heading { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; line-height: 1.2; }
+      .wiki-chevron { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s ease; }
+      .wiki-details[open] .wiki-chevron { transform: rotate(45deg); }
+      .wiki-meta { color: var(--muted); font-size: 14px; text-align: right; white-space: nowrap; }
+      .wiki-body { margin-top: 14px; }
+      .core-list { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+      .core-card { display: grid; grid-template-columns: 220px minmax(0, 1fr) 190px; gap: 18px; align-items: center; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); }
+      .core-card:hover { text-decoration: none; background: var(--soft); }
         .core-title { font-weight: 700; }
-        .core-desc { color: var(--muted); font-size: 14px; }
-        .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-align: right; white-space: nowrap; }
-        .missing-card { background: var(--soft); }
-        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .report-link, .help-command { grid-template-columns: 1fr; gap: 4px; } .core-details summary { align-items: flex-start; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
+      .core-desc { color: var(--muted); font-size: 14px; }
+      .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-align: right; white-space: nowrap; }
+      .missing-card { background: var(--soft); }
+      .report-section { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }
+      .report-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+      .misc-section { margin-top: 0; border-top: 0; padding-top: 0; }
+      .empty-item { color: var(--muted); }
+      @media (max-width: 760px) { main { padding: 28px 18px 48px; } .report-link, .help-command { grid-template-columns: 1fr; gap: 4px; } .wiki-details summary { align-items: flex-start; } .wiki-meta { text-align: left; white-space: normal; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
       </style>
     </head>
     <body>
@@ -484,36 +510,56 @@ index_html = <<~HTML
         <p class="company-label">For #{escape(company)}</p>
         <h1>#{escape(company)} Day Zero CTO Knowledge Wiki</h1>
         <p class="company-description">#{escape(description)}</p>
-        <p class="page-purpose">This is the bookmarkable operating index for Day Zero CTO work: use it to open core context, read dated reports, see cadence alerts, find handoffs, and copy commands back into Codex to generate the next artifact. New reports land back in this wiki and the index updates each time.</p>
+        <p class="page-purpose">This is the bookmarkable operating index for Day Zero CTO work: expand sections to open core context, read dated reports, see cadence alerts, find handoffs, and copy commands back into Codex to generate the next artifact. New reports land back in this wiki and the index updates each time.</p>
 
-        #{cadence_status_html}
-
-        <details class="core-details">
+        <details class="wiki-details">
           <summary>
-            <span class="core-heading"><span class="core-chevron" aria-hidden="true"></span>Core Context</span>
-            <span class="core-count">#{CORE_DOCS.length} files</span>
+            <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Core Context</span>
+            <span class="wiki-meta">#{pluralize(CORE_DOCS.length, "file")}</span>
           </summary>
-          <div class="core-list">
+          <div class="wiki-body core-list">
             #{core_links}
           </div>
         </details>
 
-        #{index_sections}
-
-        <section class="help-section">
-          <h2>Help</h2>
-          <p>Ask Codex with one of these commands. The command can be pasted as-is, then refined with the current decision, person, branch, or review target.</p>
-          <div class="help-grid">
-            #{help_items}
+        <details class="wiki-details">
+          <summary>
+            <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Reports</span>
+            <span class="wiki-meta">#{escape(report_status)}</span>
+          </summary>
+          <div class="wiki-body">
+            #{cadence_status_html}
+            #{report_sections}
           </div>
-        </section>
+        </details>
 
-        <section>
-          <h2>Handoffs</h2>
-          <ul>
-            #{handoff_links}
-          </ul>
-        </section>
+        <details class="wiki-details help-section">
+          <summary>
+            <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Help</span>
+            <span class="wiki-meta">#{pluralize(help_entries.length, "command")}</span>
+          </summary>
+          <div class="wiki-body">
+            <p>Ask Codex with one of these commands. The command can be pasted as-is, then refined with the current decision, person, branch, or review target.</p>
+            <div class="help-grid">
+              #{help_items}
+            </div>
+          </div>
+        </details>
+
+        <details class="wiki-details">
+          <summary>
+            <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Misc</span>
+            <span class="wiki-meta">#{pluralize(handoff_paths.length, "handoff")}</span>
+          </summary>
+          <div class="wiki-body">
+            <section class="misc-section">
+              <h2>Handoffs</h2>
+              <ul>
+                #{handoff_links}
+              </ul>
+            </section>
+          </div>
+        </details>
       </main>
     </body>
   </html>
