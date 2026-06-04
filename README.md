@@ -11,7 +11,7 @@ This is adjacent to AI shipping stacks, but it is not trying to be another virtu
 Day Zero CTO gives Builder a first set of repeatable CTO workflows:
 
 - Think through hard technical, product, team, and process problems.
-- Keep a lightweight memory of strategy, decisions, risks, team shape, and operating cadence in a dedicated Day Zero CTO workspace.
+- Keep a lightweight memory of strategy, decisions, risks, team shape, and operating cadence in a project-level `knowledge/wiki` workspace.
 - Run recurring CTO reviews that produce durable HTML artifacts.
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
 - Review code through the lens of startup risk and leverage.
@@ -33,36 +33,38 @@ It is intentionally small. The first version should earn trust by observing the 
 
 ## Context Files
 
-The pack works best when each startup or engagement has a dedicated Day Zero CTO home folder outside the code repo, for example:
+The pack works best when each startup or engagement has a project folder outside the code repo, for example:
 
 ```text
-~/Documents/<Company>/Day Zero CTO/
+~/Documents/<Company>/
 ```
 
-Code repos are read-only evidence sources by default. Day Zero CTO context and reports should live in the Day Zero CTO home unless the user explicitly asks to write into a code repo.
+Day Zero CTO creates and owns `knowledge/wiki/` inside that project folder. Code repos are read-only evidence sources by default. Day Zero CTO context and reports should live in the project knowledge wiki unless the user explicitly asks to write into a code repo.
 
 Recommended folder shape:
 
 ```text
-Day Zero CTO/
-  index.html
-  core/
-    STRATEGY.md
-    TEAM.md
-    OPERATING_CADENCE.md
-    DECISIONS.md
-    RISKS.md
-  reports/
-    engineering-risk/
-    weekly-reviews/
-    ceo-updates/
-    one-on-ones/
-    decisions/
-    code-reviews/
-  handoffs/
+<Company>/
+  knowledge/
+    wiki/
+      index.html
+      core/
+        STRATEGY.md
+        TEAM.md
+        OPERATING_CADENCE.md
+        DECISIONS.md
+        RISKS.md
+      reports/
+        engineering-risk/
+        weekly-reviews/
+        ceo-updates/
+        one-on-ones/
+        decisions/
+        code-reviews/
+      handoffs/
 ```
 
-The `index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts.
 
 Core files:
 
@@ -72,7 +74,7 @@ Core files:
 - `DECISIONS.md`: decision log with context, options, rationale, owner, and revisit trigger.
 - `RISKS.md`: risk register with evidence, impact, likelihood, owner, mitigation, and review date.
 
-The `bootstrap-cto-context` skill can create these files under `core/` and mark missing information as `Unknown` instead of inventing company facts.
+The `bootstrap-cto-context` skill can create these files under `knowledge/wiki/core/` and mark missing information as `Unknown` instead of inventing company facts.
 
 ## Repo Structure
 
@@ -96,7 +98,7 @@ day-zero-cto/
 
 Each skill is a normal Codex skill folder with a `SKILL.md` file and optional `agents/openai.yaml` UI metadata.
 
-`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the Day Zero CTO folder shape exists, writes HTML reports under `reports/<kind>/`, and regenerates `index.html`.
+`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, and regenerates `knowledge/wiki/index.html`.
 
 ## Install
 
@@ -170,8 +172,8 @@ Restart Codex Desktop after either install path.
 
 In Codex Desktop, install or load this plugin, then ask for one of the workflows in natural language:
 
-- "Bootstrap Day Zero CTO context for this startup. Use `~/Documents/Acme/Day Zero CTO` as the home folder and `~/code/acme-app` as the read-only code repo."
-- "Run the weekly CTO review and write the HTML report into the Day Zero CTO folder."
+- "Bootstrap Day Zero CTO context for this startup. Use `~/Documents/Acme` as the project folder and `~/code/acme-app` as the read-only code repo."
+- "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
 - "Write a CEO update from this week's engineering work."
 - "Review engineering risk before launch. Treat the code repo as read-only."
 - "Help me prep a one-on-one with our backend lead."
@@ -180,7 +182,7 @@ In Codex Desktop, install or load this plugin, then ask for one of the workflows
 ## Design Principles
 
 - Keep the context small enough that future agents will actually read it.
-- Keep Day Zero CTO artifacts in the Day Zero CTO home folder, not the active code repo.
+- Keep Day Zero CTO artifacts in the project `knowledge/wiki`, not the active code repo.
 - Treat code repos as read-only evidence unless the user explicitly asks for code changes.
 - Ground advice in local evidence: code, docs, decisions, risks, incidents, and user notes.
 - Label assumptions instead of laundering uncertainty into confidence.

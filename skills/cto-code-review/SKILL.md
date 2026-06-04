@@ -1,6 +1,6 @@
 ---
 name: cto-code-review
-description: "Review code from a startup CTO perspective and optionally create a durable HTML code review artifact in the Day Zero CTO home folder. Use when the user asks for CTO code review, PR review, architecture review of a diff, startup-risk review of code, merge readiness, or help deciding whether code is safe enough to ship given product goals, customer trust, delivery speed, reliability, security, and maintainability."
+description: "Review code from a startup CTO perspective and optionally create a durable HTML code review artifact in the project knowledge wiki. Use when the user asks for CTO code review, PR review, architecture review of a diff, startup-risk review of code, merge readiness, or help deciding whether code is safe enough to ship given product goals, customer trust, delivery speed, reliability, security, and maintainability."
 ---
 
 # CTO Code Review
@@ -10,14 +10,14 @@ Review code for the risks and leverage a startup CTO should care about.
 ## Workflow
 
 1. Resolve the code repo or diff under review.
-2. Resolve the Day Zero CTO home folder separately when company context or durable output matters. If unknown and the user wants durable output, ask for it and recommend `~/Documents/<Company>/Day Zero CTO/`.
+2. Resolve the project folder separately when company context or durable output matters. If unknown and the user wants durable output, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
 3. Treat the code repo as read-only during review unless the user explicitly asks you to fix code.
 4. Inspect the diff, touched files, tests, and surrounding code before forming findings.
-5. Load company context when it changes the review: `core/STRATEGY.md`, `core/RISKS.md`, launch plans, incidents, customer commitments, or architecture notes from the Day Zero CTO home.
+5. Load company context when it changes the review: `core/STRATEGY.md`, `core/RISKS.md`, launch plans, incidents, customer commitments, or architecture notes from `<project>/knowledge/wiki/`.
 6. Prioritize issues that affect correctness, customer trust, security, reliability, operability, product speed, or future team load.
 7. Separate blocking findings from follow-up improvements.
 8. Give a merge recommendation with residual risk.
-9. When the user wants a durable review artifact, write it as HTML under `<Day Zero CTO home>/reports/code-reviews/` and regenerate `<Day Zero CTO home>/index.html`.
+9. When the user wants a durable review artifact, write it as HTML under `<project>/knowledge/wiki/reports/code-reviews/` and regenerate `<project>/knowledge/wiki/index.html`.
 
 ## Findings Format
 
@@ -38,7 +38,7 @@ After findings, include:
 Use the helper script from this plugin:
 
 ```bash
-scripts/dzcto-artifact.rb --home "<Day Zero CTO home>" --kind code-reviews --title "CTO Code Review" --body-file "<html body file>"
+scripts/dzcto-artifact.rb --project "<project folder>" --kind code-reviews --title "CTO Code Review" --body-file "<html body file>"
 ```
 
 The report body should be HTML. Keep the chat response focused on findings and the merge recommendation.
