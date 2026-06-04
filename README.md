@@ -16,6 +16,7 @@ Day Zero CTO gives Builder a first set of repeatable CTO workflows:
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
 - Review code through the lens of startup risk and leverage.
 - Prepare useful one-on-one conversations.
+- Teach system knowledge with spaced repetition.
 
 It is intentionally small. The first version should earn trust by observing the company, naming reality clearly, and producing useful artifacts.
 
@@ -30,6 +31,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | `review-engineering-risk` | Find risks that threaten product, customers, delivery, trust, or runway. |
 | `prep-one-on-one` | Prepare practical CTO one-on-ones with engineers, managers, cofounders, or partners. |
 | `cto-code-review` | Review code with a startup CTO lens: correctness, trust, operability, speed, and maintainability. |
+| `learning` | Teach one focused system concept and schedule it for spaced repetition. |
 
 ## Context Files
 
@@ -61,10 +63,11 @@ Recommended folder shape:
         one-on-ones/
         decisions/
         code-reviews/
+      learning/
       handoffs/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company, summarizes the company context from `core/STRATEGY.md`, explains how to use the page, and organizes the workspace into four collapsible sections: Core Context, Reports, Help, and Misc. Reports show run dates next to links and include cadence status from `core/OPERATING_CADENCE.md`; Help contains commands the user can run in Codex; Misc contains handoffs and other non-report artifacts.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company, summarizes the company context from `core/STRATEGY.md`, explains how to use the page, and organizes the workspace into four collapsible sections: Core Context, Reports, Help, and Misc. Reports show run dates next to links and include cadence status from `core/OPERATING_CADENCE.md`; Help contains commands the user can run in Codex; Misc contains handoffs, spaced-repetition learning, and other non-report artifacts.
 
 Core files:
 
@@ -101,16 +104,20 @@ day-zero-cto/
 │   ├── write-ceo-update/
 │   ├── review-engineering-risk/
 │   ├── prep-one-on-one/
-│   └── cto-code-review/
+│   ├── cto-code-review/
+│   └── learning/
 ├── scripts/
 │   ├── dzcto-artifact.rb
+│   ├── dzcto-learning.rb
 │   └── install-local-marketplace.rb
 └── README.md
 ```
 
 Each skill is a normal Codex skill folder with a `SKILL.md` file and optional `agents/openai.yaml` UI metadata.
 
-`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Help, and Misc sections.
+`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Help, and Misc sections.
+
+`scripts/dzcto-learning.rb` manages spaced-repetition learning items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, and refreshes the wiki index after learning state changes.
 
 ## Install
 
@@ -175,7 +182,8 @@ python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-githu
   --path skills/write-ceo-update \
   --path skills/review-engineering-risk \
   --path skills/prep-one-on-one \
-  --path skills/cto-code-review
+  --path skills/cto-code-review \
+  --path skills/learning
 ```
 
 Restart Codex Desktop after either install path.
@@ -190,6 +198,7 @@ In Codex Desktop, install or load this plugin, then ask for one of the workflows
 - "Review engineering risk before launch. Treat the code repo as read-only."
 - "Help me prep a one-on-one with our backend lead."
 - "Review this PR as a startup CTO and save a durable review artifact."
+- "Run a Day Zero CTO learning prompt."
 
 ## Design Principles
 
@@ -200,6 +209,7 @@ In Codex Desktop, install or load this plugin, then ask for one of the workflows
 - Label assumptions instead of laundering uncertainty into confidence.
 - Prefer startup-relevant judgment over generic best practices.
 - Produce durable HTML artifacts for reports and reviews, then keep `index.html` current.
+- Use spaced repetition to help the user retain system knowledge over time.
 
 ## Roadmap Ideas
 

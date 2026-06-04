@@ -1,0 +1,91 @@
+---
+name: learning
+description: "Teach the user one focused piece of startup system knowledge and log their self-rating into the Day Zero CTO spaced-repetition learning area. Use when the user asks for learning, wants to learn the system, asks to be taught one thing, asks for a spaced repetition review, or responds to a prior Day Zero CTO learning prompt with a rating such as Needs Work, Familiar, Confident, not, neutral, know, 0, 1, or 2."
+---
+
+# Learning
+
+Help the user gradually internalize the startup's system: product, architecture, risks, decisions, operating cadence, compliance posture, and codebase shape.
+
+## Rating Labels
+
+Use these three labels:
+
+- `Needs Work`: the user does not have the concept yet.
+- `Familiar`: the user recognizes it but would not rely on memory alone.
+- `Confident`: the user can explain or use it.
+
+Accept aliases such as `not`, `neutral`, `know`, `0`, `1`, and `2`, but display the labels above.
+
+## Workflow
+
+1. Resolve the project folder. If unknown, ask for it and recommend `~/Documents/<Company>/`. Learning data lives under `<project>/knowledge/wiki/learning/`.
+2. If the user is rating the current learning item, run:
+
+   ```bash
+   scripts/dzcto-learning.rb --project "<project folder>" --record "<rating>"
+   ```
+
+   Then summarize the next due date and link to `knowledge/wiki/learning/index.html`.
+3. If the user asks for a learning prompt, run:
+
+   ```bash
+   scripts/dzcto-learning.rb --project "<project folder>" --select
+   ```
+
+4. If the script returns an existing item, present that item clearly and wait for a rating.
+5. If the script returns `new_needed`, create one focused learning item from local context, then add it:
+
+   ```bash
+   scripts/dzcto-learning.rb --project "<project folder>" --add --title "<title>" --summary "<summary>" --details-file "<html-or-text-details-file>" --source "<source>" --tags "<tag1,tag2>"
+   ```
+
+   Use context from `core/STRATEGY.md`, `core/DECISIONS.md`, `core/RISKS.md`, recent reports, and read-only repo docs if a repo pointer is known. Do not invent facts.
+6. Present exactly one learning item per prompt.
+7. Keep the explanation short enough to learn in 1-2 minutes.
+8. Do not record a score until the user replies with a rating.
+
+## Presentation Format
+
+Use this shape:
+
+```markdown
+**Learning: <title>**
+
+<Plain-language explanation of the concept.>
+
+**How It Works**
+<Concrete mechanism, workflow, or relationship.>
+
+**Why It Matters**
+<Business, product, risk, or operating consequence.>
+
+Source: `<source>`
+
+Reply with `Needs Work`, `Familiar`, or `Confident`.
+```
+
+## Scheduling Model
+
+The script uses a lightweight Leitner-style schedule:
+
+- `Needs Work`: move back one box, review tomorrow.
+- `Familiar`: move forward one box.
+- `Confident`: move forward two boxes.
+
+Intervals by box are 1, 3, 7, 14, 30, and 60 days.
+
+Selection balances review and novelty:
+
+- Review debt wins when at least 3 items are due or any item is 3+ days stale.
+- Otherwise, the script targets about 65% review and 35% new items over the last 12 logged sessions.
+- If nothing is due and no unseen item exists, add a new item from current project context.
+
+## Standards
+
+- Teach system knowledge, not trivia.
+- Prefer one crisp concept over a broad lecture.
+- Ground each item in a source file or report.
+- Treat the code repo as read-only unless the user explicitly asks for code changes.
+- Do not store private personal speculation as learning material.
+- Keep `knowledge/wiki/learning/index.html` current by using the script; it refreshes the index after add and record operations.

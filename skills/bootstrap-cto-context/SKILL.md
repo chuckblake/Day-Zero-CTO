@@ -16,7 +16,7 @@ Establish the project `knowledge/wiki` workspace and the small set of durable fi
 5. Read only the code repo files needed to understand the company stage, product thesis, team, cadence, and current risks.
 6. If important facts are missing and cannot be inferred from local context, ask one concise question or mark the field as `Unknown`.
 7. Create or update the core files below inside `<project>/knowledge/wiki/core/`. Preserve useful existing content; do not erase user notes.
-8. Regenerate `<project>/knowledge/wiki/index.html` with `scripts/dzcto-artifact.rb --project <path> --init`. The generated index should identify the company, summarize company context from `core/STRATEGY.md`, explain how to use the page, and group content into collapsible Core Context, Reports, Help, and Misc sections. Reports should show run dates and cadence status; Help should include reusable Codex commands; Misc should include handoffs.
+8. Regenerate `<project>/knowledge/wiki/index.html` with `scripts/dzcto-artifact.rb --project <path> --init`. The generated index should identify the company, summarize company context from `core/STRATEGY.md`, explain how to use the page, and group content into collapsible Core Context, Reports, Help, and Misc sections. Reports should show run dates and cadence status; Help should include reusable Codex commands; Misc should include handoffs and the spaced-repetition learning area.
 9. Summarize what was created, what remains unknown, where the project folder and knowledge wiki live, what code repo is being used read-only, and which Day Zero CTO skill should run next.
 
 ## Core Files

@@ -4,6 +4,7 @@
 require "cgi"
 require "date"
 require "fileutils"
+require "json"
 require "optparse"
 require "pathname"
 
@@ -66,6 +67,7 @@ project_folder =
 
 core_dir = File.join(wiki_root, "core")
 reports_dir = File.join(wiki_root, "reports")
+learning_dir = File.join(wiki_root, "learning")
 
 def slugify(value)
   value.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/^-|-$/, "")
@@ -149,7 +151,7 @@ def parse_cadence_rules(cadence_path)
   headers = split_markdown_row(table_lines.first).map { |header| header.downcase.gsub(/[^a-z0-9]+/, "_").gsub(/\A_+|_+\z/, "") }
   rows = table_lines.drop(2)
 
-  rows.filter_map do |row|
+  rows.map do |row|
     cells = split_markdown_row(row)
     values = headers.zip(cells).to_h
     folder = values["folder"] || values["report_folder"] || values["kind"]
@@ -169,20 +171,20 @@ def parse_cadence_rules(cadence_path)
       grace_days: grace_days,
       interval_days: interval_days
     }
-  end
+  end.compact
 end
 
 def latest_report_date(reports_dir, folder)
-  Dir.glob(File.join(reports_dir, folder, "*.html")).filter_map do |path|
+  Dir.glob(File.join(reports_dir, folder, "*.html")).map do |path|
     match = File.basename(path).match(/\A(\d{4}-\d{2}-\d{2})-/)
     Date.iso8601(match[1]) if match
   rescue Date::Error
     nil
-  end.max
+  end.compact.max
 end
 
 def cadence_alerts(cadence_rules, reports_dir, today)
-  cadence_rules.filter_map do |rule|
+  cadence_rules.map do |rule|
     latest_date = latest_report_date(reports_dir, rule[:folder])
 
     if latest_date
@@ -196,7 +198,7 @@ def cadence_alerts(cadence_rules, reports_dir, today)
     end
 
     rule.merge(latest_date: latest_date, due_date: due_date, reason: reason)
-  end
+  end.compact
 end
 
 def display_command(command)
@@ -211,6 +213,7 @@ def default_help_commands(company)
     ["Weekly CTO Review", "Run the weekly CTO review for #{company}."],
     ["CEO Update", "Write the CEO engineering update for #{company}."],
     ["Engineering Risk Review", "Run the engineering risk review for #{company}."],
+    ["Learning", "Run a Day Zero CTO learning prompt for #{company}."],
     ["Decision Help", "Help me work through a CTO decision for #{company}: <decision or problem>."],
     ["One-on-One Prep", "Prepare a CTO one-on-one for #{company} with <person or role>."],
     ["CTO Code Review", "Run a CTO code review for #{company} against <branch, PR, or diff>. Treat the repo as read-only unless I explicitly ask for code changes."]
@@ -222,6 +225,7 @@ REPORT_FOLDERS.each_key do |folder|
   FileUtils.mkdir_p(File.join(reports_dir, folder))
 end
 FileUtils.mkdir_p(File.join(wiki_root, "handoffs"))
+FileUtils.mkdir_p(learning_dir)
 
 written_report = nil
 
@@ -311,6 +315,185 @@ def pluralize(count, singular, plural = nil)
   "#{count} #{count == 1 ? singular : (plural || "#{singular}s")}"
 end
 
+def read_learning_items(learning_dir)
+  path = File.join(learning_dir, "items.json")
+  return [] unless File.exist?(path)
+
+  items = JSON.parse(File.read(path))
+  items.is_a?(Array) ? items : []
+rescue JSON::ParserError
+  []
+end
+
+def read_learning_reviews(learning_dir)
+  path = File.join(learning_dir, "reviews.jsonl")
+  return [] unless File.exist?(path)
+
+  File.readlines(path, chomp: true).map do |line|
+    JSON.parse(line)
+  rescue JSON::ParserError
+    nil
+  end.compact
+end
+
+def date_value(value)
+  Date.iso8601(value.to_s)
+rescue Date::Error
+  nil
+end
+
+def active_learning_items(items)
+  items.select { |item| item.fetch("status", "active") == "active" }
+end
+
+def learning_counts(items, today)
+  active = active_learning_items(items)
+  new_count = active.count { |item| item.fetch("seen_count", 0).to_i.zero? }
+  due_count = active.count do |item|
+    due_on = date_value(item["due_on"])
+    item.fetch("seen_count", 0).to_i.positive? && due_on && due_on <= today
+  end
+
+  {
+    active: active.length,
+    due: due_count,
+    new: new_count
+  }
+end
+
+def learning_summary(items, today)
+  counts = learning_counts(items, today)
+  parts = [pluralize(counts[:active], "learning item")]
+  parts << "#{counts[:due]} due" if counts[:due].positive?
+  parts << "#{counts[:new]} new" if counts[:new].positive?
+  parts.join(" · ")
+end
+
+def learning_item_status(item, today)
+  return "New" if item.fetch("seen_count", 0).to_i.zero?
+
+  due_on = date_value(item["due_on"])
+  return "Due" if due_on && due_on <= today
+
+  "Scheduled"
+end
+
+def write_learning_index(wiki_root, company, items, reviews, today)
+  learning_dir = File.join(wiki_root, "learning")
+  FileUtils.mkdir_p(learning_dir)
+
+  active = active_learning_items(items).sort_by do |item|
+    [
+      item.fetch("seen_count", 0).to_i.zero? ? 0 : 1,
+      item["due_on"].to_s,
+      item["title"].to_s.downcase
+    ]
+  end
+
+  item_rows =
+    if active.empty?
+      <<~HTML
+        <tr>
+          <td colspan="7" class="empty-item">No learning items yet. Run the learning skill to add the first system concept.</td>
+        </tr>
+      HTML
+    else
+      active.map do |item|
+        <<~HTML
+          <tr>
+            <td><strong>#{escape(item["title"])}</strong><br><span>#{escape(item["summary"])}</span></td>
+            <td>#{escape(learning_item_status(item, today))}</td>
+            <td>#{escape(item["due_on"] || "Unknown")}</td>
+            <td>#{escape(item.fetch("box", 0))}</td>
+            <td>#{escape(item.fetch("seen_count", 0))}</td>
+            <td>#{escape(item["last_rating"] || "Not reviewed")}</td>
+            <td>#{escape(item["source"] || "Unknown")}</td>
+          </tr>
+        HTML
+      end.join
+    end
+
+  review_rows =
+    if reviews.empty?
+      "<li class=\"empty-item\">No reviews logged yet.</li>"
+    else
+      reviews.last(12).reverse.map do |review|
+        title = review["title"] || review["id"]
+        "<li><strong>#{escape(review["reviewed_on"])}</strong> #{escape(title)} - #{escape(review["rating_label"] || review["rating"])}, next due #{escape(review["due_on"])}</li>"
+      end.join("\n")
+    end
+
+  counts = learning_counts(items, today)
+  html = <<~HTML
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>#{escape(company)} Learning</title>
+        <style>
+          :root { --ink: #172033; --muted: #5d6a7d; --line: #d9e0ea; --soft: #f6f8fb; --accent: #185a7d; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: var(--ink); background: #fff; }
+          main { max-width: 980px; margin: 0 auto; padding: 44px 28px 64px; }
+          h1, h2 { line-height: 1.2; letter-spacing: 0; }
+          h1 { font-size: 34px; margin: 0 0 8px; }
+          h2 { font-size: 22px; margin-top: 32px; border-top: 1px solid var(--line); padding-top: 22px; }
+          p, span, li { color: var(--muted); }
+          a { color: var(--accent); }
+          .nav { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
+          .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }
+          .metric { border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+          .metric span { display: block; font-size: 13px; }
+          .metric strong { display: block; font-size: 22px; margin-top: 4px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 14px; }
+          th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
+          th { background: var(--soft); }
+          code { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; }
+          .empty-item { color: var(--muted); }
+          @media (max-width: 760px) { main { padding: 28px 18px 48px; } .summary { grid-template-columns: 1fr; } table { display: block; overflow-x: auto; } }
+        </style>
+      </head>
+      <body>
+        <main>
+          <p class="nav"><a href="../index.html">Knowledge wiki index</a></p>
+          <h1>#{escape(company)} Learning</h1>
+          <p>Spaced repetition for system knowledge. The learning skill presents one system concept, asks for a self-rating, and schedules the next review from that answer.</p>
+          <div class="summary">
+            <div class="metric"><span>Active</span><strong>#{counts[:active]}</strong></div>
+            <div class="metric"><span>Due</span><strong>#{counts[:due]}</strong></div>
+            <div class="metric"><span>New</span><strong>#{counts[:new]}</strong></div>
+          </div>
+          <h2>How Scoring Works</h2>
+          <p>Reply with <code>Needs Work</code>, <code>Familiar</code>, or <code>Confident</code>. Needs Work brings the item back tomorrow, Familiar moves it forward one box, and Confident moves it forward two boxes.</p>
+          <h2>Items</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Status</th>
+                <th>Due</th>
+                <th>Box</th>
+                <th>Seen</th>
+                <th>Last rating</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              #{item_rows}
+            </tbody>
+          </table>
+          <h2>Recent Reviews</h2>
+          <ul>
+            #{review_rows}
+          </ul>
+        </main>
+      </body>
+    </html>
+  HTML
+
+  File.write(File.join(learning_dir, "index.html"), html)
+end
+
 report_entries = REPORT_FOLDERS.map do |folder, label|
   [folder, label, report_links(wiki_root, folder)]
 end
@@ -383,6 +566,9 @@ alerts = cadence_alerts(cadence_rules, reports_dir, Date.today)
 strategy_path = File.join(core_dir, "STRATEGY.md")
 company = company_name(strategy_path, project_folder)
 description = company_description(strategy_path)
+learning_items = read_learning_items(learning_dir)
+learning_reviews = read_learning_reviews(learning_dir)
+write_learning_index(wiki_root, company, learning_items, learning_reviews, Date.today)
 cadence_status_html =
   if cadence_rules.empty?
     ""
@@ -426,15 +612,17 @@ report_status =
     "#{pluralize(report_count, "artifact")} · #{pluralize(alerts.length, "alert")}"
   end
 
+misc_status = "#{pluralize(handoff_paths.length, "handoff")} · #{learning_summary(learning_items, Date.today)}"
+
 help_commands = (cadence_rules.map { |rule| [rule[:label], display_command(rule[:command])] } + default_help_commands(company))
 seen_commands = {}
-help_entries = help_commands.filter_map do |label, command|
+help_entries = help_commands.map do |label, command|
   normalized = command.downcase
   next if command.empty? || seen_commands[normalized]
 
   seen_commands[normalized] = true
   [label, command]
-end
+end.compact
 
 help_items = help_entries.map do |label, command|
   <<~HTML
@@ -501,6 +689,8 @@ index_html = <<~HTML
       .report-section { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }
       .report-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
       .misc-section { margin-top: 0; border-top: 0; padding-top: 0; }
+      .misc-section + .misc-section { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }
+      .inline-meta { color: var(--muted); font-size: 14px; margin-left: 6px; }
       .empty-item { color: var(--muted); }
       @media (max-width: 760px) { main { padding: 28px 18px 48px; } .report-link, .help-command { grid-template-columns: 1fr; gap: 4px; } .wiki-details summary { align-items: flex-start; } .wiki-meta { text-align: left; white-space: normal; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
       </style>
@@ -549,9 +739,15 @@ index_html = <<~HTML
         <details class="wiki-details">
           <summary>
             <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Misc</span>
-            <span class="wiki-meta">#{pluralize(handoff_paths.length, "handoff")}</span>
+            <span class="wiki-meta">#{escape(misc_status)}</span>
           </summary>
           <div class="wiki-body">
+            <section class="misc-section">
+              <h2>Learning</h2>
+              <ul>
+                <li><a href="learning/index.html">Spaced repetition learning</a><span class="inline-meta">#{escape(learning_summary(learning_items, Date.today))}</span></li>
+              </ul>
+            </section>
             <section class="misc-section">
               <h2>Handoffs</h2>
               <ul>
