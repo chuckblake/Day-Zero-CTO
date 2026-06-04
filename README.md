@@ -64,7 +64,7 @@ Recommended folder shape:
       handoffs/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts. The generated index keeps core context in a compact collapsible card section so report navigation stays close at hand.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts. The generated index keeps core context in a compact collapsible card section so report navigation stays close at hand, and it can render cadence alerts from `core/OPERATING_CADENCE.md`.
 
 Core files:
 
@@ -75,6 +75,18 @@ Core files:
 - `RISKS.md`: risk register with evidence, impact, likelihood, owner, mitigation, and review date.
 
 The `bootstrap-cto-context` skill can create these files under `knowledge/wiki/core/` and mark missing information as `Unknown` instead of inventing company facts.
+
+`OPERATING_CADENCE.md` may include an `Index Cadence Rules` section. The helper reads this table whenever it regenerates the index and shows an alert when a scheduled report has never run or is due:
+
+```markdown
+## Index Cadence Rules
+
+| Report | Folder | Cadence | Grace Days | Command |
+| --- | --- | --- | --- | --- |
+| Weekly CTO Review | weekly-reviews | weekly | 0 | Run the weekly CTO review for Acme. Use project folder `~/Documents/Acme`. |
+```
+
+Supported cadences include `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, and `every N days/weeks/months`.
 
 ## Repo Structure
 
@@ -98,7 +110,7 @@ day-zero-cto/
 
 Each skill is a normal Codex skill folder with a `SKILL.md` file and optional `agents/openai.yaml` UI metadata.
 
-`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, and regenerates `knowledge/wiki/index.html`.
+`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, and regenerates `knowledge/wiki/index.html`.
 
 ## Install
 

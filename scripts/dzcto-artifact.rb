@@ -68,6 +68,89 @@ def escape(value)
   CGI.escapeHTML(value.to_s)
 end
 
+def split_markdown_row(row)
+  row.strip.sub(/\A\|/, "").sub(/\|\z/, "").split("|").map(&:strip)
+end
+
+def cadence_days(value)
+  cadence = value.to_s.downcase
+
+  return Regexp.last_match(1).to_i if cadence =~ /every\s+(\d+)\s+days?/
+  return Regexp.last_match(1).to_i * 7 if cadence =~ /every\s+(\d+)\s+weeks?/
+  return Regexp.last_match(1).to_i * 30 if cadence =~ /every\s+(\d+)\s+months?/
+  return 1 if cadence.match?(/daily|once per day/)
+  return 7 if cadence.match?(/weekly|once per week|every week/)
+  return 14 if cadence.match?(/biweekly|every other week|fortnight/)
+  return 30 if cadence.match?(/monthly|once per month|every month/)
+  return 90 if cadence.match?(/quarterly|once per quarter|every quarter/)
+
+  nil
+end
+
+def parse_cadence_rules(cadence_path)
+  return [] unless File.exist?(cadence_path)
+
+  lines = File.readlines(cadence_path, chomp: true)
+  start_index = lines.index { |line| line.match?(/^##+\s+Index Cadence Rules\s*$/i) }
+  return [] unless start_index
+
+  section = lines[(start_index + 1)..].take_while { |line| !line.match?(/^##+\s+\S/) }
+  table_lines = section.select { |line| line.strip.start_with?("|") }
+  return [] if table_lines.length < 3
+
+  headers = split_markdown_row(table_lines.first).map { |header| header.downcase.gsub(/[^a-z0-9]+/, "_").gsub(/\A_+|_+\z/, "") }
+  rows = table_lines.drop(2)
+
+  rows.filter_map do |row|
+    cells = split_markdown_row(row)
+    values = headers.zip(cells).to_h
+    folder = values["folder"] || values["report_folder"] || values["kind"]
+    cadence = values["cadence"] || values["frequency"]
+    command = values["command"] || values["prompt"] || values["run"]
+    label = values["report"] || values["name"] || REPORT_FOLDERS[folder] || folder
+    grace_days = Integer(values["grace_days"] || values["grace"] || 0, exception: false) || 0
+    interval_days = cadence_days(cadence)
+
+    next unless folder && cadence && command && interval_days
+
+    {
+      label: label,
+      folder: folder,
+      cadence: cadence,
+      command: command,
+      grace_days: grace_days,
+      interval_days: interval_days
+    }
+  end
+end
+
+def latest_report_date(reports_dir, folder)
+  Dir.glob(File.join(reports_dir, folder, "*.html")).filter_map do |path|
+    match = File.basename(path).match(/\A(\d{4}-\d{2}-\d{2})-/)
+    Date.iso8601(match[1]) if match
+  rescue Date::Error
+    nil
+  end.max
+end
+
+def cadence_alerts(cadence_rules, reports_dir, today)
+  cadence_rules.filter_map do |rule|
+    latest_date = latest_report_date(reports_dir, rule[:folder])
+
+    if latest_date
+      due_date = latest_date + rule[:interval_days] + rule[:grace_days]
+      next if today < due_date
+
+      reason = "Last run #{latest_date.iso8601}; due #{due_date.iso8601}."
+    else
+      due_date = today
+      reason = "No #{rule[:label]} report has been generated yet."
+    end
+
+    rule.merge(latest_date: latest_date, due_date: due_date, reason: reason)
+  end
+end
+
 FileUtils.mkdir_p(core_dir)
 REPORT_FOLDERS.each_key do |folder|
   FileUtils.mkdir_p(File.join(reports_dir, folder))
@@ -207,6 +290,42 @@ handoff_links =
     end.join("\n")
   end
 
+cadence_rules = parse_cadence_rules(File.join(core_dir, "OPERATING_CADENCE.md"))
+alerts = cadence_alerts(cadence_rules, reports_dir, Date.today)
+cadence_status_html =
+  if cadence_rules.empty?
+    ""
+  elsif alerts.empty?
+    <<~HTML
+      <section class="cadence-watch">
+        <h2>Cadence Watch</h2>
+        <p>All scheduled report cadences are current.</p>
+      </section>
+    HTML
+  else
+    alert_cards = alerts.map do |alert|
+      <<~HTML
+        <div class="cadence-alert">
+          <div>
+            <strong>#{escape(alert[:label])}</strong>
+            <span>#{escape(alert[:reason])}</span>
+          </div>
+          <code>#{escape(alert[:command])}</code>
+        </div>
+      HTML
+    end.join
+
+    <<~HTML
+      <section class="cadence-watch cadence-watch-alert">
+        <h2>Cadence Alerts</h2>
+        <p>Generated from <a href="core/OPERATING_CADENCE.md">OPERATING_CADENCE.md</a>.</p>
+        <div class="cadence-list">
+          #{alert_cards}
+        </div>
+      </section>
+    HTML
+  end
+
 index_html = <<~HTML
   <!doctype html>
   <html lang="en">
@@ -229,6 +348,13 @@ index_html = <<~HTML
         li { margin: 6px 0; }
         .missing { color: var(--muted); }
         .path { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; color: var(--muted); }
+        .cadence-watch { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
+        .cadence-watch p { margin-bottom: 12px; }
+        .cadence-list { display: grid; gap: 10px; }
+        .cadence-alert { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; border: 1px solid #e2b454; border-radius: 8px; background: #fff8e6; padding: 12px; }
+        .cadence-alert strong { display: block; margin-bottom: 2px; }
+        .cadence-alert span { color: var(--muted); font-size: 14px; }
+        .cadence-alert code { display: block; white-space: normal; overflow-wrap: anywhere; background: #fff; border: 1px solid #ead49a; border-radius: 6px; padding: 8px; color: var(--ink); }
         .core-details { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
         .core-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
         .core-details summary::-webkit-details-marker { display: none; }
@@ -251,6 +377,8 @@ index_html = <<~HTML
         <h1>Day Zero CTO Knowledge Wiki</h1>
         <p>Bookmark this page to reach the startup's CTO context, reports, reviews, decisions, and handoffs.</p>
         <div class="path">#{escape(wiki_root)}</div>
+
+        #{cadence_status_html}
 
         <details class="core-details">
           <summary>
