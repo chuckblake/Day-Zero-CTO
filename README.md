@@ -136,6 +136,18 @@ git pull
 ruby scripts/install-local-marketplace.rb
 ```
 
+### Editable Local Skills
+
+For the fastest skill-tweaking loop, symlink the individual skills directly into Codex's local skills directory:
+
+```bash
+ruby scripts/install-local-skills.rb
+```
+
+This links each folder under `skills/` into `~/.codex/skills/`. Edit the skill files in this repo, then restart Codex Desktop or start a fresh session to reload skill metadata.
+
+This is the recommended mode while iterating quickly on skill behavior.
+
 ### Skill-Only Install
 
 If you only want the individual skills without the plugin marketplace card, install them into Codex's skills directory:
