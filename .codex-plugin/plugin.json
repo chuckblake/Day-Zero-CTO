@@ -1,6 +1,6 @@
 {
   "name": "day-zero-cto",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "CTO operating skills and durable artifacts for early-stage startups.",
   "author": {
     "name": "Chuck Blake"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Day Zero CTO",
     "shortDescription": "CTO skills and artifacts for startups.",
-    "longDescription": "Day Zero CTO helps early-stage technical leaders run the operating loop from a project-level knowledge wiki: context setup, hard decisions, weekly reviews, CEO updates, risk reviews, one-on-ones, CTO-level code review, durable HTML reports with dated index references, cadence alerts, and a bookmarkable local index at knowledge/wiki/index.html.",
+    "longDescription": "Day Zero CTO helps early-stage technical leaders run the operating loop from a project-level knowledge wiki: context setup, hard decisions, weekly reviews, CEO updates, risk reviews, one-on-ones, CTO-level code review, durable HTML reports with dated index references, company-aware index context, help commands, cadence alerts, and a bookmarkable local index at knowledge/wiki/index.html.",
     "developerName": "Chuck Blake",
     "category": "Productivity",
     "capabilities": [],

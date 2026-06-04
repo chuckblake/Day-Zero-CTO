@@ -64,7 +64,7 @@ Recommended folder shape:
       handoffs/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts. The generated index keeps core context in a compact collapsible card section, shows report run dates next to report links, and can render cadence alerts from `core/OPERATING_CADENCE.md`.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company, summarizes the company context from `core/STRATEGY.md`, explains how to use the page, links to core docs, latest reports, and historical artifacts, keeps core context in a compact collapsible card section, shows report run dates next to report links, renders cadence alerts from `core/OPERATING_CADENCE.md`, and includes a help section with commands the user can run in Codex.
 
 Core files:
 
@@ -110,7 +110,7 @@ day-zero-cto/
 
 Each skill is a normal Codex skill folder with a `SKILL.md` file and optional `agents/openai.yaml` UI metadata.
 
-`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, and regenerates `knowledge/wiki/index.html`.
+`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, and regenerates `knowledge/wiki/index.html`.
 
 ## Install
 

@@ -57,6 +57,13 @@ wiki_root =
     File.expand_path(options[:home])
   end
 
+project_folder =
+  if options[:project]
+    File.expand_path(options[:project])
+  else
+    File.expand_path(File.join(wiki_root, "..", ".."))
+  end
+
 core_dir = File.join(wiki_root, "core")
 reports_dir = File.join(wiki_root, "reports")
 
@@ -66,6 +73,47 @@ end
 
 def escape(value)
   CGI.escapeHTML(value.to_s)
+end
+
+def markdown_section(path, heading)
+  return nil unless File.exist?(path)
+
+  lines = File.readlines(path, chomp: true)
+  start_index = lines.index { |line| line.match?(/^##+\s+#{Regexp.escape(heading)}\s*$/i) }
+  return nil unless start_index
+
+  lines[(start_index + 1)..].take_while { |line| !line.match?(/^##+\s+\S/) }.join("\n").strip
+end
+
+def first_markdown_paragraph(text)
+  text.to_s.split(/\n{2,}/).map(&:strip).find { |paragraph| !paragraph.empty? && !paragraph.start_with?("|", "-", "1.") }
+end
+
+def plain_markdown(value)
+  value.to_s
+       .gsub(/`([^`]+)`/, '\1')
+       .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
+       .gsub(/\*\*|__/, "")
+       .gsub(/\s+/, " ")
+       .strip
+end
+
+def company_name(strategy_path, project_folder)
+  if File.exist?(strategy_path)
+    title = File.readlines(strategy_path, chomp: true).find { |line| line.start_with?("# ") }
+    if title
+      return title.sub(/^#\s+/, "").sub(/\s+Strategy\z/i, "").strip
+    end
+  end
+
+  File.basename(project_folder)
+end
+
+def company_description(strategy_path)
+  paragraph = first_markdown_paragraph(markdown_section(strategy_path, "Product Thesis")) ||
+              first_markdown_paragraph(markdown_section(strategy_path, "Stage"))
+
+  plain_markdown(paragraph || "Company context has not been captured yet. Add a Product Thesis section to core/STRATEGY.md to enrich this summary.")
 end
 
 def split_markdown_row(row)
@@ -149,6 +197,24 @@ def cadence_alerts(cadence_rules, reports_dir, today)
 
     rule.merge(latest_date: latest_date, due_date: due_date, reason: reason)
   end
+end
+
+def display_command(command)
+  command.to_s
+         .gsub(/\s*Use project folder `[^`]+`(?:\s+and read-only code repo `[^`]+`)?\.?/i, "")
+         .gsub(/\s*Use read-only code repo `[^`]+`\.?/i, "")
+         .strip
+end
+
+def default_help_commands(company)
+  [
+    ["Weekly CTO Review", "Run the weekly CTO review for #{company}."],
+    ["CEO Update", "Write the CEO engineering update for #{company}."],
+    ["Engineering Risk Review", "Run the engineering risk review for #{company}."],
+    ["Decision Help", "Help me work through a CTO decision for #{company}: <decision or problem>."],
+    ["One-on-One Prep", "Prepare a CTO one-on-one for #{company} with <person or role>."],
+    ["CTO Code Review", "Run a CTO code review for #{company} against <branch, PR, or diff>. Treat the repo as read-only unless I explicitly ask for code changes."]
+  ]
 end
 
 FileUtils.mkdir_p(core_dir)
@@ -305,6 +371,9 @@ handoff_links =
 
 cadence_rules = parse_cadence_rules(File.join(core_dir, "OPERATING_CADENCE.md"))
 alerts = cadence_alerts(cadence_rules, reports_dir, Date.today)
+strategy_path = File.join(core_dir, "STRATEGY.md")
+company = company_name(strategy_path, project_folder)
+description = company_description(strategy_path)
 cadence_status_html =
   if cadence_rules.empty?
     ""
@@ -323,7 +392,7 @@ cadence_status_html =
             <strong>#{escape(alert[:label])}</strong>
             <span>#{escape(alert[:reason])}</span>
           </div>
-          <code>#{escape(alert[:command])}</code>
+          <code>#{escape(display_command(alert[:command]))}</code>
         </div>
       HTML
     end.join
@@ -339,13 +408,29 @@ cadence_status_html =
     HTML
   end
 
+help_commands = (cadence_rules.map { |rule| [rule[:label], display_command(rule[:command])] } + default_help_commands(company))
+seen_commands = {}
+help_items = help_commands.filter_map do |label, command|
+  normalized = command.downcase
+  next if command.empty? || seen_commands[normalized]
+
+  seen_commands[normalized] = true
+
+  <<~HTML
+    <div class="help-command">
+      <strong>#{escape(label)}</strong>
+      <code>#{escape(command)}</code>
+    </div>
+  HTML
+end.join
+
 index_html = <<~HTML
   <!doctype html>
   <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Day Zero CTO Knowledge Wiki</title>
+      <title>#{escape(company)} Day Zero CTO Knowledge Wiki</title>
       <style>
         :root { --ink: #172033; --muted: #5d6a7d; --line: #d9e0ea; --soft: #f6f8fb; --accent: #185a7d; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: var(--ink); background: #fff; }
@@ -360,7 +445,9 @@ index_html = <<~HTML
         ul { margin: 12px 0 0 20px; padding: 0; }
         li { margin: 6px 0; }
         .missing { color: var(--muted); }
-        .path { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; color: var(--muted); }
+        .company-label { color: var(--muted); font-size: 14px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
+        .company-description { font-size: 17px; margin-bottom: 12px; }
+        .page-purpose { max-width: 840px; }
         .report-list { margin-left: 0; list-style: none; }
         .report-link { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; }
         .report-date { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
@@ -371,6 +458,10 @@ index_html = <<~HTML
         .cadence-alert strong { display: block; margin-bottom: 2px; }
         .cadence-alert span { color: var(--muted); font-size: 14px; }
         .cadence-alert code { display: block; white-space: normal; overflow-wrap: anywhere; background: #fff; border: 1px solid #ead49a; border-radius: 6px; padding: 8px; color: var(--ink); }
+        .help-section p { max-width: 840px; }
+        .help-grid { display: grid; gap: 10px; margin-top: 14px; }
+        .help-command { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+        .help-command code { white-space: normal; overflow-wrap: anywhere; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 7px; color: var(--ink); }
         .core-details { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
         .core-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
         .core-details summary::-webkit-details-marker { display: none; }
@@ -385,14 +476,15 @@ index_html = <<~HTML
         .core-desc { color: var(--muted); font-size: 14px; }
         .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-align: right; white-space: nowrap; }
         .missing-card { background: var(--soft); }
-        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .report-link { grid-template-columns: 1fr; gap: 2px; } .core-details summary { align-items: flex-start; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
+        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .report-link, .help-command { grid-template-columns: 1fr; gap: 4px; } .core-details summary { align-items: flex-start; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
       </style>
     </head>
     <body>
       <main>
-        <h1>Day Zero CTO Knowledge Wiki</h1>
-        <p>Bookmark this page to reach the startup's CTO context, reports, reviews, decisions, and handoffs.</p>
-        <div class="path">#{escape(wiki_root)}</div>
+        <p class="company-label">For #{escape(company)}</p>
+        <h1>#{escape(company)} Day Zero CTO Knowledge Wiki</h1>
+        <p class="company-description">#{escape(description)}</p>
+        <p class="page-purpose">This is the bookmarkable operating index for Day Zero CTO work: use it to open core context, read dated reports, see cadence alerts, find handoffs, and copy commands back into Codex to generate the next artifact. New reports land back in this wiki and the index updates each time.</p>
 
         #{cadence_status_html}
 
@@ -407,6 +499,14 @@ index_html = <<~HTML
         </details>
 
         #{index_sections}
+
+        <section class="help-section">
+          <h2>Help</h2>
+          <p>Ask Codex with one of these commands. The command can be pasted as-is, then refined with the current decision, person, branch, or review target.</p>
+          <div class="help-grid">
+            #{help_items}
+          </div>
+        </section>
 
         <section>
           <h2>Handoffs</h2>
