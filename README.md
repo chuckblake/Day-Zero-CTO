@@ -62,6 +62,55 @@ day-zero-cto/
 
 Each skill is a normal Codex skill folder with a `SKILL.md` file and optional `agents/openai.yaml` UI metadata.
 
+## Install
+
+### Local Plugin Marketplace
+
+Clone the repo, run the installer, then restart Codex Desktop:
+
+```bash
+git clone https://github.com/chuckblake/Day-Zero-CTO.git
+cd Day-Zero-CTO
+ruby scripts/install-local-marketplace.rb
+```
+
+The installer points `~/plugins/day-zero-cto` at your clone and creates or updates `~/.agents/plugins/marketplace.json` with this plugin entry:
+
+```json
+{
+  "name": "day-zero-cto",
+  "source": {
+    "source": "local",
+    "path": "./plugins/day-zero-cto"
+  },
+  "policy": {
+    "installation": "AVAILABLE",
+    "authentication": "ON_INSTALL"
+  },
+  "category": "Productivity"
+}
+```
+
+Because `~/plugins/day-zero-cto` is a symlink to your clone, future `git pull` updates flow into the local Codex plugin.
+
+### Skill-Only Install
+
+If you only want the individual skills without the plugin marketplace card, install them into Codex's skills directory:
+
+```bash
+python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
+  --repo chuckblake/Day-Zero-CTO \
+  --path skills/bootstrap-cto-context \
+  --path skills/work-through-problem \
+  --path skills/weekly-cto-review \
+  --path skills/write-ceo-update \
+  --path skills/review-engineering-risk \
+  --path skills/prep-one-on-one \
+  --path skills/cto-code-review
+```
+
+Restart Codex Desktop after either install path.
+
 ## Usage
 
 In Codex Desktop, install or load this plugin, then ask for one of the workflows in natural language:
