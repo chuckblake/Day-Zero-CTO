@@ -232,6 +232,15 @@ def report_links(wiki_root, kind)
   Dir.glob(pattern).sort.reverse
 end
 
+def report_run_date(path)
+  match = File.basename(path).match(/\A(\d{4}-\d{2}-\d{2})-/)
+  match ? match[1] : "Unknown date"
+end
+
+def report_name(path)
+  File.basename(path, ".html").sub(/^\d{4}-\d{2}-\d{2}-/, "").tr("-", " ")
+end
+
 index_sections = REPORT_FOLDERS.map do |folder, label|
   links = report_links(wiki_root, folder)
   items =
@@ -240,15 +249,19 @@ index_sections = REPORT_FOLDERS.map do |folder, label|
     else
       links.map do |path|
         relative = Pathname.new(path).relative_path_from(Pathname.new(wiki_root)).to_s
-        name = File.basename(path, ".html").sub(/^\d{4}-\d{2}-\d{2}-/, "").tr("-", " ")
-        "<li><a href=\"#{escape(relative)}\">#{escape(name)}</a></li>"
+        <<~HTML
+          <li class="report-link">
+            <span class="report-date">#{escape(report_run_date(path))}</span>
+            <a href="#{escape(relative)}">#{escape(report_name(path))}</a>
+          </li>
+        HTML
       end.join("\n")
     end
 
   <<~HTML
     <section>
       <h2>#{escape(label)}</h2>
-      <ul>
+      <ul class="report-list">
         #{items}
       </ul>
     </section>
@@ -348,6 +361,9 @@ index_html = <<~HTML
         li { margin: 6px 0; }
         .missing { color: var(--muted); }
         .path { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; color: var(--muted); }
+        .report-list { margin-left: 0; list-style: none; }
+        .report-link { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; }
+        .report-date { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
         .cadence-watch { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
         .cadence-watch p { margin-bottom: 12px; }
         .cadence-list { display: grid; gap: 10px; }
@@ -369,7 +385,7 @@ index_html = <<~HTML
         .core-desc { color: var(--muted); font-size: 14px; }
         .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-align: right; white-space: nowrap; }
         .missing-card { background: var(--soft); }
-        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .core-details summary { align-items: flex-start; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
+        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .report-link { grid-template-columns: 1fr; gap: 2px; } .core-details summary { align-items: flex-start; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
       </style>
     </head>
     <body>

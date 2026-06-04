@@ -64,7 +64,7 @@ Recommended folder shape:
       handoffs/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts. The generated index keeps core context in a compact collapsible card section so report navigation stays close at hand, and it can render cadence alerts from `core/OPERATING_CADENCE.md`.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts. The generated index keeps core context in a compact collapsible card section, shows report run dates next to report links, and can render cadence alerts from `core/OPERATING_CADENCE.md`.
 
 Core files:
 
