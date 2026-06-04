@@ -229,14 +229,21 @@ index_html = <<~HTML
         li { margin: 6px 0; }
         .missing { color: var(--muted); }
         .path { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; color: var(--muted); }
+        .core-details { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }
+        .core-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
+        .core-details summary::-webkit-details-marker { display: none; }
+        .core-heading { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; line-height: 1.2; }
+        .core-chevron { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s ease; }
+        .core-details[open] .core-chevron { transform: rotate(45deg); }
+        .core-count { color: var(--muted); font-size: 14px; white-space: nowrap; }
         .core-list { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
-        .core-card { display: grid; grid-template-columns: minmax(130px, 0.7fr) minmax(220px, 1.5fr) auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); }
+        .core-card { display: grid; grid-template-columns: 220px minmax(0, 1fr) 190px; gap: 18px; align-items: center; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); }
         .core-card:hover { text-decoration: none; background: var(--soft); }
         .core-title { font-weight: 700; }
         .core-desc { color: var(--muted); font-size: 14px; }
-        .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; }
+        .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-align: right; white-space: nowrap; }
         .missing-card { background: var(--soft); }
-        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { white-space: normal; } }
+        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .core-details summary { align-items: flex-start; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { text-align: left; white-space: normal; } }
       </style>
     </head>
     <body>
@@ -245,12 +252,15 @@ index_html = <<~HTML
         <p>Bookmark this page to reach the startup's CTO context, reports, reviews, decisions, and handoffs.</p>
         <div class="path">#{escape(wiki_root)}</div>
 
-        <section>
-          <h2>Core Context</h2>
+        <details class="core-details">
+          <summary>
+            <span class="core-heading"><span class="core-chevron" aria-hidden="true"></span>Core Context</span>
+            <span class="core-count">#{CORE_DOCS.length} files</span>
+          </summary>
           <div class="core-list">
             #{core_links}
           </div>
-        </section>
+        </details>
 
         #{index_sections}
 

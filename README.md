@@ -64,7 +64,7 @@ Recommended folder shape:
       handoffs/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It links to core docs, latest reports, and historical artifacts. The generated index keeps core context in a compact collapsible card section so report navigation stays close at hand.
 
 Core files:
 
