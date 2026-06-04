@@ -24,6 +24,14 @@ CORE_DOCS = %w[
   RISKS.md
 ].freeze
 
+CORE_DOC_META = {
+  "STRATEGY.md" => ["Strategy", "Stage, thesis, goals, constraints, and non-goals."],
+  "TEAM.md" => ["Team", "People, roles, ownership, and open questions."],
+  "OPERATING_CADENCE.md" => ["Operating Cadence", "Reviews, updates, planning rhythm, and ceremonies."],
+  "DECISIONS.md" => ["Decisions", "Durable choices, rationale, owners, and revisit triggers."],
+  "RISKS.md" => ["Risks", "Risk register, mitigations, owners, and review dates."]
+}.freeze
+
 options = {
   date: Date.today.iso8601
 }
@@ -166,12 +174,26 @@ end.join("\n")
 
 core_links = CORE_DOCS.map do |doc|
   path = File.join(core_dir, doc)
+  title, description = CORE_DOC_META.fetch(doc, [doc, "Core CTO context."])
+
   if File.exist?(path)
-    "<li><a href=\"core/#{escape(doc)}\">#{escape(doc)}</a></li>"
+    <<~HTML
+      <a class="core-card" href="core/#{escape(doc)}">
+        <span class="core-title">#{escape(title)}</span>
+        <span class="core-desc">#{escape(description)}</span>
+        <span class="core-file">#{escape(doc)}</span>
+      </a>
+    HTML
   else
-    "<li>#{escape(doc)} <span class=\"missing\">not created yet</span></li>"
+    <<~HTML
+      <div class="core-card missing-card">
+        <span class="core-title">#{escape(title)}</span>
+        <span class="core-desc">#{escape(description)}</span>
+        <span class="core-file">#{escape(doc)} not created yet</span>
+      </div>
+    HTML
   end
-end.join("\n")
+end.join
 
 handoff_paths = Dir.glob(File.join(wiki_root, "handoffs", "**", "*")).select { |path| File.file?(path) }.sort
 handoff_links =
@@ -207,6 +229,14 @@ index_html = <<~HTML
         li { margin: 6px 0; }
         .missing { color: var(--muted); }
         .path { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; color: var(--muted); }
+        .core-list { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+        .core-card { display: grid; grid-template-columns: minmax(130px, 0.7fr) minmax(220px, 1.5fr) auto; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); }
+        .core-card:hover { text-decoration: none; background: var(--soft); }
+        .core-title { font-weight: 700; }
+        .core-desc { color: var(--muted); font-size: 14px; }
+        .core-file { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; }
+        .missing-card { background: var(--soft); }
+        @media (max-width: 760px) { main { padding: 28px 18px 48px; } .core-card { grid-template-columns: 1fr; gap: 3px; } .core-file { white-space: normal; } }
       </style>
     </head>
     <body>
@@ -217,9 +247,9 @@ index_html = <<~HTML
 
         <section>
           <h2>Core Context</h2>
-          <ul>
+          <div class="core-list">
             #{core_links}
-          </ul>
+          </div>
         </section>
 
         #{index_sections}
