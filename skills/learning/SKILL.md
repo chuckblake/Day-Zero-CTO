@@ -26,7 +26,7 @@ Accept aliases such as `not`, `neutral`, `know`, `0`, `1`, and `2`, but display 
    scripts/dzcto-learning.rb --project "<project folder>" --record "<rating>"
    ```
 
-   Then summarize the next due date and link to `knowledge/wiki/learning/index.html`.
+   Then summarize the next due date and link to `knowledge/wiki/learning/index.html`. If the recorded rating is `Confident`, ask exactly: `Do you want to continue?` Do not immediately present another item unless the user says yes.
 3. If the user asks for a learning prompt, run:
 
    ```bash
@@ -44,6 +44,7 @@ Accept aliases such as `not`, `neutral`, `know`, `0`, `1`, and `2`, but display 
 6. Present exactly one learning item per prompt.
 7. Keep the explanation short enough to learn in 1-2 minutes.
 8. Do not record a score until the user replies with a rating.
+9. After a `Confident` rating, invite continuation with `Do you want to continue?` If the user says yes, run selection again and present one more item. If the user says no or gives no clear yes, stop.
 
 ## Presentation Format
 
