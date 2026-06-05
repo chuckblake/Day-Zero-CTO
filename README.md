@@ -10,7 +10,7 @@ Day Zero CTO is adjacent to AI shipping stacks, but it is not trying to be anoth
 
 ## What This Is
 
-Day Zero CTO gives Builder a first set of repeatable CTO workflows:
+Day Zero CTO gives early-stage technical leaders a first set of repeatable CTO workflows:
 
 - Think through hard technical, product, team, and process problems.
 - Keep a lightweight memory of strategy, decisions, risks, team shape, and operating cadence in a project-level `knowledge/wiki` workspace.
