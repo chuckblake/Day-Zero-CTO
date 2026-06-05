@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+script = File.expand_path("../scripts/dzcto-artifact.rb", __dir__)
+exec("ruby", script, *ARGV)

@@ -700,7 +700,7 @@ index_html = <<~HTML
         <p class="company-label">For #{escape(company)}</p>
         <h1>#{escape(company)} Day Zero CTO Knowledge Wiki</h1>
         <p class="company-description">#{escape(description)}</p>
-        <p class="page-purpose">This is the bookmarkable operating index for Day Zero CTO work: expand sections to open core context, read dated reports, see cadence alerts, find handoffs, and copy commands back into Codex to generate the next artifact. New reports land back in this wiki and the index updates each time.</p>
+        <p class="page-purpose">This is the bookmarkable operating index for Day Zero CTO work: expand sections to open core context, read dated reports, see cadence alerts, find handoffs, and copy commands back into your agent to generate the next artifact. New reports land back in this wiki and the index updates each time.</p>
 
         <details class="wiki-details">
           <summary>
@@ -729,7 +729,7 @@ index_html = <<~HTML
             <span class="wiki-meta">#{pluralize(help_entries.length, "command")}</span>
           </summary>
           <div class="wiki-body">
-            <p>Ask Codex with one of these commands. The command can be pasted as-is, then refined with the current decision, person, branch, or review target.</p>
+            <p>Ask your agent with one of these commands. The command can be pasted as-is, then refined with the current decision, person, branch, or review target.</p>
             <div class="help-grid">
               #{help_items}
             </div>

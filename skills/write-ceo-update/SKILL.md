@@ -29,10 +29,13 @@ Translate engineering reality into concise business signal for the CEO or foundi
 
 ## Durable Artifact
 
-Use the helper script from this plugin:
+Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
 
 ```bash
-scripts/dzcto-artifact.rb --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --body-file "<html body file>"
+dzcto-artifact --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --body-file "<html body file>"
+
+# Fallback when dzcto-artifact is not on PATH:
+ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --body-file "<html body file>"
 ```
 
 The report body should be HTML. Keep the chat response brief; the HTML file is the durable record.

@@ -1,6 +1,6 @@
 ---
 name: bootstrap-cto-context
-description: "Create or refresh the project knowledge wiki and core Day Zero CTO context files for a startup. Use when setting up the CTO operating system, onboarding Codex to company strategy/team/process context, starting a new startup workspace, choosing where durable CTO artifacts should live, connecting an optional read-only code repo evidence source, or repairing missing STRATEGY.md, TEAM.md, OPERATING_CADENCE.md, DECISIONS.md, RISKS.md, and knowledge/wiki/index.html files."
+description: "Create or refresh the project knowledge wiki and core Day Zero CTO context files for a startup. Use when setting up the CTO operating system, onboarding the agent to company strategy/team/process context, starting a new startup workspace, choosing where durable CTO artifacts should live, connecting an optional read-only code repo evidence source, or repairing missing STRATEGY.md, TEAM.md, OPERATING_CADENCE.md, DECISIONS.md, RISKS.md, and knowledge/wiki/index.html files."
 ---
 
 # Bootstrap CTO Context
@@ -10,13 +10,13 @@ Establish the project `knowledge/wiki` workspace and the small set of durable fi
 ## Workflow
 
 1. Ask the user to confirm the project folder before creating or updating durable docs. Recommend a path outside the code repo, such as `~/Documents/<Company>/`.
-2. If the project folder does not exist, offer to create it. Use `scripts/dzcto-artifact.rb --project <path> --init` from this plugin to create `<project>/knowledge/wiki/`, the standard folder structure, and `knowledge/wiki/index.html`.
+2. If the project folder does not exist, offer to create it. Use `dzcto-artifact --project <path> --init` when the wrapper is available, or `ruby scripts/dzcto-artifact.rb --project <path> --init` from this plugin repo, to create `<project>/knowledge/wiki/`, the standard folder structure, and `knowledge/wiki/index.html`.
 3. Ask separately for an optional code repo pointer. Treat that repo as a read-only evidence source for product docs, architecture docs, implementation evidence, plans, compliance docs, commits, and tests.
 4. Inspect any existing files in `<project>/knowledge/wiki/`, especially `core/STRATEGY.md`, `core/TEAM.md`, `core/OPERATING_CADENCE.md`, `core/DECISIONS.md`, `core/RISKS.md`, `index.html`, and relevant report folders.
 5. Read only the code repo files needed to understand the company stage, product thesis, team, cadence, and current risks.
 6. If important facts are missing and cannot be inferred from local context, ask one concise question or mark the field as `Unknown`.
 7. Create or update the core files below inside `<project>/knowledge/wiki/core/`. Preserve useful existing content; do not erase user notes.
-8. Regenerate `<project>/knowledge/wiki/index.html` with `scripts/dzcto-artifact.rb --project <path> --init`. The generated index should identify the company, summarize company context from `core/STRATEGY.md`, explain how to use the page, and group content into collapsible Core Context, Reports, Help, and Misc sections. Reports should show run dates and cadence status; Help should include reusable Codex commands; Misc should include handoffs and the spaced-repetition learning area.
+8. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto-artifact --project <path> --init` or `ruby scripts/dzcto-artifact.rb --project <path> --init`. The generated index should identify the company, summarize company context from `core/STRATEGY.md`, explain how to use the page, and group content into collapsible Core Context, Reports, Help, and Misc sections. Reports should show run dates and cadence status; Help should include reusable agent commands; Misc should include handoffs and the spaced-repetition learning area.
 9. Summarize what was created, what remains unknown, where the project folder and knowledge wiki live, what code repo is being used read-only, and which Day Zero CTO skill should run next.
 
 ## Core Files

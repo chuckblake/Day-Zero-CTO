@@ -35,10 +35,13 @@ For lightweight asks, answer directly. For serious decisions, use:
 
 When the user wants the decision captured, write the canonical output as HTML under `<project>/knowledge/wiki/reports/decisions/` and regenerate `<project>/knowledge/wiki/index.html`.
 
-Use the helper script from this plugin:
+Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
 
 ```bash
-scripts/dzcto-artifact.rb --project "<project folder>" --kind decisions --title "<decision title>" --body-file "<html body file>"
+dzcto-artifact --project "<project folder>" --kind decisions --title "<decision title>" --body-file "<html body file>"
+
+# Fallback when dzcto-artifact is not on PATH:
+ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind decisions --title "<decision title>" --body-file "<html body file>"
 ```
 
 The chat response should summarize the recommendation and link to the generated artifact.
