@@ -43,7 +43,7 @@ Required JSON fields: `executive_read`, `stack_components`, `architecture_shape`
 dzcto-artifact --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
+python3 scripts/dzcto_artifact.py --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
 ```
 
 The helper owns the HTML template; the agent owns the evidence and structured content.

@@ -37,13 +37,13 @@ When the user wants the decision captured, write structured JSON data and render
 
 Use a structured JSON payload when the user wants the decision captured. Required JSON fields: `decision`, `context`, `options`, `tradeoffs`, `recommendation`, `watchpoints`, `follow_ups`, and `sources`.
 
-Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Python script from the plugin repo:
 
 ```bash
 dzcto-artifact --project "<project folder>" --kind decisions --title "<decision title>" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind decisions --title "<decision title>" --data-file "<json report data file>"
+python3 scripts/dzcto_artifact.py --project "<project folder>" --kind decisions --title "<decision title>" --data-file "<json report data file>"
 ```
 
 The chat response should summarize the recommendation and link to the generated artifact.

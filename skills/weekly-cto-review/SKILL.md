@@ -30,7 +30,7 @@ Turn scattered engineering activity into a clear operating picture and next-week
 
 ## Durable Artifact
 
-Write structured JSON report data, then use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+Write structured JSON report data, then use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Python script from the plugin repo:
 
 Required JSON fields: `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, and `sources`. Optional: `metrics`.
 
@@ -38,7 +38,7 @@ Required JSON fields: `executive_read`, `shipped_learned`, `risks`, `decisions_n
 dzcto-artifact --project "<project folder>" --kind weekly-reviews --title "Weekly CTO Review" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind weekly-reviews --title "Weekly CTO Review" --data-file "<json report data file>"
+python3 scripts/dzcto_artifact.py --project "<project folder>" --kind weekly-reviews --title "Weekly CTO Review" --data-file "<json report data file>"
 ```
 
 The helper owns the HTML template; the agent owns the judgment and structured content. Keep the chat response brief; the HTML file is the durable record.

@@ -2,11 +2,17 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SCRIPT="$SCRIPT_DIR/../scripts/dzcto-learning.rb"
+PY_SCRIPT="$SCRIPT_DIR/../scripts/dzcto_learning.py"
+RB_SCRIPT="$SCRIPT_DIR/../scripts/dzcto-learning.rb"
 
-if command -v ruby >/dev/null 2>&1; then
-  exec ruby "$SCRIPT" "$@"
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$PY_SCRIPT" "$@"
 fi
 
-echo "Day Zero CTO currently requires Ruby to run dzcto-learning. Install Ruby 3.x or run this inside an agent environment that provides Ruby." >&2
+if command -v ruby >/dev/null 2>&1; then
+  echo "Day Zero CTO is using the legacy Ruby learning helper because python3 was not found." >&2
+  exec ruby "$RB_SCRIPT" "$@"
+fi
+
+echo "Day Zero CTO requires python3 to run dzcto-learning. Install Python 3.10+ or use an agent/runtime that provides it." >&2
 exit 127

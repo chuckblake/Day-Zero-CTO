@@ -11,7 +11,7 @@ Ask the user for paths before running Day Zero CTO work:
 
 Day Zero CTO writes to `<project>/knowledge/wiki/`.
 
-Runtime note: Day Zero CTO helpers currently require Ruby. Do not assume Ruby exists on every user machine. If `ruby` is unavailable, tell the user that artifact generation needs Ruby 3.x for now and stop before promising a generated artifact.
+Runtime note: Day Zero CTO helpers require Python 3.10+ and use only the Python standard library. Do not assume a runtime exists on every user machine; run `bin/dzcto-doctor` from the repo before promising generated artifacts.
 
 ## Codex Desktop
 
@@ -20,7 +20,8 @@ Clone the repo and install it as a local Codex plugin marketplace entry:
 ```bash
 git clone https://github.com/chuckblake/Day-Zero-CTO.git
 cd Day-Zero-CTO
-ruby scripts/install-local-marketplace.rb
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
 ```
 
 Restart Codex Desktop or start a fresh session.
@@ -28,15 +29,26 @@ Restart Codex Desktop or start a fresh session.
 For active skill development, symlink the shared skills into Codex's local skill directory:
 
 ```bash
-ruby scripts/install-local-skills.rb
+python3 scripts/install_local_skills.py
 ```
 
 After pulling updates:
 
 ```bash
 git pull
-ruby scripts/install-local-marketplace.rb
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
 ```
+
+For a complete local reinstall from an existing clone:
+
+```bash
+python3 scripts/uninstall_local.py
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
+```
+
+The uninstall helper only removes Day Zero CTO marketplace entries and symlinks that point at the current clone.
 
 ## Claude Code
 
@@ -67,7 +79,7 @@ After pulling published updates:
 claude plugin update day-zero-cto@day-zero-cto
 ```
 
-Claude Code plugin install does not require Ruby, but the installed `dzcto-artifact` and `dzcto-learning` helper commands currently do.
+Claude Code plugin install does not require Ruby. The installed `dzcto-artifact`, `dzcto-learning`, and `dzcto-doctor` helper commands require Python 3.10+.
 
 ## Verify
 

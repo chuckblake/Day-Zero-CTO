@@ -11,12 +11,12 @@ Establish the project `knowledge/wiki` workspace, connect read-only codebase evi
 
 1. Ask for the Day Zero CTO project folder before creating or updating durable docs. Recommend a path outside any code repo, such as `~/Documents/<Company>/`. This is the durable artifact location.
 2. Ask separately for one or more optional codebase locations. Treat codebases as read-only evidence sources for product docs, architecture docs, implementation evidence, plans, compliance docs, commits, and tests.
-3. If the project folder does not exist, offer to create it. Use `dzcto-artifact --project <path> --init` when the wrapper is available, or `ruby scripts/dzcto-artifact.rb --project <path> --init` from this plugin repo, to create `<project>/knowledge/wiki/`, the standard folder structure, and `knowledge/wiki/index.html`.
+3. If the project folder does not exist, offer to create it. Use `dzcto-artifact --project <path> --init` when the wrapper is available, or `python3 scripts/dzcto_artifact.py --project <path> --init` from this plugin repo, to create `<project>/knowledge/wiki/`, the standard folder structure, and `knowledge/wiki/index.html`.
 4. Inspect any existing files in `<project>/knowledge/wiki/`, especially `core/STRATEGY.md`, `core/TEAM.md`, `core/OPERATING_CADENCE.md`, `core/DECISIONS.md`, `core/RISKS.md`, `index.html`, and relevant report folders.
 5. Read only the codebase files needed to understand company stage, product thesis, team, cadence, current risks, and stack shape.
 6. If important facts are missing and cannot be inferred from local context, ask one concise question or mark the field as `Unknown`.
 7. Create or update the core files below inside `<project>/knowledge/wiki/core/`. Preserve useful existing content; do not erase user notes.
-8. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto-artifact --project <path> --init` or `ruby scripts/dzcto-artifact.rb --project <path> --init`. The generated index should identify the company, show only company context under the title, and group content into collapsible Core Context, Reports, Learning, Help, and Misc sections. Reports should show run dates and cadence status; Help should include reusable agent commands; Misc should include handoffs. New report artifacts should use structured JSON via `--data-file`; raw `--body-file` HTML is only a legacy fallback.
+8. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto-artifact --project <path> --init` or `python3 scripts/dzcto_artifact.py --project <path> --init`. The generated index should identify the company, show only company context under the title, and group content into collapsible Core Context, Reports, Learning, Help, and Misc sections. Reports should show run dates and cadence status; Help should include reusable agent commands; Misc should include handoffs. New report artifacts should use structured JSON via `--data-file`; raw `--body-file` HTML is only a legacy fallback.
 9. Ask: `Do you want to complete onboarding now?` If yes, offer these run-now options: Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, CTO Code Review if a branch/diff exists, and Initial Learning Seed.
 10. If the user chooses Initial Learning Seed, create exactly 25 evidence-backed learning items when enough evidence exists. Write them to a JSON array and run:
 
@@ -24,7 +24,7 @@ Establish the project `knowledge/wiki` workspace, connect read-only codebase evi
    dzcto-learning --project "<project folder>" --seed-file "<json learning seed file>"
 
    # Fallback when dzcto-learning is not on PATH:
-   ruby scripts/dzcto-learning.rb --project "<project folder>" --seed-file "<json learning seed file>"
+   python3 scripts/dzcto_learning.py --project "<project folder>" --seed-file "<json learning seed file>"
    ```
 
 11. Summarize what was created, what remains unknown, where the project folder and knowledge wiki live, what codebase locations are being used read-only, which onboarding options were run, and which Day Zero CTO skill should run next.

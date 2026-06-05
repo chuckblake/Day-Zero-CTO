@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT="$SCRIPT_DIR/../scripts/dzcto_doctor.py"
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$SCRIPT" "$@"
+fi
+
+echo "Day Zero CTO requires python3 to run dzcto-doctor. Install Python 3.10+ or use an agent/runtime that provides it." >&2
+exit 127

@@ -104,6 +104,7 @@ day-zero-cto/
 │   └── marketplace.json
 ├── bin/
 │   ├── dzcto-artifact
+│   ├── dzcto-doctor
 │   └── dzcto-learning
 ├── skills/
 │   ├── bootstrap-cto-context/
@@ -115,6 +116,12 @@ day-zero-cto/
 │   ├── cto-code-review/
 │   └── learning/
 ├── scripts/
+│   ├── dzcto_artifact.py
+│   ├── dzcto_doctor.py
+│   ├── dzcto_learning.py
+│   ├── install_local_marketplace.py
+│   ├── install_local_skills.py
+│   ├── uninstall_local.py
 │   ├── dzcto-artifact.rb
 │   ├── dzcto-learning.rb
 │   ├── install-local-marketplace.rb
@@ -126,15 +133,15 @@ day-zero-cto/
 
 Each skill is a normal skill folder with a `SKILL.md` file. `agents/openai.yaml` files are Codex UI metadata. Claude Code reads the shared `SKILL.md` files through the plugin.
 
-`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Learning, Help, and Misc sections.
+`scripts/dzcto_artifact.py` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Learning, Help, and Misc sections.
 
 Report bodies are template-rendered from structured JSON via `--data-file`. The agent supplies judgment and report facts; the helper owns the HTML structure, styling, ordering, escaping, and repeated section layout. Raw `--body-file` HTML remains as a legacy fallback.
 
-`scripts/dzcto-learning.rb` manages spaced-repetition learning items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, and refreshes the wiki index after learning state changes.
+`scripts/dzcto_learning.py` manages spaced-repetition learning items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, writes a mastery checklist under `knowledge/wiki/learning/checklists/`, and refreshes the wiki index after learning state changes.
 
-`bin/dzcto-artifact` and `bin/dzcto-learning` are convenience wrappers. Claude Code adds plugin `bin/` executables to the Bash tool `PATH`; Codex users can run the Ruby scripts directly or run the wrappers from the repo.
+`bin/dzcto-artifact`, `bin/dzcto-learning`, and `bin/dzcto-doctor` are convenience wrappers. Claude Code adds plugin `bin/` executables to the Bash tool `PATH`; Codex users can run the Python scripts directly or run the wrappers from the repo.
 
-Current runtime requirement: Ruby. The scripts use only the Ruby standard library, but Ruby is not safe to assume across all user machines. The wrappers check for Ruby and fail with a clear message when it is missing. A future public packaging pass should port the helpers to a more common agent runtime or ship a packaged binary.
+Current runtime requirement: Python 3.10+. The helpers use only the Python standard library. The older Ruby helpers remain as a legacy fallback for existing local installs, but new public install instructions and wrappers are Python-first. Run `bin/dzcto-doctor` to check the runtime, manifests, wrappers, helper syntax, and optional project folder before promising generated artifacts.
 
 ## Report Payloads
 
@@ -166,10 +173,11 @@ Clone the repo, run the local marketplace installer, then restart Codex Desktop:
 ```bash
 git clone https://github.com/chuckblake/Day-Zero-CTO.git
 cd Day-Zero-CTO
-ruby scripts/install-local-marketplace.rb
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
 ```
 
-This installer currently requires Ruby.
+The installer requires Python 3.10+ and uses only the Python standard library.
 
 The installer points `~/plugins/day-zero-cto` at your clone and creates or updates `~/.agents/plugins/marketplace.json` with this plugin entry:
 
@@ -193,10 +201,10 @@ Because `~/plugins/day-zero-cto` is a symlink to your clone, future `git pull` u
 For active skill development, symlink the individual skills directly into Codex's local skills directory:
 
 ```bash
-ruby scripts/install-local-skills.rb
+python3 scripts/install_local_skills.py
 ```
 
-This development installer currently requires Ruby.
+This development installer requires Python 3.10+.
 
 This links each folder under `skills/` into `~/.codex/skills/`. Edit the skill files in this repo, then restart Codex Desktop or start a fresh session to reload skill metadata.
 
@@ -204,7 +212,25 @@ To refresh an existing local Codex install after pulling changes:
 
 ```bash
 git pull
-ruby scripts/install-local-marketplace.rb
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
+```
+
+For a complete local reinstall from an existing clone:
+
+```bash
+python3 scripts/uninstall_local.py
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
+```
+
+`uninstall_local.py` only removes the Day Zero CTO Codex marketplace entry plus plugin and editable-skill symlinks that point at the current clone. It skips unrelated files and non-symlink directories.
+
+For a complete reinstall from a fresh clone, remove the old clone after running the uninstall helper from it, clone again, then run:
+
+```bash
+python3 scripts/install_local_marketplace.py
+bin/dzcto-doctor
 ```
 
 ### Claude Code
@@ -216,7 +242,7 @@ claude plugin marketplace add chuckblake/Day-Zero-CTO
 claude plugin install day-zero-cto@day-zero-cto
 ```
 
-The plugin can be installed without Ruby, but running Day Zero CTO artifact and learning helpers currently requires Ruby on the machine where Claude Code executes shell commands.
+The plugin can be installed without Ruby. Running Day Zero CTO artifact and learning helpers requires Python 3.10+ on the machine where Claude Code executes shell commands. The wrappers print a clear error if `python3` is missing.
 
 Inside interactive Claude Code, use the slash-command equivalents:
 
@@ -276,6 +302,14 @@ Install or load this plugin, then ask for one of the workflows in natural langua
 - Prefer startup-relevant judgment over generic best practices.
 - Produce durable HTML artifacts for reports and reviews, then keep `index.html` current.
 - Use spaced repetition to help the user retain system knowledge over time.
+
+## License
+
+Day Zero CTO is released under the MIT License. See `LICENSE`.
+
+## Acknowledgements
+
+The learning workflow borrows broad teaching-process ideas such as one-question-at-a-time practice, visible progress, and mastery confirmation from the open-source `teach` skill in [`alexknowshtml/claude-skills`](https://github.com/alexknowshtml/claude-skills/blob/main/teach/SKILL.md). Day Zero CTO implements those ideas independently in its own spaced-repetition workflow.
 
 ## Roadmap Ideas
 
