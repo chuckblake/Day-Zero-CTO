@@ -41,6 +41,10 @@ OptionParser.new do |parser|
   parser.on("--date DATE", "Date, YYYY-MM-DD") { |value| options[:date] = value }
   parser.on("--select", "Select a learning item or recommend adding a new one") { options[:mode] = :select }
   parser.on("--add", "Add a new learning item and mark it current") { options[:mode] = :add }
+  parser.on("--seed-file PATH", "Add multiple learning items from a JSON array") do |value|
+    options[:mode] = :seed
+    options[:seed_file] = value
+  end
   parser.on("--record RATING", "Record rating: Needs Work, Familiar, or Confident") do |value|
     options[:mode] = :record
     options[:rating] = value
@@ -351,6 +355,69 @@ when :add
     status: existing ? "updated" : "added",
     kind: "new",
     item: item_payload(item),
+    rating_options: rating_options
+  )
+when :seed
+  seed_path = File.expand_path(options[:seed_file])
+  seed_items = JSON.parse(File.read(seed_path))
+  abort "--seed-file must contain a JSON array" unless seed_items.is_a?(Array)
+
+  items = load_items(project)
+  added = []
+  updated = []
+
+  seed_items.each do |seed|
+    next unless seed.is_a?(Hash)
+
+    title = seed["title"].to_s.strip
+    summary = seed["summary"].to_s.strip
+    next if title.empty? || summary.empty?
+
+    id = seed["id"].to_s.strip
+    id = unique_id(title, items) if id.empty?
+    existing = items.find { |item| item["id"] == id }
+    tags =
+      case seed["tags"]
+      when Array
+        seed["tags"].map(&:to_s)
+      else
+        seed["tags"].to_s.split(",")
+      end.map(&:strip).reject(&:empty?)
+
+    item = existing || {
+      "id" => id,
+      "created_on" => seed["created_on"] || today.iso8601,
+      "seen_count" => 0,
+      "box" => 0,
+      "status" => "active"
+    }
+
+    item.merge!(
+      "title" => title,
+      "summary" => summary,
+      "details" => seed["details"].to_s.empty? ? summary : seed["details"].to_s,
+      "source" => seed["source"] || "Onboarding",
+      "tags" => tags,
+      "due_on" => item["due_on"] || seed["due_on"] || today.iso8601
+    )
+
+    if existing
+      updated << item
+    else
+      items << item
+      added << item
+    end
+  end
+
+  save_items(project, items)
+  refresh_index(project)
+
+  output(
+    status: "seeded",
+    added: added.length,
+    updated: updated.length,
+    items: (added + updated).map { |item| item_payload(item) },
+    stats: learning_stats(items, today),
     rating_options: rating_options
   )
 when :record

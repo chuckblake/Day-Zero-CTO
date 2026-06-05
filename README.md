@@ -6,7 +6,7 @@ It supports Codex Desktop and Claude Code from the same shared `skills/` and `sc
 
 The core idea is simple: do not build a generic executive coach. Build a portable CTO operating system that becomes company-specific through local context.
 
-Day Zero CTO is adjacent to AI shipping stacks, but it is not trying to be another virtual engineering team. It is the leadership wrapper around that work: the context, cadence, decisions, risk register, people conversations, and executive communication that make shipping fit the company.
+Day Zero CTO is adjacent to AI shipping stacks, but it is not trying to be another virtual engineering team. It is the leadership wrapper around that work: the context, cadence, decisions, risk register, codebase map, and executive communication that make shipping fit the company.
 
 ## What This Is
 
@@ -16,8 +16,8 @@ Day Zero CTO gives early-stage technical leaders a first set of repeatable CTO w
 - Keep a lightweight memory of strategy, decisions, risks, team shape, and operating cadence in a project-level `knowledge/wiki` workspace.
 - Run recurring CTO reviews that produce durable HTML artifacts.
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
+- Map the tech stack so future agents and technical leaders can understand the codebase quickly.
 - Review code through the lens of startup risk and leverage.
-- Prepare useful one-on-one conversations.
 - Teach system knowledge with spaced repetition.
 
 It is intentionally small. The first version should earn trust by observing the company, naming reality clearly, and producing useful artifacts.
@@ -26,12 +26,12 @@ It is intentionally small. The first version should earn trust by observing the 
 
 | Skill | Purpose |
 | --- | --- |
-| `bootstrap-cto-context` | Create or refresh the local context files the rest of the pack depends on. |
+| `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, connect read-only codebases, create core context, and offer initial reports and learning setup. |
+| `tech-stack` | Review the codebase and create a durable Tech Stack report. |
 | `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
 | `write-ceo-update` | Translate engineering work, risks, and asks into CEO-facing signal. |
 | `review-engineering-risk` | Find risks that threaten product, customers, delivery, trust, or runway. |
-| `prep-one-on-one` | Prepare practical CTO one-on-ones with engineers, managers, cofounders, or partners. |
 | `cto-code-review` | Review code with a startup CTO lens: correctness, trust, operability, speed, and maintainability. |
 | `learning` | Teach one focused system concept and schedule it for spaced repetition. |
 
@@ -59,23 +59,23 @@ Recommended folder shape:
         DECISIONS.md
         RISKS.md
       reports/
+        tech-stack/
         engineering-risk/
         weekly-reviews/
         ceo-updates/
-        one-on-ones/
         decisions/
         code-reviews/
       learning/
       handoffs/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company, summarizes the company context from `core/STRATEGY.md`, explains how to use the page, and organizes the workspace into four collapsible sections: Core Context, Reports, Help, and Misc. Reports show run dates next to links and include cadence status from `core/OPERATING_CADENCE.md`; Help contains commands the user can run in their agent; Misc contains handoffs, spaced-repetition learning, and other non-report artifacts.
+The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company and shows company context from `core/STRATEGY.md` under the title. The page organizes the workspace into collapsible sections: Core Context, Reports, Learning, Help, and Misc. Reports show run dates next to links and include cadence status from `core/OPERATING_CADENCE.md`; Help contains commands the user can run in their agent; Misc contains handoffs and other non-report artifacts.
 
 Core files:
 
 - `STRATEGY.md`: stage, customer, product thesis, current goals, constraints, and non-goals.
 - `TEAM.md`: people, roles, ownership, responsibilities, and communication preferences.
-- `OPERATING_CADENCE.md`: weekly review, CEO update rhythm, planning cycle, one-on-ones, and incident reviews.
+- `OPERATING_CADENCE.md`: weekly review, CEO update rhythm, planning cycle, incident reviews, and expected artifacts.
 - `DECISIONS.md`: decision log with context, options, rationale, owner, and revisit trigger.
 - `RISKS.md`: risk register with evidence, impact, likelihood, owner, mitigation, and review date.
 
@@ -107,11 +107,11 @@ day-zero-cto/
 │   └── dzcto-learning
 ├── skills/
 │   ├── bootstrap-cto-context/
+│   ├── tech-stack/
 │   ├── work-through-problem/
 │   ├── weekly-cto-review/
 │   ├── write-ceo-update/
 │   ├── review-engineering-risk/
-│   ├── prep-one-on-one/
 │   ├── cto-code-review/
 │   └── learning/
 ├── scripts/
@@ -126,7 +126,7 @@ day-zero-cto/
 
 Each skill is a normal skill folder with a `SKILL.md` file. `agents/openai.yaml` files are Codex UI metadata. Claude Code reads the shared `SKILL.md` files through the plugin.
 
-`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Help, and Misc sections.
+`scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Learning, Help, and Misc sections.
 
 Report bodies are template-rendered from structured JSON via `--data-file`. The agent supplies judgment and report facts; the helper owns the HTML structure, styling, ordering, escaping, and repeated section layout. Raw `--body-file` HTML remains as a legacy fallback.
 
@@ -148,10 +148,10 @@ The supported report kinds have fixed section templates:
 
 | Kind | Expected JSON fields |
 | --- | --- |
+| `tech-stack` | `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, `sources` |
 | `weekly-reviews` | `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
 | `ceo-updates` | `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources` |
 | `engineering-risk` | `executive_read`, `top_risks`, `mitigations`, `watchpoints`, `sources` |
-| `one-on-ones` | `objective`, `context`, `agenda`, `prompts`, `follow_up`, `sources` |
 | `decisions` | `decision`, `context`, `options`, `tradeoffs`, `recommendation`, `watchpoints`, `follow_ups`, `sources` |
 | `code-reviews` | `merge_recommendation`, `blocking`, `fyi`, `questions`, `tests_verification`, `startup_risk_note`, `sources` |
 
@@ -241,7 +241,7 @@ claude plugin update day-zero-cto@day-zero-cto
 Claude Code plugin skills are namespaced. For example:
 
 ```text
-/day-zero-cto:bootstrap-cto-context Bootstrap Day Zero CTO context for this startup. Use project folder `~/Documents/Acme`.
+/day-zero-cto:bootstrap-cto-context Onboard Day Zero CTO for this startup. Use project folder `~/Documents/Acme`.
 ```
 
 ### Agent Handoff
@@ -258,11 +258,11 @@ That file includes both Codex Desktop and Claude Code install paths plus the fir
 
 Install or load this plugin, then ask for one of the workflows in natural language:
 
-- "Bootstrap Day Zero CTO context for this startup. Use `~/Documents/Acme` as the project folder and `~/code/acme-app` as the read-only code repo."
+- "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme` as the project folder and `~/code/acme-app` as the read-only code repo."
+- "Create a Tech Stack report from the codebase and write it into the project knowledge wiki."
 - "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
 - "Write a CEO update from this week's engineering work."
 - "Review engineering risk before launch. Treat the code repo as read-only."
-- "Help me prep a one-on-one with our backend lead."
 - "Review this PR as a startup CTO and save a durable review artifact."
 - "Run a Day Zero CTO learning prompt."
 

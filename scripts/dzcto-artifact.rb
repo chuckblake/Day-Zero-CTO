@@ -9,10 +9,10 @@ require "optparse"
 require "pathname"
 
 REPORT_FOLDERS = {
+  "tech-stack" => "Tech Stack",
   "engineering-risk" => "Engineering Risk",
   "weekly-reviews" => "Weekly Reviews",
   "ceo-updates" => "CEO Updates",
-  "one-on-ones" => "One-on-Ones",
   "decisions" => "Decisions",
   "code-reviews" => "Code Reviews"
 }.freeze
@@ -213,10 +213,10 @@ def default_help_commands(company)
   [
     ["Weekly CTO Review", "Run the weekly CTO review for #{company}."],
     ["CEO Update", "Write the CEO engineering update for #{company}."],
+    ["Tech Stack", "Review the codebase and create a Tech Stack report for #{company}."],
     ["Engineering Risk Review", "Run the engineering risk review for #{company}."],
     ["Learning", "Run a Day Zero CTO learning prompt for #{company}."],
     ["Decision Help", "Help me work through a CTO decision for #{company}: <decision or problem>."],
-    ["One-on-One Prep", "Prepare a CTO one-on-one for #{company} with <person or role>."],
     ["CTO Code Review", "Run a CTO code review for #{company} against <branch, PR, or diff>. Treat the repo as read-only unless I explicitly ask for code changes."]
   ]
 end
@@ -459,14 +459,28 @@ def render_engineering_risk(data)
   ].join
 end
 
-def render_one_on_one(data)
+def render_tech_stack(data)
   [
-    render_text_section("Objective", value_at(data, "objective")),
-    render_text_section("Context", value_at(data, "context")),
-    render_list_section("Agenda", value_at(data, "agenda")),
-    render_list_section("Prompts", value_at(data, "prompts")),
-    render_list_section("Feedback", value_at(data, "feedback")),
-    render_list_section("Follow-Up", value_at(data, "follow_up", "followup")),
+    html_paragraph(value_at(data, "executive_read", "summary")),
+    render_table_section("Stack Components", value_at(data, "stack_components", "components"), [
+      ["Layer", "layer"],
+      ["Technology", "technology"],
+      ["Evidence", "evidence"],
+      ["Notes", "notes"]
+    ]),
+    render_text_section("Architecture Shape", value_at(data, "architecture_shape", "architecture")),
+    render_list_section("Data and Storage", value_at(data, "data_storage", "data_and_storage")),
+    render_list_section("Integrations", value_at(data, "integrations")),
+    render_list_section("Infrastructure and Operations", value_at(data, "infrastructure_operations", "infrastructure", "operations")),
+    render_list_section("Development Tooling", value_at(data, "development_tooling", "dev_tooling")),
+    render_table_section("Risks and Watchpoints", value_at(data, "risks_watchpoints", "risks", "watchpoints"), [
+      ["Risk", "risk"],
+      ["Evidence", "evidence"],
+      ["Impact", "impact"],
+      ["Severity", "severity"],
+      ["Mitigation", "mitigation"]
+    ]),
+    render_list_section("Onboarding Notes", value_at(data, "onboarding_notes", "notes")),
     render_sources(data)
   ].join
 end
@@ -535,14 +549,14 @@ end
 def render_structured_report(kind, data)
   body =
     case kind
+    when "tech-stack"
+      render_tech_stack(data)
     when "weekly-reviews"
       render_weekly_review(data)
     when "ceo-updates"
       render_ceo_update(data)
     when "engineering-risk"
       render_engineering_risk(data)
-    when "one-on-ones"
-      render_one_on_one(data)
     when "decisions"
       render_decision(data)
     when "code-reviews"
@@ -960,7 +974,8 @@ report_status =
     "#{pluralize(report_count, "artifact")} · #{pluralize(alerts.length, "alert")}"
   end
 
-misc_status = "#{pluralize(handoff_paths.length, "handoff")} · #{learning_summary(learning_items, Date.today)}"
+learning_status = learning_summary(learning_items, Date.today)
+misc_status = pluralize(handoff_paths.length, "handoff")
 
 help_commands = (cadence_rules.map { |rule| [rule[:label], display_command(rule[:command])] } + default_help_commands(company))
 seen_commands = {}
@@ -1004,7 +1019,6 @@ index_html = <<~HTML
         .missing { color: var(--muted); }
         .company-label { color: var(--muted); font-size: 14px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
         .company-description { font-size: 17px; margin-bottom: 12px; }
-        .page-purpose { max-width: 840px; }
         .report-list { margin-left: 0; list-style: none; }
       .report-link { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; }
       .report-date { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
@@ -1048,7 +1062,6 @@ index_html = <<~HTML
         <p class="company-label">For #{escape(company)}</p>
         <h1>#{escape(company)} Day Zero CTO Knowledge Wiki</h1>
         <p class="company-description">#{escape(description)}</p>
-        <p class="page-purpose">This is the bookmarkable operating index for Day Zero CTO work: expand sections to open core context, read dated reports, see cadence alerts, find handoffs, and copy commands back into your agent to generate the next artifact. New reports land back in this wiki and the index updates each time.</p>
 
         <details class="wiki-details">
           <summary>
@@ -1071,6 +1084,18 @@ index_html = <<~HTML
           </div>
         </details>
 
+        <details class="wiki-details">
+          <summary>
+            <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Learning</span>
+            <span class="wiki-meta">#{escape(learning_status)}</span>
+          </summary>
+          <div class="wiki-body">
+            <ul>
+              <li><a href="learning/index.html">Spaced repetition learning</a><span class="inline-meta">#{escape(learning_status)}</span></li>
+            </ul>
+          </div>
+        </details>
+
         <details class="wiki-details help-section">
           <summary>
             <span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Help</span>
@@ -1090,12 +1115,6 @@ index_html = <<~HTML
             <span class="wiki-meta">#{escape(misc_status)}</span>
           </summary>
           <div class="wiki-body">
-            <section class="misc-section">
-              <h2>Learning</h2>
-              <ul>
-                <li><a href="learning/index.html">Spaced repetition learning</a><span class="inline-meta">#{escape(learning_summary(learning_items, Date.today))}</span></li>
-              </ul>
-            </section>
             <section class="misc-section">
               <h2>Handoffs</h2>
               <ul>

@@ -1,6 +1,6 @@
 ---
 name: learning
-description: "Teach the user one focused piece of startup system knowledge and log their self-rating into the Day Zero CTO spaced-repetition learning area. Use when the user asks for learning, wants to learn the system, asks to be taught one thing, asks for a spaced repetition review, or responds to a prior Day Zero CTO learning prompt with a rating such as Needs Work, Familiar, Confident, not, neutral, know, 0, 1, or 2."
+description: "Teach the user one focused piece of startup system knowledge and log their self-rating into the Day Zero CTO spaced-repetition learning area. Use when the user asks for learning, wants to learn the system, asks to be taught one thing, asks for a spaced repetition review, asks to seed initial learning items, or responds to a prior Day Zero CTO learning prompt with a rating such as Needs Work, Familiar, Confident, not, neutral, know, 0, 1, or 2."
 ---
 
 # Learning
@@ -50,10 +50,19 @@ Accept aliases such as `not`, `neutral`, `know`, `0`, `1`, and `2`, but display 
    ```
 
    Use context from `core/STRATEGY.md`, `core/DECISIONS.md`, `core/RISKS.md`, recent reports, and read-only repo docs if a repo pointer is known. Do not invent facts.
-6. Present exactly one learning item per prompt.
-7. Keep the explanation short enough to learn in 1-2 minutes.
-8. Do not record a score until the user replies with a rating.
-9. After a `Confident` rating, invite continuation with `Do you want to continue?` If the user says yes, run selection again and present one more item. If the user says no or gives no clear yes, stop.
+6. If the user asks to seed initial learning, create a JSON array of evidence-backed items, usually 25 for onboarding when enough evidence exists, then run:
+
+   ```bash
+   dzcto-learning --project "<project folder>" --seed-file "<json learning seed file>"
+
+   # Fallback when dzcto-learning is not on PATH:
+   ruby scripts/dzcto-learning.rb --project "<project folder>" --seed-file "<json learning seed file>"
+   ```
+
+7. Present exactly one learning item per prompt.
+8. Keep the explanation short enough to learn in 1-2 minutes.
+9. Do not record a score until the user replies with a rating.
+10. After a `Confident` rating, invite continuation with `Do you want to continue?` If the user says yes, run selection again and present one more item. If the user says no or gives no clear yes, stop.
 
 ## Presentation Format
 

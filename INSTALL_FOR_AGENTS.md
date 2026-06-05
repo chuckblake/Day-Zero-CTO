@@ -4,10 +4,10 @@ Use this when another Codex Desktop or Claude Code session needs to install Day 
 
 ## What To Ask For
 
-Ask the user for two paths before running Day Zero CTO work:
+Ask the user for paths before running Day Zero CTO work:
 
-- Project folder: where durable Day Zero CTO artifacts should live, usually `~/Documents/<Company>/`.
-- Code repo: optional read-only evidence source, never the default destination for Day Zero CTO docs.
+- Day Zero CTO project folder: where durable artifacts should live, usually `~/Documents/<Company>/`.
+- Codebase location: optional read-only evidence source, never the default destination for Day Zero CTO docs. Multiple codebases are allowed when the product spans repos.
 
 Day Zero CTO writes to `<project>/knowledge/wiki/`.
 
@@ -74,17 +74,17 @@ Claude Code plugin install does not require Ruby, but the installed `dzcto-artif
 Codex Desktop: ask for available Day Zero CTO skills or run a natural language prompt such as:
 
 ```text
-Bootstrap Day Zero CTO context for this startup. Use project folder `~/Documents/Acme`.
+Onboard Day Zero CTO for this startup. Use project folder `~/Documents/Acme`.
 ```
 
 Claude Code: run `/help` or:
 
 ```text
-/day-zero-cto:bootstrap-cto-context Bootstrap Day Zero CTO context for this startup. Use project folder `~/Documents/Acme`.
+/day-zero-cto:bootstrap-cto-context Onboard Day Zero CTO for this startup. Use project folder `~/Documents/Acme`.
 ```
 
 ## First Useful Prompt
 
 ```text
-Bootstrap Day Zero CTO context for this startup. Use project folder `<project folder>` and read-only code repo `<code repo>`.
+Onboard Day Zero CTO for this startup. Use project folder `<project folder>` and read-only codebase `<codebase path>`. Ask whether to complete onboarding now, including Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, CTO Code Review if a branch or diff exists, and seeding the first 25 learning items.
 ```

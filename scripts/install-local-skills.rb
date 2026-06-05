@@ -11,8 +11,20 @@ abort "Missing skills directory: #{SKILLS_DIR}" unless File.directory?(SKILLS_DI
 
 FileUtils.mkdir_p(DEST_DIR)
 
+Dir.glob(File.join(DEST_DIR, "*")).sort.each do |destination|
+  next unless File.symlink?(destination)
+
+  current_target = File.expand_path(File.readlink(destination), File.dirname(destination))
+  next unless current_target.start_with?("#{SKILLS_DIR}/")
+  next if File.exist?(File.join(current_target, "SKILL.md"))
+
+  FileUtils.rm_f(destination)
+  puts "Removed stale #{File.basename(destination)}"
+end
+
 Dir.glob(File.join(SKILLS_DIR, "*")).sort.each do |source|
   next unless File.directory?(source)
+  next unless File.exist?(File.join(source, "SKILL.md"))
 
   name = File.basename(source)
   destination = File.join(DEST_DIR, name)

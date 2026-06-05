@@ -1,4 +1,4 @@
 interface:
-  display_name: "Bootstrap CTO Context"
-  short_description: "Create the CTO context files."
-  default_prompt: "Bootstrap Day Zero CTO context for this startup."
+  display_name: "Onboard Day Zero CTO"
+  short_description: "Set up the CTO wiki."
+  default_prompt: "Onboard Day Zero CTO for this startup."
