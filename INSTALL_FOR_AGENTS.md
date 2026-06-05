@@ -11,6 +11,8 @@ Ask the user for two paths before running Day Zero CTO work:
 
 Day Zero CTO writes to `<project>/knowledge/wiki/`.
 
+Runtime note: Day Zero CTO helpers currently require Ruby. Do not assume Ruby exists on every user machine. If `ruby` is unavailable, tell the user that artifact generation needs Ruby 3.x for now and stop before promising a generated artifact.
+
 ## Codex Desktop
 
 Clone the repo and install it as a local Codex plugin marketplace entry:
@@ -64,6 +66,8 @@ After pulling published updates:
 ```bash
 claude plugin update day-zero-cto@day-zero-cto
 ```
+
+Claude Code plugin install does not require Ruby, but the installed `dzcto-artifact` and `dzcto-learning` helper commands currently do.
 
 ## Verify
 

@@ -10,7 +10,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop and Claude Code
 - `skills/<skill>/SKILL.md` holds shared skill instructions. Keep these agent-neutral.
 - `skills/<skill>/agents/openai.yaml` is Codex UI metadata; Claude Code can ignore it.
 - `scripts/` holds deterministic helpers used by the skills.
-- `bin/` exposes helper wrappers for Claude Code plugin installs and local convenience.
+- `bin/` exposes helper wrappers for Claude Code plugin installs and local convenience. The wrappers currently require Ruby and should print a clear error if Ruby is absent.
 - `INSTALL_FOR_AGENTS.md` is the pasteable install handoff for Codex Desktop, Claude Code, and future agent sessions.
 
 ## Editing Rules
@@ -27,4 +27,5 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop and Claude Code
 
 - Validate JSON manifests after edits.
 - Run `ruby -c` on Ruby scripts after changing them.
+- Smoke-test at least one structured JSON report with `--data-file` after changing report rendering.
 - Smoke-test artifact generation with a temporary project folder.

@@ -128,9 +128,34 @@ Each skill is a normal skill folder with a `SKILL.md` file. `agents/openai.yaml`
 
 `scripts/dzcto-artifact.rb` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Help, and Misc sections.
 
+Report bodies are template-rendered from structured JSON via `--data-file`. The agent supplies judgment and report facts; the helper owns the HTML structure, styling, ordering, escaping, and repeated section layout. Raw `--body-file` HTML remains as a legacy fallback.
+
 `scripts/dzcto-learning.rb` manages spaced-repetition learning items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, and refreshes the wiki index after learning state changes.
 
 `bin/dzcto-artifact` and `bin/dzcto-learning` are convenience wrappers. Claude Code adds plugin `bin/` executables to the Bash tool `PATH`; Codex users can run the Ruby scripts directly or run the wrappers from the repo.
+
+Current runtime requirement: Ruby. The scripts use only the Ruby standard library, but Ruby is not safe to assume across all user machines. The wrappers check for Ruby and fail with a clear message when it is missing. A future public packaging pass should port the helpers to a more common agent runtime or ship a packaged binary.
+
+## Report Payloads
+
+Agents should write structured JSON and let `dzcto-artifact` render HTML:
+
+```bash
+dzcto-artifact --project "<project folder>" --kind weekly-reviews --title "Weekly CTO Review" --data-file "<json report data file>"
+```
+
+The supported report kinds have fixed section templates:
+
+| Kind | Expected JSON fields |
+| --- | --- |
+| `weekly-reviews` | `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
+| `ceo-updates` | `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources` |
+| `engineering-risk` | `executive_read`, `top_risks`, `mitigations`, `watchpoints`, `sources` |
+| `one-on-ones` | `objective`, `context`, `agenda`, `prompts`, `follow_up`, `sources` |
+| `decisions` | `decision`, `context`, `options`, `tradeoffs`, `recommendation`, `watchpoints`, `follow_ups`, `sources` |
+| `code-reviews` | `merge_recommendation`, `blocking`, `fyi`, `questions`, `tests_verification`, `startup_risk_note`, `sources` |
+
+Optional `metrics` are rendered as summary cards when present.
 
 ## Install
 
@@ -143,6 +168,8 @@ git clone https://github.com/chuckblake/Day-Zero-CTO.git
 cd Day-Zero-CTO
 ruby scripts/install-local-marketplace.rb
 ```
+
+This installer currently requires Ruby.
 
 The installer points `~/plugins/day-zero-cto` at your clone and creates or updates `~/.agents/plugins/marketplace.json` with this plugin entry:
 
@@ -169,6 +196,8 @@ For active skill development, symlink the individual skills directly into Codex'
 ruby scripts/install-local-skills.rb
 ```
 
+This development installer currently requires Ruby.
+
 This links each folder under `skills/` into `~/.codex/skills/`. Edit the skill files in this repo, then restart Codex Desktop or start a fresh session to reload skill metadata.
 
 To refresh an existing local Codex install after pulling changes:
@@ -186,6 +215,8 @@ Claude Code can install Day Zero CTO as a plugin marketplace:
 claude plugin marketplace add chuckblake/Day-Zero-CTO
 claude plugin install day-zero-cto@day-zero-cto
 ```
+
+The plugin can be installed without Ruby, but running Day Zero CTO artifact and learning helpers currently requires Ruby on the machine where Claude Code executes shell commands.
 
 Inside interactive Claude Code, use the slash-command equivalents:
 

@@ -29,16 +29,18 @@ Translate engineering reality into concise business signal for the CEO or foundi
 
 ## Durable Artifact
 
-Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+Write structured JSON report data, then use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+
+Required JSON fields: `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, and `sources`. Optional: `metrics`.
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --body-file "<html body file>"
+dzcto-artifact --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --body-file "<html body file>"
+ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --data-file "<json report data file>"
 ```
 
-The report body should be HTML. Keep the chat response brief; the HTML file is the durable record.
+The helper owns the HTML template; the agent owns the judgment and structured content. Keep the chat response brief; the HTML file is the durable record.
 
 ## Standards
 

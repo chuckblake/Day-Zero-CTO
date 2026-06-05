@@ -30,16 +30,18 @@ Prepare useful CTO conversations that respect the person and still serve the com
 
 ## Durable Artifact
 
-Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+Write structured JSON report data, then use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+
+Required JSON fields: `objective`, `context`, `agenda`, `prompts`, `follow_up`, and `sources`. Optional: `feedback`.
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind one-on-ones --title "<person or topic> One-on-One" --body-file "<html body file>"
+dzcto-artifact --project "<project folder>" --kind one-on-ones --title "<person or topic> One-on-One" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind one-on-ones --title "<person or topic> One-on-One" --body-file "<html body file>"
+ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind one-on-ones --title "<person or topic> One-on-One" --data-file "<json report data file>"
 ```
 
-The artifact body should be HTML. Keep the chat response brief and avoid exposing sensitive people context unnecessarily.
+The helper owns the HTML template; the agent owns the judgment and structured content. Keep the chat response brief and avoid exposing sensitive people context unnecessarily.
 
 ## Standards
 

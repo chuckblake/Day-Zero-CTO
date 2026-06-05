@@ -1,5 +1,12 @@
-#!/usr/bin/env ruby
-# frozen_string_literal: true
+#!/usr/bin/env sh
+set -eu
 
-script = File.expand_path("../scripts/dzcto-artifact.rb", __dir__)
-exec("ruby", script, *ARGV)
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT="$SCRIPT_DIR/../scripts/dzcto-artifact.rb"
+
+if command -v ruby >/dev/null 2>&1; then
+  exec ruby "$SCRIPT" "$@"
+fi
+
+echo "Day Zero CTO currently requires Ruby to run dzcto-artifact. Install Ruby 3.x or run this inside an agent environment that provides Ruby." >&2
+exit 127

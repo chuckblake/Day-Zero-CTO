@@ -44,16 +44,18 @@ Lead with the highest risks:
 
 ## Durable Artifact
 
-Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+Write structured JSON report data, then use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
+
+Required JSON fields: `executive_read`, `top_risks`, `mitigations`, `watchpoints`, and `sources`. Optional: `metrics`.
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind engineering-risk --title "Engineering Risk Review" --body-file "<html body file>"
+dzcto-artifact --project "<project folder>" --kind engineering-risk --title "Engineering Risk Review" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind engineering-risk --title "Engineering Risk Review" --body-file "<html body file>"
+ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind engineering-risk --title "Engineering Risk Review" --data-file "<json report data file>"
 ```
 
-The report body should be HTML. Keep the chat response brief; the HTML file is the durable record.
+The helper owns the HTML template; the agent owns the judgment and structured content. Keep the chat response brief; the HTML file is the durable record.
 
 ## Standards
 

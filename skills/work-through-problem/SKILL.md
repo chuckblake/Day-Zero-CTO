@@ -33,15 +33,17 @@ For lightweight asks, answer directly. For serious decisions, use:
 
 ## Durable Artifacts
 
-When the user wants the decision captured, write the canonical output as HTML under `<project>/knowledge/wiki/reports/decisions/` and regenerate `<project>/knowledge/wiki/index.html`.
+When the user wants the decision captured, write structured JSON data and render the canonical HTML artifact under `<project>/knowledge/wiki/reports/decisions/`, then regenerate `<project>/knowledge/wiki/index.html`.
+
+Use a structured JSON payload when the user wants the decision captured. Required JSON fields: `decision`, `context`, `options`, `tradeoffs`, `recommendation`, `watchpoints`, `follow_ups`, and `sources`.
 
 Use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Ruby script from the plugin repo:
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind decisions --title "<decision title>" --body-file "<html body file>"
+dzcto-artifact --project "<project folder>" --kind decisions --title "<decision title>" --data-file "<json report data file>"
 
 # Fallback when dzcto-artifact is not on PATH:
-ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind decisions --title "<decision title>" --body-file "<html body file>"
+ruby scripts/dzcto-artifact.rb --project "<project folder>" --kind decisions --title "<decision title>" --data-file "<json report data file>"
 ```
 
 The chat response should summarize the recommendation and link to the generated artifact.

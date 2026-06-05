@@ -45,7 +45,8 @@ OptionParser.new do |parser|
   parser.on("--kind KIND", "Report kind: #{REPORT_FOLDERS.keys.join(", ")}") { |value| options[:kind] = value }
   parser.on("--title TITLE", "Report title") { |value| options[:title] = value }
   parser.on("--date DATE", "Report date, YYYY-MM-DD") { |value| options[:date] = value }
-  parser.on("--body-file PATH", "HTML body file; defaults to stdin") { |value| options[:body_file] = value }
+  parser.on("--body-file PATH", "Legacy: raw HTML body file; defaults to stdin when no --data-file is provided") { |value| options[:body_file] = value }
+  parser.on("--data-file PATH", "Structured JSON report data file rendered by a built-in template") { |value| options[:data_file] = value }
   parser.on("--init", "Only ensure folder structure and index") { options[:init] = true }
 end.parse!
 
@@ -220,6 +221,339 @@ def default_help_commands(company)
   ]
 end
 
+def present?(value)
+  case value
+  when nil
+    false
+  when String
+    !value.strip.empty?
+  when Array, Hash
+    !value.empty?
+  else
+    true
+  end
+end
+
+def array_value(value)
+  case value
+  when nil
+    []
+  when Array
+    value.compact.select { |item| present?(item) }
+  else
+    present?(value) ? [value] : []
+  end
+end
+
+def value_at(hash, *keys)
+  keys.each do |key|
+    value = hash[key.to_s] || hash[key.to_sym]
+    return value if present?(value)
+  end
+
+  nil
+end
+
+def text_value(value)
+  case value
+  when nil
+    ""
+  when Array
+    value.map { |item| text_value(item) }.reject(&:empty?).join("; ")
+  when Hash
+    value.map { |key, item| "#{key}: #{text_value(item)}" }.reject { |part| part.end_with?(": ") }.join("; ")
+  else
+    value.to_s.strip
+  end
+end
+
+def html_paragraph(value)
+  text = text_value(value)
+  return "" if text.empty?
+
+  "<p>#{escape(text)}</p>"
+end
+
+def render_text_section(title, value)
+  return "" unless present?(value)
+
+  <<~HTML
+    <section class="artifact-section">
+      <h2>#{escape(title)}</h2>
+      #{html_paragraph(value)}
+    </section>
+  HTML
+end
+
+def render_metrics(metrics)
+  rows = array_value(metrics)
+  return "" if rows.empty?
+
+  cards = rows.map do |metric|
+    if metric.is_a?(Hash)
+      label = text_value(value_at(metric, "label", "name", "title"))
+      value = text_value(value_at(metric, "value", "count", "status"))
+      detail = text_value(value_at(metric, "detail", "note", "description"))
+    else
+      label = "Metric"
+      value = text_value(metric)
+      detail = ""
+    end
+
+    <<~HTML
+      <div class="metric">
+        <span class="label">#{escape(label)}</span>
+        <span class="value">#{escape(value)}</span>
+        #{detail.empty? ? "" : "<span class=\"detail\">#{escape(detail)}</span>"}
+      </div>
+    HTML
+  end.join
+
+  <<~HTML
+    <div class="grid">
+      #{cards}
+    </div>
+  HTML
+end
+
+def render_list_section(title, items)
+  rows = array_value(items)
+  return "" if rows.empty?
+
+  list_items = rows.map do |item|
+    if item.is_a?(Hash)
+      title_text = text_value(value_at(item, "title", "name", "priority", "ask", "decision", "risk", "finding", "question", "prompt"))
+      body = text_value(value_at(item, "body", "detail", "details", "summary", "why", "impact", "rationale", "note", "notes"))
+      evidence = array_value(value_at(item, "evidence", "sources", "source"))
+      owner = text_value(value_at(item, "owner", "owner_horizon", "needed_by", "done_when"))
+
+      <<~HTML
+        <li>
+          #{title_text.empty? ? "" : "<strong>#{escape(title_text)}</strong>"}
+          #{body.empty? ? "" : "<span>#{escape(body)}</span>"}
+          #{owner.empty? ? "" : "<em>#{escape(owner)}</em>"}
+          #{evidence.empty? ? "" : "<small>Evidence: #{escape(evidence.map { |entry| text_value(entry) }.reject(&:empty?).join("; "))}</small>"}
+        </li>
+      HTML
+    else
+      "<li>#{escape(text_value(item))}</li>"
+    end
+  end.join
+
+  <<~HTML
+    <section class="artifact-section">
+      <h2>#{escape(title)}</h2>
+      <ul class="artifact-list">
+        #{list_items}
+      </ul>
+    </section>
+  HTML
+end
+
+def severity_class(value)
+  case text_value(value).downcase
+  when /high|critical|block/
+    "high"
+  when /medium|moderate|watch/
+    "medium"
+  else
+    "ready"
+  end
+end
+
+def render_table_section(title, rows, columns)
+  values = array_value(rows).select { |row| row.is_a?(Hash) }
+  return "" if values.empty?
+
+  headers = columns.map { |label, _key| "<th>#{escape(label)}</th>" }.join
+  table_rows = values.map do |row|
+    cells = columns.map do |_label, key|
+      value = value_at(row, key)
+      cell =
+        if key.to_s.match?(/severity|likelihood|status/i) && present?(value)
+          "<span class=\"tag #{severity_class(value)}\">#{escape(text_value(value))}</span>"
+        else
+          escape(text_value(value))
+        end
+
+      "<td>#{cell}</td>"
+    end.join
+
+    "<tr>#{cells}</tr>"
+  end.join
+
+  <<~HTML
+    <section class="artifact-section">
+      <h2>#{escape(title)}</h2>
+      <table>
+        <thead><tr>#{headers}</tr></thead>
+        <tbody>#{table_rows}</tbody>
+      </table>
+    </section>
+  HTML
+end
+
+def render_sources(data)
+  sources = array_value(value_at(data, "sources", "source_list", "evidence_sources"))
+  render_list_section("Sources", sources)
+end
+
+def render_weekly_review(data)
+  [
+    html_paragraph(value_at(data, "executive_read", "summary")),
+    render_metrics(value_at(data, "metrics")),
+    render_list_section("Shipped / Learned", value_at(data, "shipped_learned", "shipped", "learned")),
+    render_table_section("Risks", value_at(data, "risks"), [
+      ["Risk", "risk"],
+      ["Evidence", "evidence"],
+      ["Business Impact", "impact"],
+      ["Severity", "severity"],
+      ["Mitigation", "mitigation"]
+    ]),
+    render_table_section("Decisions Needed", value_at(data, "decisions_needed", "decisions"), [
+      ["Decision", "decision"],
+      ["Context", "context"],
+      ["Owner", "owner"],
+      ["Needed By", "needed_by"]
+    ]),
+    render_list_section("Team and Process", value_at(data, "team_process", "team_and_process")),
+    render_table_section("Next-Week Focus", value_at(data, "next_week_focus", "next_focus", "priorities"), [
+      ["Priority", "priority"],
+      ["Owner", "owner"],
+      ["Why", "why"],
+      ["Done When", "done_when"]
+    ]),
+    render_list_section("CEO-Update Seeds", value_at(data, "ceo_update_seeds", "ceo_seeds")),
+    render_sources(data)
+  ].join
+end
+
+def render_ceo_update(data)
+  [
+    html_paragraph(value_at(data, "headline", "summary")),
+    render_metrics(value_at(data, "metrics")),
+    render_list_section("Progress", value_at(data, "progress")),
+    render_list_section("Risks / Blockers", value_at(data, "risks_blockers", "risks", "blockers")),
+    render_list_section("Asks / Decisions", value_at(data, "asks_decisions", "asks", "decisions")),
+    render_list_section("Next", value_at(data, "next", "up_next")),
+    render_sources(data)
+  ].join
+end
+
+def render_engineering_risk(data)
+  [
+    html_paragraph(value_at(data, "executive_read", "summary")),
+    render_metrics(value_at(data, "metrics")),
+    render_table_section("Top Risks", value_at(data, "top_risks", "risks"), [
+      ["Risk", "risk"],
+      ["Evidence", "evidence"],
+      ["Business Impact", "impact"],
+      ["Likelihood", "likelihood"],
+      ["Severity", "severity"],
+      ["Mitigation", "mitigation"],
+      ["Owner / Horizon", "owner_horizon"]
+    ]),
+    render_list_section("Mitigations", value_at(data, "mitigations")),
+    render_list_section("Watchpoints", value_at(data, "watchpoints")),
+    render_sources(data)
+  ].join
+end
+
+def render_one_on_one(data)
+  [
+    render_text_section("Objective", value_at(data, "objective")),
+    render_text_section("Context", value_at(data, "context")),
+    render_list_section("Agenda", value_at(data, "agenda")),
+    render_list_section("Prompts", value_at(data, "prompts")),
+    render_list_section("Feedback", value_at(data, "feedback")),
+    render_list_section("Follow-Up", value_at(data, "follow_up", "followup")),
+    render_sources(data)
+  ].join
+end
+
+def render_decision(data)
+  [
+    render_text_section("Decision", value_at(data, "decision")),
+    render_text_section("Context", value_at(data, "context")),
+    render_table_section("Options", value_at(data, "options"), [
+      ["Option", "option"],
+      ["Upside", "upside"],
+      ["Downside", "downside"],
+      ["Reversibility", "reversibility"]
+    ]),
+    render_table_section("Tradeoffs", value_at(data, "tradeoffs"), [
+      ["Axis", "axis"],
+      ["Implication", "implication"],
+      ["Note", "note"]
+    ]),
+    render_text_section("Recommendation", value_at(data, "recommendation")),
+    render_list_section("Watchpoints", value_at(data, "watchpoints")),
+    render_list_section("Follow-Ups", value_at(data, "follow_ups", "followups")),
+    render_sources(data)
+  ].join
+end
+
+def render_code_review(data)
+  [
+    render_text_section("Merge Recommendation", value_at(data, "merge_recommendation", "recommendation")),
+    render_table_section("Blocking", value_at(data, "blocking"), [
+      ["Finding", "finding"],
+      ["Evidence", "evidence"],
+      ["Impact", "impact"],
+      ["Recommendation", "recommendation"]
+    ]),
+    render_table_section("FYI", value_at(data, "fyi"), [
+      ["Finding", "finding"],
+      ["Evidence", "evidence"],
+      ["Impact", "impact"],
+      ["Recommendation", "recommendation"]
+    ]),
+    render_table_section("Questions", value_at(data, "questions"), [
+      ["Question", "question"],
+      ["Why It Matters", "why"],
+      ["Owner", "owner"]
+    ]),
+    render_text_section("Tests / Verification", value_at(data, "tests_verification", "verification")),
+    render_text_section("Startup Risk Note", value_at(data, "startup_risk_note", "risk_note")),
+    render_sources(data)
+  ].join
+end
+
+def render_generic_report(data)
+  summary = html_paragraph(value_at(data, "summary", "executive_read", "headline"))
+  sections = array_value(value_at(data, "sections")).map do |section|
+    next render_list_section("Section", [section]) unless section.is_a?(Hash)
+
+    title = text_value(value_at(section, "title", "name"))
+    content = value_at(section, "items", "body", "content", "details")
+    content.is_a?(Array) ? render_list_section(title, content) : render_text_section(title, content)
+  end.compact.join
+
+  [summary, sections, render_sources(data)].join
+end
+
+def render_structured_report(kind, data)
+  body =
+    case kind
+    when "weekly-reviews"
+      render_weekly_review(data)
+    when "ceo-updates"
+      render_ceo_update(data)
+    when "engineering-risk"
+      render_engineering_risk(data)
+    when "one-on-ones"
+      render_one_on_one(data)
+    when "decisions"
+      render_decision(data)
+    when "code-reviews"
+      render_code_review(data)
+    else
+      render_generic_report(data)
+    end
+
+  body.strip.empty? ? render_generic_report(data) : body
+end
+
 FileUtils.mkdir_p(core_dir)
 REPORT_FOLDERS.each_key do |folder|
   FileUtils.mkdir_p(File.join(reports_dir, folder))
@@ -235,7 +569,13 @@ unless options[:init]
   abort "Unknown --kind '#{options[:kind]}'" unless REPORT_FOLDERS.key?(options[:kind])
 
   body =
-    if options[:body_file]
+    if options[:data_file]
+      data_path = File.expand_path(options[:data_file])
+      data = JSON.parse(File.read(data_path))
+      abort "--data-file must contain a JSON object" unless data.is_a?(Hash)
+
+      render_structured_report(options[:kind], data)
+    elsif options[:body_file]
       File.read(File.expand_path(options[:body_file]))
     else
       STDIN.read
@@ -270,10 +610,18 @@ unless options[:init]
           th { background: var(--soft); }
           code { background: var(--soft); border: 1px solid var(--line); padding: 0.1rem 0.25rem; border-radius: 4px; }
           .callout { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 18px 0; }
+          .artifact-section { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 24px; }
+          .artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+          .artifact-list { display: grid; gap: 10px; margin: 16px 0 24px; padding: 0; list-style: none; }
+          .artifact-list li { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+          .artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small { display: block; }
+          .artifact-list span, .artifact-list em, .artifact-list small { margin-top: 4px; color: var(--muted); }
+          .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
           .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 6px; }
           .metric { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fff; }
           .metric .label { color: var(--muted); font-size: 13px; }
           .metric .value { display: block; margin-top: 5px; font-size: 22px; font-weight: 700; }
+          .metric .detail { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
           .tag { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; white-space: nowrap; }
           .high { color: #9f1d25; background: #ffe8eb; }
           .medium { color: #8a4b00; background: #fff4df; }
