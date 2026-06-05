@@ -19,6 +19,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop and Claude Code
 - Treat user code repos as read-only evidence unless the user explicitly asks for code changes.
 - Keep skill bodies concise and procedural. Do not add per-skill README files.
 - Prefer shared helper behavior in `scripts/` and expose stable wrappers in `bin/` when useful.
+- Installer and doctor scripts should print small numbered progress steps such as `[1/6]`, because users often watch these through an agent transcript.
 - When adding or changing install behavior, update `README.md` and `INSTALL_FOR_AGENTS.md`.
 - When releasing plugin-facing changes, bump both `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`; if the Claude marketplace entry has a version, bump it too.
 - Do not add a root `CLAUDE.md` file to this plugin repo; Claude Code's plugin validator warns that it is not loaded as plugin context. Put Claude install instructions in `README.md` and `INSTALL_FOR_AGENTS.md`.

@@ -72,6 +72,7 @@ def run_checks(project: Path | None) -> list[dict[str, Any]]:
         "scripts/dzcto_artifact.py",
         "scripts/dzcto_learning.py",
         "scripts/dzcto_doctor.py",
+        "scripts/dzcto_progress.py",
         "scripts/install_local_marketplace.py",
         "scripts/install_local_skills.py",
         "scripts/uninstall_local.py",
@@ -116,12 +117,13 @@ def main(argv: list[str]) -> int:
     failed = [result for result in results if result["status"] == "fail"]
 
     if args.json:
-        print(json.dumps({"ok": not failed, "checks": results}, indent=2))
+        checks = [dict(result, index=index, total=len(results)) for index, result in enumerate(results, start=1)]
+        print(json.dumps({"ok": not failed, "checks": checks}, indent=2))
     else:
         icons = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
-        for result in results:
+        for index, result in enumerate(results, start=1):
             detail = f" - {result['detail']}" if result.get("detail") else ""
-            print(f"{icons[result['status']]} {result['label']}{detail}")
+            print(f"[{index}/{len(results)}] {icons[result['status']]} {result['label']}{detail}")
         print()
         print("Day Zero CTO install is ready." if not failed else "Day Zero CTO install needs attention.")
 

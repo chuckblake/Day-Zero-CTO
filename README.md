@@ -168,7 +168,7 @@ Optional `metrics` are rendered as summary cards when present.
 
 ### Codex Desktop
 
-Clone the repo, run the local marketplace installer, then restart Codex Desktop:
+Use this path when you want Day Zero CTO available as a Codex Desktop plugin. The installer prints numbered progress like `[1/6]` so agent transcripts are easy to follow.
 
 ```bash
 git clone https://github.com/chuckblake/Day-Zero-CTO.git
@@ -178,6 +178,14 @@ bin/dzcto-doctor
 ```
 
 The installer requires Python 3.10+ and uses only the Python standard library.
+
+Steps:
+
+1. Clone the repo.
+2. `cd` into the repo.
+3. Run `python3 scripts/install_local_marketplace.py`.
+4. Run `bin/dzcto-doctor`.
+5. Restart Codex Desktop or start a fresh session.
 
 The installer points `~/plugins/day-zero-cto` at your clone and creates or updates `~/.agents/plugins/marketplace.json` with this plugin entry:
 
@@ -198,13 +206,13 @@ The installer points `~/plugins/day-zero-cto` at your clone and creates or updat
 
 Because `~/plugins/day-zero-cto` is a symlink to your clone, future `git pull` updates flow into the local Codex plugin.
 
-For active skill development, symlink the individual skills directly into Codex's local skills directory:
+For active Codex skill development only, symlink the individual skills directly into Codex's local skills directory:
 
 ```bash
 python3 scripts/install_local_skills.py
 ```
 
-This development installer requires Python 3.10+.
+This development installer requires Python 3.10+ and prints one numbered step per skill. Do not use `install_local_skills.py` for Claude Code; Claude should use the plugin marketplace commands or `claude --plugin-dir`.
 
 This links each folder under `skills/` into `~/.codex/skills/`. Edit the skill files in this repo, then restart Codex Desktop or start a fresh session to reload skill metadata.
 
@@ -244,6 +252,14 @@ claude plugin install day-zero-cto@day-zero-cto
 
 The plugin can be installed without Ruby. Running Day Zero CTO artifact and learning helpers requires Python 3.10+ on the machine where Claude Code executes shell commands. The wrappers print a clear error if `python3` is missing.
 
+Steps:
+
+1. Run `claude plugin marketplace add chuckblake/Day-Zero-CTO`.
+2. Run `claude plugin install day-zero-cto@day-zero-cto`.
+3. Start a fresh Claude Code session.
+4. Run `/help` and confirm the Day Zero CTO skills appear.
+5. Run `dzcto-doctor` from a session where the plugin `bin/` is on `PATH`, or run `python3 scripts/dzcto_doctor.py` from a local clone.
+
 Inside interactive Claude Code, use the slash-command equivalents:
 
 ```text
@@ -257,6 +273,8 @@ For local development without installing:
 git clone https://github.com/chuckblake/Day-Zero-CTO.git
 claude --plugin-dir ./Day-Zero-CTO
 ```
+
+For local Claude development, do not run `scripts/install_local_skills.py`; that script is only for Codex Desktop's `~/.codex/skills` directory.
 
 After published updates:
 

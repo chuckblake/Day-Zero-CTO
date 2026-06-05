@@ -24,13 +24,23 @@ python3 scripts/install_local_marketplace.py
 bin/dzcto-doctor
 ```
 
-Restart Codex Desktop or start a fresh session.
+Report progress in small steps:
 
-For active skill development, symlink the shared skills into Codex's local skill directory:
+1. Clone the repo.
+2. `cd` into the repo.
+3. Run `python3 scripts/install_local_marketplace.py`.
+4. Run `bin/dzcto-doctor`.
+5. Restart Codex Desktop or start a fresh session.
+
+The installer and doctor print numbered progress such as `[1/6]` and `[1/15]`; relay failures with the step number.
+
+For active Codex skill development only, symlink the shared skills into Codex's local skill directory:
 
 ```bash
 python3 scripts/install_local_skills.py
 ```
+
+Do not run `install_local_skills.py` for Claude Code. It is Codex Desktop-only and writes to `~/.codex/skills`.
 
 After pulling updates:
 
@@ -59,6 +69,14 @@ claude plugin marketplace add chuckblake/Day-Zero-CTO
 claude plugin install day-zero-cto@day-zero-cto
 ```
 
+Report progress in small steps:
+
+1. Run `claude plugin marketplace add chuckblake/Day-Zero-CTO`.
+2. Run `claude plugin install day-zero-cto@day-zero-cto`.
+3. Start a fresh Claude Code session.
+4. Run `/help` and confirm Day Zero CTO skills appear.
+5. If a local clone exists, run `python3 scripts/dzcto_doctor.py`; otherwise run `dzcto-doctor` from a session where the plugin `bin/` directory is on `PATH`.
+
 Inside interactive Claude Code, the equivalent commands are:
 
 ```text
@@ -72,6 +90,8 @@ For local development without installing:
 git clone https://github.com/chuckblake/Day-Zero-CTO.git
 claude --plugin-dir ./Day-Zero-CTO
 ```
+
+Do not run `scripts/install_local_skills.py` for local Claude development; use `claude --plugin-dir` instead.
 
 After pulling published updates:
 

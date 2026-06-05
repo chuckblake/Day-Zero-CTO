@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 
+from dzcto_progress import Progress
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAME = "day-zero-cto"
@@ -20,31 +22,31 @@ def resolved_symlink(path: Path) -> Path:
     return (path.parent / os.readlink(path)).resolve()
 
 
-def remove_plugin_link() -> None:
+def remove_plugin_link(progress: Progress) -> None:
     if not PLUGIN_LINK.exists() and not PLUGIN_LINK.is_symlink():
-        print(f"No plugin link found at {PLUGIN_LINK}")
+        progress.note(f"No plugin link found at {PLUGIN_LINK}")
         return
     if not PLUGIN_LINK.is_symlink():
-        print(f"Skipped {PLUGIN_LINK}: exists but is not a symlink")
+        progress.note(f"Skipped {PLUGIN_LINK}: exists but is not a symlink")
         return
 
     target = resolved_symlink(PLUGIN_LINK)
     if target == REPO_ROOT:
         PLUGIN_LINK.unlink()
-        print(f"Removed plugin link {PLUGIN_LINK}")
+        progress.note(f"Removed plugin link {PLUGIN_LINK}")
     else:
-        print(f"Skipped {PLUGIN_LINK}: points to {target}, not {REPO_ROOT}")
+        progress.note(f"Skipped {PLUGIN_LINK}: points to {target}, not {REPO_ROOT}")
 
 
-def remove_marketplace_entry() -> None:
+def remove_marketplace_entry(progress: Progress) -> None:
     if not MARKETPLACE_PATH.exists():
-        print(f"No marketplace file found at {MARKETPLACE_PATH}")
+        progress.note(f"No marketplace file found at {MARKETPLACE_PATH}")
         return
 
     payload = json.loads(MARKETPLACE_PATH.read_text(encoding="utf-8"))
     plugins = payload.get("plugins")
     if not isinstance(plugins, list):
-        print(f"Skipped {MARKETPLACE_PATH}: no plugins array")
+        progress.note(f"Skipped {MARKETPLACE_PATH}: no plugins array")
         return
 
     kept = [plugin for plugin in plugins if not (isinstance(plugin, dict) and plugin.get("name") == PLUGIN_NAME)]
@@ -52,17 +54,16 @@ def remove_marketplace_entry() -> None:
     if removed:
         payload["plugins"] = kept
         MARKETPLACE_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        print(f"Removed {removed} marketplace entry from {MARKETPLACE_PATH}")
+        progress.note(f"Removed {removed} marketplace entry from {MARKETPLACE_PATH}")
     else:
-        print(f"No {PLUGIN_NAME} marketplace entry found")
+        progress.note(f"No {PLUGIN_NAME} marketplace entry found")
 
 
-def remove_editable_skill_links() -> None:
+def editable_skill_links() -> list[Path]:
     if not DEST_DIR.exists() or not SKILLS_DIR.exists():
-        print("No editable skill links to remove")
-        return
+        return []
 
-    removed = 0
+    links = []
     for source in sorted(SKILLS_DIR.iterdir()):
         if not source.is_dir() or not (source / "SKILL.md").exists():
             continue
@@ -71,19 +72,31 @@ def remove_editable_skill_links() -> None:
             continue
         if resolved_symlink(destination) != source:
             continue
-        destination.unlink()
-        removed += 1
-        print(f"Removed editable skill link {destination}")
+        links.append(destination)
+    return links
 
-    if not removed:
-        print("No editable skill links pointed at this clone")
+
+def remove_editable_skill_link(progress: Progress, destination: Path) -> None:
+    destination.unlink()
+    progress.note(f"Removed editable skill link {destination}")
 
 
 def main() -> int:
-    remove_plugin_link()
-    remove_marketplace_entry()
-    remove_editable_skill_links()
-    print("Local Day Zero CTO uninstall cleanup complete.")
+    skill_links = editable_skill_links()
+    progress = Progress(4 + len(skill_links) if skill_links else 5)
+    progress.step("Verify uninstall target", "local Day Zero CTO links for this clone")
+    progress.step("Remove Codex plugin symlink")
+    remove_plugin_link(progress)
+    progress.step("Remove Codex marketplace entry")
+    remove_marketplace_entry(progress)
+    if skill_links:
+        for destination in skill_links:
+            progress.step("Remove editable skill link", destination.name)
+            remove_editable_skill_link(progress, destination)
+    else:
+        progress.step("Remove editable skill links", "none found")
+        progress.note("No editable skill links pointed at this clone")
+    progress.step("Next step", "run python3 scripts/install_local_marketplace.py to reinstall")
     return 0
 
 
