@@ -769,7 +769,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         ("update", f'dzcto update --project "{project}"', "Pull or relink the local install and run doctor."),
         ("install-command", "dzcto install-command", "Create a stable shell command such as ~/.local/bin/dzcto."),
         ("init", f'dzcto init "{project}" --company-name "<name>" --company-description "<summary>"', "Create or refresh the project wiki and metadata."),
-        ("refresh", f'dzcto refresh "{project}"', "Regenerate dashboard, core pages, search index, learning index, and cadence alerts."),
+        ("refresh", f'dzcto refresh "{project}"', "Regenerate dashboard, core pages, structured report pages, search index, learning index, and cadence alerts."),
         ("serve", f'dzcto serve "{project}"', "Serve the wiki locally for search and refresh support."),
         ("status", f'dzcto status "{project}"', "Show setup checklist and operating health."),
         ("doctor", f'dzcto doctor --project "{project}"', "Check install, manifests, helper syntax, wrappers, and project files."),
@@ -956,6 +956,24 @@ def html_paragraph(value: Any) -> str:
     return f"<p>{esc(text)}</p>" if text else ""
 
 
+def title_label(value: Any) -> str:
+    label = str(value).replace("_", " ").replace("-", " ").title()
+    for original, replacement in {
+        "Ai": "AI",
+        "Api": "API",
+        "Csp": "CSP",
+        "Cto": "CTO",
+        "Hipaa": "HIPAA",
+        "Nsa": "NSA",
+        "Phi": "PHI",
+        "Pr": "PR",
+        "Prs": "PRs",
+        "Ui": "UI",
+    }.items():
+        label = re.sub(rf"\b{original}\b", replacement, label)
+    return label
+
+
 def render_text_section(title: str, value: Any) -> str:
     if not present(value):
         return ""
@@ -968,7 +986,10 @@ def render_text_section(title: str, value: Any) -> str:
 
 
 def render_metrics(metrics: Any) -> str:
-    rows = array_value(metrics)
+    if isinstance(metrics, dict) and not any(key in metrics for key in ["label", "name", "title", "value", "count", "status"]):
+        rows = [{"label": title_label(key), "value": value} for key, value in metrics.items() if present(value)]
+    else:
+        rows = array_value(metrics)
     if not rows:
         return ""
 
@@ -980,6 +1001,8 @@ def render_metrics(metrics: Any) -> str:
             detail = text_value(value_at(metric, "detail", "note", "description"))
         else:
             label, value, detail = "Metric", text_value(metric), ""
+        if not any([label, value, detail]):
+            continue
         cards.append(
             f"""
 <div class="metric">
@@ -989,6 +1012,8 @@ def render_metrics(metrics: Any) -> str:
 </div>
 """
         )
+    if not cards:
+        return ""
     return f'<div class="grid">\n{"".join(cards)}\n</div>'
 
 
@@ -1037,6 +1062,26 @@ def severity_class(value: Any) -> str:
     return "ready"
 
 
+TABLE_VALUE_ALIASES = {
+    "context": ("context", "detail", "details", "rationale", "why"),
+    "decision": ("decision", "title", "name", "ask"),
+    "done_when": ("done_when", "definition_of_done", "success", "outcome"),
+    "evidence": ("evidence", "detail", "details", "signal", "source"),
+    "impact": ("impact", "business_impact", "why"),
+    "mitigation": ("mitigation", "recommendation", "next_step", "action", "plan"),
+    "needed_by": ("needed_by", "urgency", "due", "due_by", "horizon"),
+    "owner": ("owner", "responsible"),
+    "owner_horizon": ("owner_horizon", "owner", "horizon"),
+    "priority": ("priority", "title", "name", "item"),
+    "risk": ("risk", "title", "name", "finding"),
+    "severity": ("severity", "priority", "status"),
+}
+
+
+def table_value(row: dict[str, Any], key: str) -> Any:
+    return value_at(row, *TABLE_VALUE_ALIASES.get(key, (key,)))
+
+
 def render_table_section(title: str, rows: Any, columns: list[tuple[str, str]]) -> str:
     values = [row for row in array_value(rows) if isinstance(row, dict)]
     if not values:
@@ -1047,7 +1092,7 @@ def render_table_section(title: str, rows: Any, columns: list[tuple[str, str]]) 
     for row in values:
         cells = []
         for _label, key in columns:
-            value = value_at(row, key)
+            value = table_value(row, key)
             if re.search(r"severity|likelihood|status", key, re.I) and present(value):
                 cell = f'<span class="tag {severity_class(value)}">{esc(text_value(value))}</span>'
             else:
@@ -1169,21 +1214,17 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
     if not groups:
         return ""
 
-    cards = []
+    rows = []
     for label, items in groups:
-        preview = "".join(f"<li>{esc(item)}</li>" for item in items[:3])
-        cards.append(
-            f"""
-<article class="action-card">
-  <div class="action-top"><span>{esc(label)}</span><strong>{esc(len(items))}</strong></div>
-  <ul>{preview}</ul>
-</article>
-"""
-        )
+        for item in items[:2]:
+            rows.append(f'<li><strong>{esc(label)}</strong><span>{esc(item)}</span></li>')
+    if not rows:
+        return ""
+
     return f"""
-<section class="artifact-section action-summary">
-  <h2>Action Summary</h2>
-  <div class="action-grid">{''.join(cards)}</div>
+<section class="report-attention" aria-label="Follow-up signals">
+  <div class="attention-kicker">Follow-up signals</div>
+  <ul>{''.join(rows[:6])}</ul>
 </section>
 """
 
@@ -1270,6 +1311,10 @@ def render_structured_report(kind: str, data: dict[str, Any]) -> str:
     }
     body = renderers.get(kind, render_generic_report)(data)
     action_summary = render_action_summary(kind, data)
+    if not action_summary:
+        return body.strip() or render_generic_report(data)
+    if match := re.match(r"(\s*<p\b[^>]*>.*?</p>)", body, re.S):
+        return f"{match.group(1)}{action_summary}{body[match.end():]}".strip()
     return f"{action_summary}{body}".strip() or render_generic_report(data)
 
 
@@ -2964,20 +3009,22 @@ h1.title { font-size: 38px; font-weight: 800; }
 .artifact-list strong { color: var(--ink); font-weight: 800; }
 .artifact-list span, .artifact-list em, .artifact-list small { display: block; margin-top: 3px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
-.action-summary { margin-top: 0; border-top: 0; padding-top: 0; }
-.action-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); margin-top: 14px; }
-.action-card {
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  padding: 14px;
+.report-body > p:first-child {
+  max-width: 980px;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.58;
 }
-.action-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.action-top span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.action-top strong { color: var(--ink); font-size: 22px; line-height: 1; }
-.action-card ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
-.action-card li { color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
+.report-attention {
+  max-width: 980px;
+  margin: 16px 0 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 13px;
+}
+.attention-kicker { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.report-attention ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
+.report-attention li { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.report-attention li strong { color: var(--ink); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .help-accordion { display: grid; gap: 10px; }
 .help-panel {
   overflow: hidden;
@@ -3004,8 +3051,8 @@ h1.title { font-size: 38px; font-weight: 800; }
 .help-guide { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 18px; }
 .help-guide-row {
   display: grid;
-  grid-template-columns: minmax(90px, .2fr) minmax(0, 1fr) minmax(180px, .45fr);
-  gap: 12px;
+  grid-template-columns: minmax(88px, .22fr) minmax(0, 1fr);
+  gap: 8px 14px;
   align-items: start;
   padding: 10px 0;
   border-top: 1px solid var(--line);
@@ -3013,7 +3060,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .help-guide-row:first-child { border-top: 0; padding-top: 0; }
 .help-guide-row h3 { color: var(--ink); font-size: 14px; font-weight: 800; }
 .help-guide-row p { color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
-.help-guide-row code { display: block; white-space: normal; overflow-wrap: anywhere; }
+.help-guide-row code { display: block; grid-column: 1 / -1; white-space: normal; overflow-wrap: anywhere; }
 .command-reference table code { white-space: normal; overflow-wrap: anywhere; }
 .prose { max-width: none; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
@@ -3072,7 +3119,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .reports, .reports-grid, .cmd-grid, .copy-grid, .learn, .learning-grid { grid-template-columns: 1fr; }
   .setup-summary { align-items: flex-start; flex-direction: column; }
   .setup-primary { width: 100%; text-align: center; }
-  .action-grid { grid-template-columns: 1fr; }
+  .report-attention li { grid-template-columns: 1fr; gap: 2px; }
   .help-guide { grid-template-columns: 1fr; }
   .help-guide-row { grid-template-columns: 1fr; gap: 6px; }
   h1.title { font-size: 30px; }
@@ -3522,10 +3569,8 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
 
 def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any], sticky_title: str) -> str:
     safe_title = esc(title)
-    safe_date = esc(date)
     content = f"""
-    <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
-    <div data-toc-scope>
+    <div class="report-body">
       {body}
     </div>
 """
@@ -3544,6 +3589,38 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
   </body>
 </html>
 """
+
+
+def refresh_structured_report_pages(wiki_root: Path, project_folder: Path, sticky_title: str) -> None:
+    reports_dir = wiki_root / "reports"
+    for kind in REPORT_FOLDERS:
+        report_dir = reports_dir / kind
+        if not report_dir.exists():
+            continue
+        for json_path in sorted(report_dir.glob("*.json")):
+            if json_path.name == "data.json":
+                continue
+            report_path = json_path.with_suffix(".html")
+            if not report_path.exists():
+                continue
+            data = read_json_file(json_path, {})
+            if not isinstance(data, dict):
+                continue
+            title = html_title(report_path) or report_name(report_path)
+            date = report_run_date(report_path)
+            body = render_structured_report(kind, data)
+            provenance = provenance_payload(
+                wiki_root,
+                artifact_id=f"{kind}:{report_path.stem}",
+                artifact_kind=kind,
+                relative_path=report_path.relative_to(wiki_root).as_posix(),
+                title=title,
+                generated_at=utc_now(),
+                source_hashes=collect_source_hashes([json_path]),
+                extra={"reportDate": date},
+            )
+            report_path.write_text(render_report_page(title, date, kind, body, provenance, sticky_title), encoding="utf-8")
+            update_manifest(wiki_root, provenance)
 
 
 def write_setup_page(wiki_root: Path, project_folder: Path, company: str, setup_items: list[dict[str, str]]) -> None:
@@ -3666,6 +3743,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     strategy_path = core_dir / "STRATEGY.md"
     company = company_name(strategy_path, project_folder, config)
     description = company_description(strategy_path, config)
+    stable_title = dashboard_title(company)
+    refresh_structured_report_pages(wiki_root, project_folder, stable_title)
     core_pages = write_core_pages(wiki_root, project_folder)
     core_ready = sum(1 for page in core_pages if page["source_exists"])
 

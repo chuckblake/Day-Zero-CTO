@@ -151,7 +151,7 @@ def command_reference_text(project: Path | None = None) -> str:
                      [--report-prompt-context <text>] [--repo <path> ...]
               Create or refresh <project>/knowledge/wiki, sidecar metadata, generated core pages, search index, and dashboard.
           dzcto refresh {project_arg}
-              Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance.
+              Regenerate dashboard, core HTML pages, structured report pages, learning index, search index, cadence alerts, and provenance.
               Decisions and Risks pages also regenerate short Current Read summaries from source rows and report risk signals.
           dzcto serve {project_arg} [--host 127.0.0.1] [--port 8765]
               Serve the wiki locally so search JSON loads reliably and local refresh works.

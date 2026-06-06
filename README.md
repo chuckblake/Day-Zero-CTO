@@ -364,7 +364,7 @@ dzcto <command> -h
 | Command | Use when | Key options |
 | --- | --- | --- |
 | `dzcto init "<project folder>"` | Create or refresh `<project>/knowledge/wiki`, sidecar metadata, generated core pages, search index, and dashboard. | `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, `--report-prompt-context <text>`, repeatable `--repo <path>`. |
-| `dzcto refresh "<project folder>"` | Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance. | Project folder argument. |
+| `dzcto refresh "<project folder>"` | Regenerate dashboard, core HTML pages, structured report pages, learning index, search index, cadence alerts, and provenance. | Project folder argument. |
 | `dzcto serve "<project folder>"` | Serve the wiki locally so search JSON loads reliably and local refresh works. | `--host 127.0.0.1`, `--port 8765`. |
 | `dzcto status "<project folder>"` | Show the terminal setup checklist and operating health for the project. | `--json` for machine-readable output. |
 | `dzcto doctor` | Check install health, manifests, helper syntax, wrappers, and optional project files. | `--project <project>`, `--json`. |
