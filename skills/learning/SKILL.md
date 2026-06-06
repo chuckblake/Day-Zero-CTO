@@ -49,7 +49,7 @@ Accept aliases such as `not`, `neutral`, `know`, `0`, `1`, and `2`, but display 
    python3 scripts/dzcto.py learning --project "<project folder>" --add --title "<title>" --summary "<summary>" --details-file "<html-or-text-details-file>" --source "<source>" --tags "<tag1,tag2>"
    ```
 
-   Use context from `core/STRATEGY.md`, `core/DECISIONS.md`, `core/RISKS.md`, recent reports, and read-only repo docs if a repo pointer is known. Do not invent facts.
+   Use context from `core/STRATEGY.md`, `core/DECISIONS.md`, `core/RISKS.md`, recent reports, and read-only repo docs if repo pointers are known. Do not invent facts.
 6. If the user asks to seed initial learning, create a JSON array of evidence-backed items, usually 25 for onboarding when enough evidence exists, then run:
 
    ```bash
@@ -111,6 +111,6 @@ Selection balances review and novelty:
 - Teach system knowledge, not trivia.
 - Prefer one crisp concept over a broad lecture.
 - Ground each item in a source file or report.
-- Treat the code repo as read-only unless the user explicitly asks for code changes.
+- Treat code repos as read-only unless the user explicitly asks for code changes.
 - Do not store private personal speculation as learning material.
 - Keep `knowledge/wiki/learning/index.html` current by using the script; it refreshes the index after add and record operations.

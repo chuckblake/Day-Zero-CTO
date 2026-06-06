@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Day Zero CTO wiki indexes and report artifacts.
-
-Python-first helper for public installs. The older Ruby helper remains as a
-compatibility fallback, but new docs and wrappers call this file.
-"""
+"""Generate Day Zero CTO wiki indexes and report artifacts."""
 
 from __future__ import annotations
 
@@ -13,6 +9,8 @@ import html
 import json
 import re
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -20,9 +18,12 @@ from dzcto_common import (
     ensure_sidecar,
     provenance_block,
     provenance_payload,
+    read_json,
+    sidecar_dir,
     source_hashes as collect_source_hashes,
     update_manifest,
     utc_now,
+    write_json,
 )
 
 
@@ -52,8 +53,17 @@ CORE_DOC_META = {
 }
 
 
+CORE_DOC_HTML = {
+    "STRATEGY.md": "strategy.html",
+    "TEAM.md": "team.html",
+    "OPERATING_CADENCE.md": "operating-cadence.html",
+    "DECISIONS.md": "decisions.html",
+    "RISKS.md": "risks.html",
+}
+
+
 def esc(value: Any) -> str:
-    return html.escape(str(value or ""), quote=True)
+    return html.escape("" if value is None else str(value), quote=True)
 
 
 def slugify(value: str) -> str:
@@ -109,22 +119,118 @@ def plain_markdown(value: str | None) -> str:
     return text.strip()
 
 
-def company_name(strategy_path: Path, project_folder: Path) -> str:
+def project_config(wiki_root: Path) -> dict[str, Any]:
+    value = read_json(sidecar_dir(wiki_root) / "config.json", {})
+    return value if isinstance(value, dict) else {}
+
+
+def company_name(strategy_path: Path, project_folder: Path, config: dict[str, Any] | None = None) -> str:
     if strategy_path.exists():
         for line in strategy_path.read_text(encoding="utf-8").splitlines():
             if line.startswith("# "):
                 title = re.sub(r"\s+Strategy$", "", line[2:].strip(), flags=re.I)
                 return title
+    if config and str(config.get("companyName") or "").strip():
+        return str(config["companyName"]).strip()
     return project_folder.name
 
 
-def company_description(strategy_path: Path) -> str:
+def company_description(strategy_path: Path, config: dict[str, Any] | None = None) -> str:
     paragraph = (
         first_markdown_paragraph(markdown_section(strategy_path, "Product Thesis"))
+        or first_markdown_paragraph(markdown_section(strategy_path, "Company"))
         or first_markdown_paragraph(markdown_section(strategy_path, "Stage"))
     )
-    fallback = "Company context has not been captured yet. Add a Product Thesis section to core/STRATEGY.md to enrich this summary."
-    return plain_markdown(paragraph or fallback)
+    configured = str((config or {}).get("companyDescription") or "").strip()
+    fallback = "Company context has not been captured yet. Add a Product Thesis section to the Strategy source file to enrich this summary."
+    return plain_markdown(paragraph or configured or fallback)
+
+
+def fetch_company_description(url: str) -> str | None:
+    if not url:
+        return None
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "DayZeroCTO/0.6"})
+        with urllib.request.urlopen(request, timeout=8) as response:
+            content_type = response.headers.get("content-type", "")
+            if "text/html" not in content_type:
+                return None
+            html_text = response.read(250_000).decode("utf-8", errors="replace")
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return None
+
+    meta = re.search(r'<meta\s+[^>]*(?:name|property)=["\'](?:description|og:description)["\'][^>]*content=["\']([^"\']+)["\']', html_text, re.I)
+    if meta:
+        return plain_markdown(html.unescape(meta.group(1)))
+    title = re.search(r"<title[^>]*>(.*?)</title>", html_text, re.I | re.S)
+    return plain_markdown(html.unescape(title.group(1))) if title else None
+
+
+def apply_init_metadata(
+    wiki_root: Path,
+    project_folder: Path,
+    *,
+    company_name_value: str | None = None,
+    company_description_value: str | None = None,
+    company_url: str | None = None,
+    repos: list[str] | None = None,
+) -> None:
+    if not any([company_name_value, company_description_value, company_url, repos]):
+        return
+
+    config_path = sidecar_dir(wiki_root) / "config.json"
+    config = project_config(wiki_root)
+    if company_name_value:
+        config["companyName"] = company_name_value.strip()
+    if company_url:
+        config["companyUrl"] = company_url.strip()
+    description = (company_description_value or "").strip()
+    if company_url and not description:
+        description = fetch_company_description(company_url) or ""
+    if description:
+        config["companyDescription"] = description
+    if repos:
+        existing = [str(item) for item in config.get("codeRepos", []) if str(item).strip()]
+        for repo in repos:
+            value = str(Path(repo).expanduser()).strip()
+            if value and value not in existing:
+                existing.append(value)
+        config["codeRepos"] = existing
+    write_json(config_path, config)
+
+    strategy_path = wiki_root / "core" / "STRATEGY.md"
+    if not strategy_path.exists() and (company_name_value or description or company_url):
+        name = company_name_value or project_folder.name
+        source_line = f"\nSource: {company_url}\n" if company_url else ""
+        strategy_path.write_text(
+            f"""# {name} Strategy
+
+## Company
+
+{description or "Unknown"}
+{source_line}
+## Stage
+
+Unknown
+
+## Product Thesis
+
+{description or "Unknown"}
+
+## Current Goals
+
+Unknown
+
+## Constraints
+
+Unknown
+
+## Non-Goals
+
+Unknown
+""",
+            encoding="utf-8",
+        )
 
 
 def split_markdown_row(row: str) -> list[str]:
@@ -252,7 +358,7 @@ def default_help_commands(company: str) -> list[tuple[str, str]]:
     return [
         ("Weekly CTO Review", f"Run the weekly CTO review for {company}."),
         ("CEO Update", f"Write the CEO engineering update for {company}."),
-        ("Tech Stack", f"Review the codebase and create a Tech Stack report for {company}."),
+        ("Tech Stack", f"Review the connected codebase(s) and create a Tech Stack report for {company}."),
         ("Engineering Risk Review", f"Run the engineering risk review for {company}."),
         ("Learning", f"Run a Day Zero CTO learning prompt for {company}."),
         ("Check Stale", 'dzcto check-stale "<project folder>"'),
@@ -261,7 +367,7 @@ def default_help_commands(company: str) -> list[tuple[str, str]]:
         ("Decision Help", f"Help me work through a CTO decision for {company}: <decision or problem>."),
         (
             "CTO Code Review",
-            f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo as read-only unless I explicitly ask for code changes.",
+            f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo(s) as read-only unless I explicitly ask for code changes.",
         ),
     ]
 
@@ -532,6 +638,106 @@ def render_structured_report(kind: str, data: dict[str, Any]) -> str:
     return body.strip() or render_generic_report(data)
 
 
+def core_doc_html_name(doc: str) -> str:
+    return CORE_DOC_HTML.get(doc, f"{slugify(Path(doc).stem)}.html")
+
+
+def inline_markdown(value: str) -> str:
+    text = esc(value)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+    return text
+
+
+def render_markdown_table(lines: list[str]) -> str:
+    rows = [split_markdown_row(line) for line in lines]
+    if len(rows) < 2:
+        return ""
+    headers = "".join(f"<th>{inline_markdown(cell)}</th>" for cell in rows[0])
+    body_rows = []
+    for row in rows[2:]:
+        body_rows.append("<tr>" + "".join(f"<td>{inline_markdown(cell)}</td>" for cell in row) + "</tr>")
+    return f"<table><thead><tr>{headers}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
+
+
+def markdown_to_html(markdown: str) -> str:
+    lines = markdown.splitlines()
+    blocks: list[str] = []
+    paragraph: list[str] = []
+    list_items: list[str] = []
+    table_lines: list[str] = []
+    in_code = False
+    code_lines: list[str] = []
+
+    def flush_paragraph() -> None:
+        nonlocal paragraph
+        if paragraph:
+            blocks.append(f"<p>{inline_markdown(' '.join(paragraph).strip())}</p>")
+            paragraph = []
+
+    def flush_list() -> None:
+        nonlocal list_items
+        if list_items:
+            blocks.append("<ul>" + "".join(f"<li>{inline_markdown(item)}</li>" for item in list_items) + "</ul>")
+            list_items = []
+
+    def flush_table() -> None:
+        nonlocal table_lines
+        if table_lines:
+            rendered = render_markdown_table(table_lines)
+            if rendered:
+                blocks.append(rendered)
+            table_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if in_code:
+                blocks.append(f"<pre><code>{esc(chr(10).join(code_lines))}</code></pre>")
+                code_lines = []
+                in_code = False
+            else:
+                flush_paragraph()
+                flush_list()
+                flush_table()
+                in_code = True
+            continue
+        if in_code:
+            code_lines.append(line)
+            continue
+        if not stripped:
+            flush_paragraph()
+            flush_list()
+            flush_table()
+            continue
+        if stripped.startswith("|"):
+            flush_paragraph()
+            flush_list()
+            table_lines.append(stripped)
+            continue
+        flush_table()
+        if match := re.match(r"^(#{1,4})\s+(.+)$", stripped):
+            flush_paragraph()
+            flush_list()
+            level = min(len(match.group(1)) + 1, 4)
+            blocks.append(f"<h{level}>{inline_markdown(match.group(2))}</h{level}>")
+            continue
+        if match := re.match(r"^[-*]\s+(.+)$", stripped):
+            flush_paragraph()
+            list_items.append(match.group(1))
+            continue
+        flush_list()
+        paragraph.append(stripped)
+
+    flush_paragraph()
+    flush_list()
+    flush_table()
+    if in_code:
+        blocks.append(f"<pre><code>{esc(chr(10).join(code_lines))}</code></pre>")
+    return "\n".join(blocks) or '<p class="empty-item">No content yet.</p>'
+
+
 def report_run_date(path: Path) -> str:
     match = re.match(r"^(\d{4}-\d{2}-\d{2})-", path.name)
     return match.group(1) if match else "Unknown date"
@@ -539,10 +745,6 @@ def report_run_date(path: Path) -> str:
 
 def report_name(path: Path) -> str:
     return re.sub(r"^\d{4}-\d{2}-\d{2}-", "", path.stem).replace("-", " ")
-
-
-def display_file_name(path: Path) -> str:
-    return re.sub(r"\.(html|md|txt)$", "", path.name, flags=re.I).replace("-", " ")
 
 
 def read_json_file(path: Path, default: Any) -> Any:
@@ -632,6 +834,180 @@ def read_learning_checklist_progress(learning_dir: Path) -> dict[str, Any]:
     return {"path": path, "confirmed": confirmed, "total": total, "percent": percent}
 
 
+def base_css() -> str:
+    return """
+:root {
+  --ink: #172033;
+  --muted: #647084;
+  --soft: #f5f7fa;
+  --panel: #ffffff;
+  --line: #d8e0ea;
+  --accent: #145c78;
+  --accent-soft: #e8f3f6;
+  --warn: #9b5b00;
+  --warn-soft: #fff4dd;
+  --good: #176442;
+  --good-soft: #e8f6ef;
+  --danger: #9f1d25;
+  --danger-soft: #ffe8eb;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: linear-gradient(180deg, #f9fbfd 0, #fff 260px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.55;
+}
+main { width: 100%; max-width: 1180px; margin: 0 auto; padding: 36px 28px 64px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3 { line-height: 1.15; letter-spacing: 0; margin: 0; }
+h1 { font-size: 40px; }
+h2 { font-size: 22px; }
+h3 { font-size: 16px; }
+p { color: var(--muted); margin: 0; }
+h1, h2, h3, p, a, code, strong { overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
+th { background: var(--soft); color: var(--ink); }
+code, pre { background: var(--soft); border: 1px solid var(--line); border-radius: 6px; }
+code { padding: 1px 5px; }
+pre { padding: 12px; overflow-x: auto; }
+button {
+  border: 1px solid #0f4f68;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+button:hover { background: #0f4f68; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #9bc7d6; outline-offset: 2px; }
+.topbar { display: flex; justify-content: space-between; gap: 22px; align-items: flex-start; margin-bottom: 24px; }
+.topbar > *, .status-card, .command-card, .core-card, .report-card, .learning-card, .help-command { min-width: 0; }
+.eyebrow { color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+.subtitle { max-width: 780px; margin-top: 10px; font-size: 17px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.status-note { min-height: 20px; color: var(--muted); font-size: 13px; text-align: right; width: 100%; }
+.status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 22px 0; }
+.status-card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; }
+.status-card span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.status-card strong { display: block; margin-top: 5px; font-size: 22px; }
+.status-good { background: var(--good-soft); border-color: #afd9c4; }
+.status-warn { background: var(--warn-soft); border-color: #ead49a; }
+.status-danger { background: var(--danger-soft); border-color: #efb9bf; }
+.command-strip { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; margin: 18px 0 26px; }
+.command-card, .cadence-alert, .cadence-ok { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; }
+.command-card code, .cadence-alert code { display: block; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
+.wiki-details { border-top: 1px solid var(--line); padding: 22px 0; }
+.wiki-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
+.wiki-details summary::-webkit-details-marker { display: none; }
+.wiki-heading { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; line-height: 1.2; }
+.wiki-chevron { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s ease; }
+.wiki-details[open] .wiki-chevron { transform: rotate(45deg); }
+.wiki-meta { color: var(--muted); font-size: 14px; text-align: right; white-space: nowrap; }
+.wiki-body { margin-top: 14px; }
+.core-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.core-card, .report-card, .learning-card, .help-command { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 12px; color: var(--ink); }
+.core-card:hover, .report-card:hover, .learning-card:hover { background: var(--soft); text-decoration: none; }
+.core-title, .report-title, .learning-title, .help-command strong { display: block; font-weight: 800; }
+.core-desc, .report-date, .report-count, .learning-meta, .help-command span { display: block; color: var(--muted); font-size: 13px; margin-top: 5px; }
+.core-file { display: block; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; margin-top: 10px; }
+.missing-card { background: var(--soft); }
+.reports-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.report-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.report-link { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.report-date { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-top: 0; }
+.learning-grid, .help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.help-command { display: grid; gap: 6px; }
+.help-command code { display: block; white-space: normal; overflow-wrap: anywhere; }
+.cadence-list { display: grid; gap: 10px; }
+.cadence-alert { border-color: #e2b454; background: var(--warn-soft); }
+.cadence-ok { border-color: #afd9c4; background: var(--good-soft); }
+.artifact-section { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
+.artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+.artifact-list { display: grid; gap: 10px; margin: 16px 0 24px; padding: 0; list-style: none; }
+.artifact-list li { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small { display: block; }
+.artifact-list span, .artifact-list em, .artifact-list small { margin-top: 4px; color: var(--muted); }
+.artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
+.grid, .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.metric { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--panel); }
+.metric .label, .metric span { color: var(--muted); font-size: 13px; }
+.metric .value, .metric strong { display: block; margin-top: 5px; font-size: 22px; font-weight: 800; color: var(--ink); }
+.metric .detail { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
+.tag { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.high { color: var(--danger); background: var(--danger-soft); }
+.medium { color: var(--warn); background: var(--warn-soft); }
+.ready { color: var(--good); background: var(--good-soft); }
+.empty-item { color: var(--muted); }
+.nav { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
+.prose { max-width: 880px; }
+.prose h2, .prose h3, .prose h4 { margin-top: 28px; }
+.prose p, .prose ul { margin-top: 12px; }
+@media (max-width: 920px) {
+  main { padding: 30px 18px 52px; }
+  h1 { font-size: 32px; }
+  .topbar, .command-strip { grid-template-columns: 1fr; display: grid; }
+  .actions { justify-content: flex-start; }
+  .status-note { text-align: left; }
+  .status-grid, .core-grid, .reports-grid, .learning-grid, .help-grid, .summary, .grid { grid-template-columns: 1fr; }
+  .report-link { grid-template-columns: 1fr; gap: 2px; }
+  .wiki-details summary { align-items: flex-start; }
+  .wiki-meta { text-align: left; white-space: normal; }
+}
+"""
+
+
+def refresh_script() -> str:
+    return """
+<script>
+(() => {
+  const button = document.querySelector('[data-dzcto-refresh]');
+  const status = document.querySelector('[data-dzcto-refresh-status]');
+  if (!button || !status) return;
+  button.addEventListener('click', async () => {
+    status.textContent = 'Refreshing...';
+    if (location.protocol === 'file:') {
+      status.textContent = 'Open with dzcto serve "<project folder>" to refresh from the browser.';
+      return;
+    }
+    try {
+      const response = await fetch('/__dzcto/refresh', { method: 'POST' });
+      if (!response.ok) throw new Error(await response.text());
+      status.textContent = 'Refreshed. Reloading...';
+      location.reload();
+    } catch (error) {
+      status.textContent = 'Refresh failed. Run dzcto refresh "<project folder>" in a terminal.';
+    }
+  });
+})();
+</script>
+"""
+
+
+def write_html_page(path: Path, title: str, body: str, provenance: dict[str, Any]) -> None:
+    path.write_text(
+        f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{esc(title)}</title>
+    <style>{base_css()}</style>
+  </head>
+  <body>
+    {body}
+    {provenance_block(provenance)}
+  </body>
+</html>
+""",
+        encoding="utf-8",
+    )
+
+
 def write_learning_index(wiki_root: Path, project_folder: Path, company: str, items: list[dict[str, Any]], reviews: list[dict[str, Any]], today: dt.date) -> None:
     learning_dir = wiki_root / "learning"
     learning_dir.mkdir(parents=True, exist_ok=True)
@@ -688,65 +1064,45 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
         title=f"{company} Learning",
         generated_at=generated_at,
     )
-    learning_dir.joinpath("index.html").write_text(
-        f"""<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{esc(company)} Learning</title>
-    <style>
-      :root {{ --ink: #172033; --muted: #5d6a7d; --line: #d9e0ea; --soft: #f6f8fb; --accent: #185a7d; }}
-      body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: var(--ink); background: #fff; }}
-      main {{ max-width: 980px; margin: 0 auto; padding: 44px 28px 64px; }}
-      h1, h2 {{ line-height: 1.2; letter-spacing: 0; }}
-      h1 {{ font-size: 34px; margin: 0 0 8px; }}
-      h2 {{ font-size: 22px; margin-top: 32px; border-top: 1px solid var(--line); padding-top: 22px; }}
-      p, span, li {{ color: var(--muted); }}
-      a {{ color: var(--accent); }}
-      .nav {{ color: var(--muted); font-size: 14px; margin-bottom: 22px; }}
-      .summary {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }}
-      .metric {{ border: 1px solid var(--line); border-radius: 8px; padding: 14px; }}
-      .metric span {{ display: block; font-size: 13px; }}
-      .metric strong {{ display: block; font-size: 22px; margin-top: 4px; }}
-      table {{ width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 14px; }}
-      th, td {{ border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }}
-      th {{ background: var(--soft); }}
-      code {{ background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; }}
-      .empty-item {{ color: var(--muted); }}
-      @media (max-width: 760px) {{ main {{ padding: 28px 18px 48px; }} .summary {{ grid-template-columns: 1fr; }} table {{ display: block; overflow-x: auto; }} }}
-    </style>
-  </head>
-  <body>
-    <main>
-      <p class="nav"><a href="../index.html">Knowledge wiki index</a></p>
+    body = f"""
+<main>
+  <p class="nav"><a href="../index.html">Knowledge wiki index</a></p>
+  <div class="topbar">
+    <div>
+      <p class="eyebrow">Learning</p>
       <h1>{esc(company)} Learning</h1>
-      <p>Spaced repetition for system knowledge. The learning skill presents one system concept, includes one quick check, records a self-rating, updates the mastery checklist, and schedules the next review from that answer.</p>
-      <div class="summary">
-        <div class="metric"><span>Active</span><strong>{counts["active"]}</strong></div>
-        <div class="metric"><span>Due</span><strong>{counts["due"]}</strong></div>
-        <div class="metric"><span>New</span><strong>{counts["new"]}</strong></div>
-      </div>
-      <h2>How Scoring Works</h2>
-      <p>Reply with <code>Needs Work</code>, <code>Familiar</code>, or <code>Confident</code>. Needs Work brings the item back tomorrow, Familiar moves it forward one box, and Confident moves it forward two boxes.</p>
-      <h2>Mastery Checklist</h2>
-      {checklist_html}
-      <h2>Items</h2>
-      <table>
-        <thead>
-          <tr><th>Item</th><th>Status</th><th>Due</th><th>Box</th><th>Seen</th><th>Last rating</th><th>Source</th></tr>
-        </thead>
-        <tbody>{item_rows}</tbody>
-      </table>
-      <h2>Recent Reviews</h2>
-      <ul>{review_rows}</ul>
-    </main>
-    {provenance_block(provenance)}
-  </body>
-</html>
-""",
-        encoding="utf-8",
-    )
+      <p class="subtitle">Spaced repetition for system knowledge. Each prompt teaches one concept, records a self-rating, updates the mastery checklist, and schedules the next review.</p>
+    </div>
+  </div>
+  <div class="summary">
+    <div class="metric"><span>Active</span><strong>{counts["active"]}</strong></div>
+    <div class="metric"><span>Due</span><strong>{counts["due"]}</strong></div>
+    <div class="metric"><span>New</span><strong>{counts["new"]}</strong></div>
+  </div>
+  <section class="artifact-section">
+    <h2>How Scoring Works</h2>
+    <p>Reply with <code>Needs Work</code>, <code>Familiar</code>, or <code>Confident</code>. Needs Work brings the item back tomorrow, Familiar moves it forward one box, and Confident moves it forward two boxes.</p>
+  </section>
+  <section class="artifact-section">
+    <h2>Mastery Checklist</h2>
+    {checklist_html}
+  </section>
+  <section class="artifact-section">
+    <h2>Items</h2>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Status</th><th>Due</th><th>Box</th><th>Seen</th><th>Last rating</th><th>Source</th></tr>
+      </thead>
+      <tbody>{item_rows}</tbody>
+    </table>
+  </section>
+  <section class="artifact-section">
+    <h2>Recent Reviews</h2>
+    <ul>{review_rows}</ul>
+  </section>
+</main>
+"""
+    write_html_page(learning_dir / "index.html", f"{company} Learning", body, provenance)
     update_manifest(wiki_root, provenance)
 
 
@@ -759,54 +1115,86 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{safe_title}</title>
-    <style>
-      :root {{ --ink: #172033; --muted: #5d6a7d; --line: #d9e0ea; --soft: #f6f8fb; --accent: #185a7d; }}
-      body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: var(--ink); background: #fff; }}
-      main {{ max-width: 980px; margin: 0 auto; padding: 44px 28px 64px; }}
-      h1, h2, h3 {{ line-height: 1.2; letter-spacing: 0; }}
-      h1 {{ font-size: 34px; margin: 0 0 6px; }}
-      h2 {{ font-size: 23px; margin-top: 34px; border-top: 1px solid var(--line); padding-top: 24px; }}
-      h3 {{ font-size: 18px; margin-top: 24px; }}
-      .meta, .nav {{ color: var(--muted); }}
-      .meta {{ margin: 0 0 30px; }}
-      .nav {{ margin: 0 0 22px; font-size: 14px; }}
-      a {{ color: var(--accent); }}
-      table {{ border-collapse: collapse; width: 100%; margin: 16px 0 24px; font-size: 14px; }}
-      th, td {{ border: 1px solid var(--line); padding: 9px; vertical-align: top; text-align: left; }}
-      th {{ background: var(--soft); }}
-      code {{ background: var(--soft); border: 1px solid var(--line); padding: 0.1rem 0.25rem; border-radius: 4px; }}
-      .callout {{ background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 18px 0; }}
-      .artifact-section {{ margin-top: 34px; border-top: 1px solid var(--line); padding-top: 24px; }}
-      .artifact-section:first-of-type {{ margin-top: 0; border-top: 0; padding-top: 0; }}
-      .artifact-list {{ display: grid; gap: 10px; margin: 16px 0 24px; padding: 0; list-style: none; }}
-      .artifact-list li {{ border: 1px solid var(--line); border-radius: 8px; padding: 12px; }}
-      .artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small {{ display: block; }}
-      .artifact-list span, .artifact-list em, .artifact-list small {{ margin-top: 4px; color: var(--muted); }}
-      .artifact-list em, .artifact-list small {{ font-size: 13px; font-style: normal; }}
-      .grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 6px; }}
-      .metric {{ border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: #fff; }}
-      .metric .label {{ color: var(--muted); font-size: 13px; }}
-      .metric .value {{ display: block; margin-top: 5px; font-size: 22px; font-weight: 700; }}
-      .metric .detail {{ display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }}
-      .tag {{ display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; white-space: nowrap; }}
-      .high {{ color: #9f1d25; background: #ffe8eb; }}
-      .medium {{ color: #8a4b00; background: #fff4df; }}
-      .ready {{ color: #16633d; background: #e8f6ef; }}
-      .source-list {{ font-size: 14px; color: var(--muted); }}
-      @media (max-width: 760px) {{ main {{ padding: 28px 18px 48px; }} .grid {{ grid-template-columns: 1fr; }} table {{ display: block; overflow-x: auto; }} }}
-    </style>
+    <style>{base_css()}</style>
   </head>
   <body>
     <main>
       <p class="nav"><a href="../../index.html">Knowledge wiki index</a></p>
-      <h1>{safe_title}</h1>
-      <p class="meta">{safe_date} · {esc(REPORT_FOLDERS[kind])}</p>
+      <div class="topbar">
+        <div>
+          <p class="eyebrow">{esc(REPORT_FOLDERS[kind])}</p>
+          <h1>{safe_title}</h1>
+          <p class="subtitle">{safe_date}</p>
+        </div>
+      </div>
       {body}
     </main>
     {provenance_block(provenance)}
   </body>
 </html>
 """
+
+
+def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, Any]]:
+    core_dir = wiki_root / "core"
+    core_dir.mkdir(parents=True, exist_ok=True)
+    pages: list[dict[str, Any]] = []
+    for doc in CORE_DOCS:
+        title, description = CORE_DOC_META.get(doc, (doc, "Core CTO context."))
+        source_path = core_dir / doc
+        relative_path = f"core/{core_doc_html_name(doc)}"
+        if source_path.exists():
+            source_text = source_path.read_text(encoding="utf-8")
+            content_html = markdown_to_html(source_text)
+            source_hash = collect_source_hashes([source_path])
+            status = "Ready"
+        else:
+            content_html = f'<p class="empty-item">{esc(doc)} has not been created yet.</p>'
+            source_hash = {}
+            status = "Missing source"
+
+        provenance = provenance_payload(
+            wiki_root,
+            artifact_id=f"core:{Path(doc).stem.lower()}",
+            artifact_kind="core-context",
+            relative_path=relative_path,
+            title=title,
+            generated_at=utc_now(),
+            source_hashes=source_hash,
+        )
+        body = f"""
+<main>
+  <p class="nav"><a href="../index.html">Knowledge wiki index</a></p>
+  <div class="topbar">
+    <div>
+      <p class="eyebrow">Core Context</p>
+      <h1>{esc(title)}</h1>
+      <p class="subtitle">{esc(description)}</p>
+    </div>
+  </div>
+  <div class="status-grid">
+    <div class="status-card {'status-good' if source_path.exists() else 'status-warn'}"><span>Status</span><strong>{esc(status)}</strong></div>
+    <div class="status-card"><span>Source</span><strong>{esc(doc)}</strong></div>
+    <div class="status-card"><span>Updated</span><strong>{esc(dt.date.today().isoformat())}</strong></div>
+    <div class="status-card"><span>Page</span><strong>HTML</strong></div>
+  </div>
+  <section class="artifact-section prose">
+    {content_html}
+  </section>
+</main>
+"""
+        write_html_page(wiki_root / relative_path, title, body, provenance)
+        update_manifest(wiki_root, provenance)
+        pages.append(
+            {
+                "doc": doc,
+                "title": title,
+                "description": description,
+                "html": relative_path,
+                "source_exists": source_path.exists(),
+            }
+        )
+    return pages
 
 
 def render_index(wiki_root: Path, project_folder: Path) -> None:
@@ -816,54 +1204,66 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     today = dt.date.today()
     ensure_sidecar(wiki_root, project_folder, "render-index")
 
+    config = project_config(wiki_root)
+    strategy_path = core_dir / "STRATEGY.md"
+    company = company_name(strategy_path, project_folder, config)
+    description = company_description(strategy_path, config)
+    core_pages = write_core_pages(wiki_root, project_folder)
+    core_ready = sum(1 for page in core_pages if page["source_exists"])
+
     report_entries = [(folder, label, sorted((reports_dir / folder).glob("*.html"), reverse=True)) for folder, label in REPORT_FOLDERS.items()]
     report_count = sum(len(links) for _folder, _label, links in report_entries)
     report_sections = []
-    for _folder, label, links in report_entries:
+    for folder, label, links in report_entries:
         if links:
             items = "\n".join(
                 f'<li class="report-link"><span class="report-date">{esc(report_run_date(path))}</span><a href="{esc(path.relative_to(wiki_root).as_posix())}">{esc(report_name(path))}</a></li>'
-                for path in links
+                for path in links[:5]
             )
         else:
             items = '<li class="empty-item">No reports yet.</li>'
-        report_sections.append(f'<section class="report-section"><h2>{esc(label)}</h2><ul class="report-list">{items}</ul></section>')
+        latest = report_run_date(links[0]) if links else "No runs"
+        report_sections.append(
+            f"""<article class="report-card">
+  <span class="report-title">{esc(label)}</span>
+  <span class="report-count">{pluralize(len(links), "artifact")} · latest {esc(latest)}</span>
+  <ul class="report-list">{items}</ul>
+</article>"""
+        )
 
     core_links = []
-    for doc in CORE_DOCS:
-        title, description = CORE_DOC_META.get(doc, (doc, "Core CTO context."))
-        path = core_dir / doc
-        if path.exists():
-            core_links.append(f'<a class="core-card" href="core/{esc(doc)}"><span class="core-title">{esc(title)}</span><span class="core-desc">{esc(description)}</span><span class="core-file">{esc(doc)}</span></a>')
-        else:
-            core_links.append(f'<div class="core-card missing-card"><span class="core-title">{esc(title)}</span><span class="core-desc">{esc(description)}</span><span class="core-file">{esc(doc)} not created yet</span></div>')
-
-    handoff_paths = sorted(path for path in (wiki_root / "handoffs").glob("**/*") if path.is_file())
-    handoff_links = (
-        "\n".join(f'<li><a href="{esc(path.relative_to(wiki_root).as_posix())}">{esc(display_file_name(path))}</a></li>' for path in handoff_paths)
-        if handoff_paths
-        else '<li class="empty-item">No handoffs yet.</li>'
-    )
+    for page in core_pages:
+        card_class = "core-card" if page["source_exists"] else "core-card missing-card"
+        core_links.append(
+            f"""<a class="{card_class}" href="{esc(page["html"])}">
+  <span class="core-title">{esc(page["title"])}</span>
+  <span class="core-desc">{esc(page["description"])}</span>
+  <span class="core-file">{esc(Path(page["html"]).name)}</span>
+</a>"""
+        )
 
     cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
     alerts = cadence_alerts(cadence_rules, reports_dir, today)
-    strategy_path = core_dir / "STRATEGY.md"
-    company = company_name(strategy_path, project_folder)
-    description = company_description(strategy_path)
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
     write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
 
     if not cadence_rules:
-        cadence_status_html = ""
+        cadence_status_html = '<div class="cadence-alert"><strong>No cadence rules</strong><p>Add an Index Cadence Rules table to Operating Cadence when this project has recurring DZCTO reports.</p></div>'
+        cadence_label = "No rules"
+        cadence_class = "status-warn"
     elif not alerts:
-        cadence_status_html = '<div class="cadence-watch"><h2>Cadence Watch</h2><p>All scheduled report cadences are current.</p></div>'
+        cadence_status_html = '<div class="cadence-ok"><strong>Cadence current</strong><p>All scheduled Day Zero CTO report cadences are current.</p></div>'
+        cadence_label = "Current"
+        cadence_class = "status-good"
     else:
         alert_cards = "\n".join(
-            f'<div class="cadence-alert"><div><strong>{esc(alert["label"])}</strong><span>{esc(alert["reason"])}</span></div><code>{esc(display_command(alert["command"]))}</code></div>'
+            f'<div class="cadence-alert"><strong>{esc(alert["label"])}</strong><p>{esc(alert["reason"])}</p><code>{esc(display_command(alert["command"]))}</code></div>'
             for alert in alerts
         )
-        cadence_status_html = f'<div class="cadence-watch cadence-watch-alert"><h2>Cadence Alerts</h2><p>Generated from <a href="core/OPERATING_CADENCE.md">OPERATING_CADENCE.md</a>.</p><div class="cadence-list">{alert_cards}</div></div>'
+        cadence_status_html = f'<div class="cadence-list">{alert_cards}</div>'
+        cadence_label = f"{len(alerts)} due"
+        cadence_class = "status-danger"
 
     if not cadence_rules:
         report_status = pluralize(report_count, "artifact")
@@ -872,9 +1272,14 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     else:
         report_status = f"{pluralize(report_count, 'artifact')} · {pluralize(len(alerts), 'alert')}"
     learning_status = learning_summary(learning_items, today)
-    misc_status = pluralize(len(handoff_paths), "handoff")
+    learning_counts_value = learning_counts(learning_items, today)
+    repo_count = len(config.get("codeRepos", []) or [])
 
-    help_commands = [(rule["label"], display_command(rule["command"])) for rule in cadence_rules] + default_help_commands(company)
+    help_commands = [(rule["label"], display_command(rule["command"])) for rule in cadence_rules] + [
+        ("Refresh Dashboard", 'dzcto refresh "<project folder>"'),
+        ("Serve Dashboard", 'dzcto serve "<project folder>"'),
+        *default_help_commands(company),
+    ]
     seen: set[str] = set()
     help_items = []
     for label, command in help_commands:
@@ -883,6 +1288,17 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
             continue
         seen.add(normalized)
         help_items.append(f'<div class="help-command"><strong>{esc(label)}</strong><code>{esc(command)}</code></div>')
+
+    learning_cards = f"""
+<a class="learning-card" href="learning/index.html">
+  <span class="learning-title">Spaced Repetition</span>
+  <span class="learning-meta">{esc(learning_status)}</span>
+</a>
+<div class="learning-card">
+  <span class="learning-title">Mastery</span>
+  <span class="learning-meta">{esc(learning_counts_value["active"] - learning_counts_value["new"])} seen · {esc(learning_counts_value["new"])} new</span>
+</div>
+"""
 
     generated_at = utc_now()
     provenance = provenance_payload(
@@ -893,97 +1309,61 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         title=f"{company} Day Zero CTO Knowledge Wiki",
         generated_at=generated_at,
     )
-    wiki_root.joinpath("index.html").write_text(
-        f"""<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{esc(company)} Day Zero CTO Knowledge Wiki</title>
-    <style>
-      :root {{ --ink: #172033; --muted: #5d6a7d; --line: #d9e0ea; --soft: #f6f8fb; --accent: #185a7d; }}
-      body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: var(--ink); background: #fff; }}
-      main {{ max-width: 960px; margin: 0 auto; padding: 44px 28px 64px; }}
-      h1, h2 {{ line-height: 1.2; letter-spacing: 0; }}
-      h1 {{ font-size: 34px; margin: 0 0 8px; }}
-      h2 {{ font-size: 22px; margin: 0 0 12px; }}
-      p {{ color: var(--muted); margin: 0 0 18px; }}
-      section {{ margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }}
-      a {{ color: var(--accent); text-decoration: none; }}
-      a:hover {{ text-decoration: underline; }}
-      ul {{ margin: 12px 0 0 20px; padding: 0; }}
-      li {{ margin: 6px 0; }}
-      .company-label {{ color: var(--muted); font-size: 14px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }}
-      .company-description {{ font-size: 17px; margin-bottom: 12px; }}
-      .report-list {{ margin-left: 0; list-style: none; }}
-      .report-link {{ display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; align-items: baseline; }}
-      .report-date {{ color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }}
-      .cadence-watch {{ margin: 6px 0 22px; }}
-      .cadence-watch p {{ margin-bottom: 12px; }}
-      .cadence-list {{ display: grid; gap: 10px; }}
-      .cadence-alert {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; border: 1px solid #e2b454; border-radius: 8px; background: #fff8e6; padding: 12px; }}
-      .cadence-alert strong {{ display: block; margin-bottom: 2px; }}
-      .cadence-alert span {{ color: var(--muted); font-size: 14px; }}
-      .cadence-alert code {{ display: block; white-space: normal; overflow-wrap: anywhere; background: #fff; border: 1px solid #ead49a; border-radius: 6px; padding: 8px; color: var(--ink); }}
-      .help-section p {{ max-width: 840px; }}
-      .help-grid {{ display: grid; gap: 10px; margin-top: 14px; }}
-      .help-command {{ display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }}
-      .help-command code {{ white-space: normal; overflow-wrap: anywhere; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 7px; color: var(--ink); }}
-      .wiki-details {{ margin-top: 30px; border-top: 1px solid var(--line); padding-top: 24px; }}
-      .wiki-details summary {{ display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }}
-      .wiki-details summary::-webkit-details-marker {{ display: none; }}
-      .wiki-heading {{ display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; line-height: 1.2; }}
-      .wiki-chevron {{ width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s ease; }}
-      .wiki-details[open] .wiki-chevron {{ transform: rotate(45deg); }}
-      .wiki-meta {{ color: var(--muted); font-size: 14px; text-align: right; white-space: nowrap; }}
-      .wiki-body {{ margin-top: 14px; }}
-      .core-list {{ display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }}
-      .core-card {{ display: grid; grid-template-columns: 220px minmax(0, 1fr) 190px; gap: 18px; align-items: center; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink); }}
-      .core-card:hover {{ text-decoration: none; background: var(--soft); }}
-      .core-title {{ font-weight: 700; }}
-      .core-desc {{ color: var(--muted); font-size: 14px; }}
-      .core-file {{ color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; text-align: right; white-space: nowrap; }}
-      .missing-card {{ background: var(--soft); }}
-      .report-section {{ margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }}
-      .report-section:first-of-type {{ margin-top: 0; border-top: 0; padding-top: 0; }}
-      .misc-section {{ margin-top: 0; border-top: 0; padding-top: 0; }}
-      .inline-meta {{ color: var(--muted); font-size: 14px; margin-left: 6px; }}
-      .empty-item {{ color: var(--muted); }}
-      @media (max-width: 760px) {{ main {{ padding: 28px 18px 48px; }} .report-link, .help-command {{ grid-template-columns: 1fr; gap: 4px; }} .wiki-details summary {{ align-items: flex-start; }} .wiki-meta {{ text-align: left; white-space: normal; }} .core-card {{ grid-template-columns: 1fr; gap: 3px; }} .core-file {{ text-align: left; white-space: normal; }} }}
-    </style>
-  </head>
-  <body>
-    <main>
-      <p class="company-label">For {esc(company)}</p>
-      <h1>{esc(company)} Day Zero CTO Knowledge Wiki</h1>
-      <p class="company-description">{esc(description)}</p>
-      <details class="wiki-details">
-        <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Core Context</span><span class="wiki-meta">{pluralize(len(CORE_DOCS), "file")}</span></summary>
-        <div class="wiki-body core-list">{''.join(core_links)}</div>
-      </details>
-      <details class="wiki-details">
-        <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Reports</span><span class="wiki-meta">{esc(report_status)}</span></summary>
-        <div class="wiki-body">{cadence_status_html}{''.join(report_sections)}</div>
-      </details>
-      <details class="wiki-details">
-        <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Learning</span><span class="wiki-meta">{esc(learning_status)}</span></summary>
-        <div class="wiki-body"><ul><li><a href="learning/index.html">Spaced repetition learning</a><span class="inline-meta">{esc(learning_status)}</span></li></ul></div>
-      </details>
-      <details class="wiki-details help-section">
-        <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Help</span><span class="wiki-meta">{pluralize(len(help_items), "command")}</span></summary>
-        <div class="wiki-body"><p>Ask your agent with one of these commands. Natural-language prompts can be pasted as-is; shell commands use <code>&lt;project folder&gt;</code> as a placeholder for this Day Zero CTO project folder.</p><div class="help-grid">{''.join(help_items)}</div></div>
-      </details>
-      <details class="wiki-details">
-        <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Misc</span><span class="wiki-meta">{esc(misc_status)}</span></summary>
-        <div class="wiki-body"><section class="misc-section"><h2>Handoffs</h2><ul>{handoff_links}</ul></section></div>
-      </details>
-    </main>
-    {provenance_block(provenance)}
-  </body>
-</html>
-""",
-        encoding="utf-8",
-    )
+    body = f"""
+<main>
+  <div class="topbar">
+    <div>
+      <p class="eyebrow">Command Center</p>
+      <h1>{esc(company)} Day Zero CTO</h1>
+      <p class="subtitle">{esc(description)}</p>
+    </div>
+    <div class="actions">
+      <button type="button" data-dzcto-refresh>Refresh Cadence</button>
+      <span class="status-note" data-dzcto-refresh-status></span>
+    </div>
+  </div>
+  <div class="status-grid">
+    <div class="status-card {cadence_class}"><span>Cadence</span><strong>{esc(cadence_label)}</strong></div>
+    <div class="status-card"><span>Reports</span><strong>{esc(report_count)}</strong></div>
+    <div class="status-card"><span>Learning Due</span><strong>{esc(learning_counts_value["due"])}</strong></div>
+    <div class="status-card"><span>Repos</span><strong>{esc(repo_count)}</strong></div>
+  </div>
+  <div class="command-strip">
+    <div class="command-card">
+      <strong>Primary command</strong>
+      <p>Run the next operating review from your agent or terminal.</p>
+      <code>dzcto check-stale "&lt;project folder&gt;"</code>
+    </div>
+    <div class="command-card">
+      <strong>Browser refresh</strong>
+      <p>For the button to execute Python, open this wiki through the local server.</p>
+      <code>dzcto serve "&lt;project folder&gt;"</code>
+    </div>
+  </div>
+  <details class="wiki-details" open>
+    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Cadence</span><span class="wiki-meta">{esc(report_status)}</span></summary>
+    <div class="wiki-body">{cadence_status_html}</div>
+  </details>
+  <details class="wiki-details" open>
+    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Core Context</span><span class="wiki-meta">{core_ready}/{len(CORE_DOCS)} ready</span></summary>
+    <div class="wiki-body core-grid">{''.join(core_links)}</div>
+  </details>
+  <details class="wiki-details" open>
+    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Reports</span><span class="wiki-meta">{esc(report_status)}</span></summary>
+    <div class="wiki-body reports-grid">{''.join(report_sections)}</div>
+  </details>
+  <details class="wiki-details" open>
+    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Learning</span><span class="wiki-meta">{esc(learning_status)}</span></summary>
+    <div class="wiki-body learning-grid">{learning_cards}</div>
+  </details>
+  <details class="wiki-details">
+    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Commands</span><span class="wiki-meta">{pluralize(len(help_items), "command")}</span></summary>
+    <div class="wiki-body help-grid">{''.join(help_items)}</div>
+  </details>
+</main>
+{refresh_script()}
+"""
+    write_html_page(wiki_root / "index.html", f"{company} Day Zero CTO", body, provenance)
     update_manifest(wiki_root, provenance)
 
 
@@ -997,6 +1377,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--body-file", help="Legacy: raw HTML body file")
     parser.add_argument("--data-file", help="Structured JSON report data file")
     parser.add_argument("--init", action="store_true")
+    parser.add_argument("--company-name", help="Company name to store in wiki metadata")
+    parser.add_argument("--company-description", help="Short company description to store in wiki metadata")
+    parser.add_argument("--company-url", help="Company website URL; used as context and optional description source")
+    parser.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
     args = parser.parse_args(argv)
 
     if not args.project and not args.home:
@@ -1011,9 +1395,16 @@ def main(argv: list[str]) -> int:
     core_dir.mkdir(parents=True, exist_ok=True)
     for folder in REPORT_FOLDERS:
         (reports_dir / folder).mkdir(parents=True, exist_ok=True)
-    (wiki_root / "handoffs").mkdir(parents=True, exist_ok=True)
     learning_dir.mkdir(parents=True, exist_ok=True)
     ensure_sidecar(wiki_root, project_folder, "init" if args.init else "generate-artifact")
+    apply_init_metadata(
+        wiki_root,
+        project_folder,
+        company_name_value=args.company_name,
+        company_description_value=args.company_description,
+        company_url=args.company_url,
+        repos=args.repo,
+    )
 
     written_report: Path | None = None
     if not args.init:

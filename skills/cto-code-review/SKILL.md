@@ -9,9 +9,9 @@ Review code for the risks and leverage a startup CTO should care about.
 
 ## Workflow
 
-1. Resolve the code repo or diff under review.
+1. Resolve the code repo, repos, PR, branch, or diff under review.
 2. Resolve the project folder separately when company context or durable output matters. If unknown and the user wants durable output, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
-3. Treat the code repo as read-only during review unless the user explicitly asks you to fix code.
+3. Treat the code repo or repos as read-only during review unless the user explicitly asks you to fix code.
 4. Inspect the diff, touched files, tests, and surrounding code before forming findings.
 5. Load company context when it changes the review: `core/STRATEGY.md`, `core/RISKS.md`, launch plans, incidents, customer commitments, or architecture notes from `<project>/knowledge/wiki/`.
 6. Prioritize issues that affect correctness, customer trust, security, reliability, operability, product speed, or future team load.
@@ -54,4 +54,4 @@ The helper owns the HTML template; the agent owns the judgment and structured co
 - Do not approve large changes just because they compile.
 - Mention missing tests when the changed behavior is risky.
 - When the right answer depends on product urgency, say what you would ship now and what you would follow up on.
-- Do not write code review artifacts into the code repo by default.
+- Do not write code review artifacts into code repos by default.

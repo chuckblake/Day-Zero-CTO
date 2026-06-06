@@ -14,6 +14,15 @@ from typing import Any
 from dzcto_common import sidecar_dir
 
 
+CORE_HTML = [
+    "strategy.html",
+    "team.html",
+    "operating-cadence.html",
+    "decisions.html",
+    "risks.html",
+]
+
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PYTHON = (3, 10)
 
@@ -108,6 +117,9 @@ def run_checks(project: Path | None) -> list[dict[str, Any]]:
             for name in ["config.json", "manifest.json", "diagnostics.json", "logs/latest.log"]:
                 path = sidecar / name
                 check(results, "pass" if path.exists() else "warn", f"Sidecar {name}", "Present" if path.exists() else "Missing; run dzcto init")
+            for name in CORE_HTML:
+                path = wiki / "core" / name
+                check(results, "pass" if path.exists() else "warn", f"Core HTML {name}", "Present" if path.exists() else "Missing; run dzcto refresh")
         else:
             check(results, "warn", "Knowledge wiki", f"Not created yet; run dzcto init {project}")
 

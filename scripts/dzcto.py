@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.server
 import json
+import mimetypes
 import subprocess
 import sys
+import urllib.parse
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from dzcto_artifact import cadence_alerts, parse_cadence_rules
+from dzcto_artifact import CORE_DOCS, cadence_alerts, core_doc_html_name, parse_cadence_rules
 from dzcto_common import (
     TOOL_NAME,
     TOOL_VERSION,
@@ -27,6 +30,10 @@ from dzcto_common import (
 from dzcto_progress import Progress
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SKILLS_DIR = REPO_ROOT / "skills"
+
+
 def script_path(name: str) -> Path:
     return Path(__file__).resolve().with_name(name)
 
@@ -37,6 +44,10 @@ def run_script(name: str, args: list[str]) -> int:
 
 def resolve_project(path: str) -> Path:
     return Path(path).expanduser().resolve()
+
+
+def refresh_project(project: Path) -> int:
+    return run_script("dzcto_artifact.py", ["--project", str(project), "--init"])
 
 
 def check_stale(project: Path) -> dict[str, Any]:
@@ -58,6 +69,13 @@ def check_stale(project: Path) -> dict[str, Any]:
         add("stale", "Wiki index", "Missing index.html", f"dzcto init {project}")
     else:
         add("pass", "Wiki index", "index.html exists")
+
+    for doc in CORE_DOCS:
+        html_path = wiki_root / "core" / core_doc_html_name(doc)
+        if html_path.exists():
+            add("pass", f"Core HTML {html_path.name}", "Generated core context page exists")
+        else:
+            add("stale", f"Core HTML {html_path.name}", f"Missing generated page for core/{doc}", f"dzcto refresh {project}")
 
     config = read_json(sidecar / "config.json", None)
     manifest = read_json(sidecar / "manifest.json", None)
@@ -156,18 +174,150 @@ def collect_issue_bundle(project: Path, output: Path | None, do_redact: bool) ->
     return bundle_path
 
 
+def claude_desktop_skill_markdown() -> str:
+    return """---
+name: day-zero-cto
+description: "Run Day Zero CTO workflows for early-stage technical leaders: onboarding, CTO context, tech stack mapping, risk reviews, weekly CTO reviews, CEO updates, decision help, CTO code review, and spaced-repetition learning. Use when the user asks for Day Zero CTO, CTO onboarding, startup technical leadership workflows, or durable CTO artifacts."
+---
+
+# Day Zero CTO
+
+Use Day Zero CTO to help an early-stage technical leader organize company context, operating cadence, reports, decisions, risks, and learning.
+
+## Surface Notes
+
+- In Claude Desktop chat, create or update downloadable artifacts inside Claude's available workspace unless the user has provided a mounted writable folder.
+- For local filesystem wikis, ask the user to run the local helper from a terminal or from an agent with filesystem access: `dzcto init`, `dzcto refresh`, `dzcto serve`, and `dzcto artifact`.
+- Do not write Day Zero CTO artifacts into a code repo unless the user explicitly asks.
+- Treat code repos as read-only evidence by default; multiple repos are allowed.
+
+## Workflows
+
+Read the matching reference file when needed:
+
+- `references/bootstrap-cto-context.md`: onboarding and project wiki setup.
+- `references/tech-stack.md`: codebase stack mapping.
+- `references/review-engineering-risk.md`: engineering risk review.
+- `references/weekly-cto-review.md`: weekly CTO operating review.
+- `references/write-ceo-update.md`: CEO-facing update.
+- `references/work-through-problem.md`: decision and problem walkthroughs.
+- `references/cto-code-review.md`: startup CTO code review.
+- `references/learning.md`: spaced-repetition learning.
+
+Use concise, evidence-grounded judgment. When durable local HTML is needed, prefer the bundled Python helper if the environment can run it; otherwise provide the user with the exact `dzcto` command to run locally.
+"""
+
+
+def package_claude_desktop(output: Path | None) -> Path:
+    destination = output or REPO_ROOT / "dist" / "day-zero-cto-claude-desktop.zip"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    root = "day-zero-cto"
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr(f"{root}/SKILL.md", claude_desktop_skill_markdown())
+        for skill_file in sorted(SKILLS_DIR.glob("*/SKILL.md")):
+            bundle.write(skill_file, f"{root}/references/{skill_file.parent.name}.md")
+        for script in sorted((REPO_ROOT / "scripts").glob("*.py")):
+            bundle.write(script, f"{root}/scripts/{script.name}")
+        bundle.write(REPO_ROOT / "README.md", f"{root}/references/README.md")
+        bundle.write(REPO_ROOT / "LICENSE", f"{root}/LICENSE")
+    return destination
+
+
+def serve_project(project: Path, host: str, port: int) -> int:
+    wiki_root = wiki_root_for_project(project)
+    if not (wiki_root / "index.html").exists():
+        code = refresh_project(project)
+        if code:
+            return code
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+        def send_text(self, status: int, body: str, content_type: str = "text/plain") -> None:
+            data = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self) -> None:
+            if urllib.parse.urlparse(self.path).path != "/__dzcto/refresh":
+                self.send_text(404, "Not found")
+                return
+            code = refresh_project(project)
+            if code:
+                self.send_text(500, json.dumps({"ok": False, "code": code}), "application/json")
+                return
+            self.send_text(200, json.dumps({"ok": True}), "application/json")
+
+        def do_GET(self) -> None:
+            parsed = urllib.parse.urlparse(self.path)
+            raw_path = urllib.parse.unquote(parsed.path).lstrip("/") or "index.html"
+            candidate = (wiki_root / raw_path).resolve()
+            try:
+                candidate.relative_to(wiki_root)
+            except ValueError:
+                self.send_text(403, "Forbidden")
+                return
+            if candidate.is_dir():
+                candidate = candidate / "index.html"
+            if not candidate.exists() or not candidate.is_file():
+                self.send_text(404, "Not found")
+                return
+            content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+            data = candidate.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    server = http.server.ThreadingHTTPServer((host, port), Handler)
+    print(f"Serving Day Zero CTO wiki at http://{host}:{port}/")
+    print("Press Ctrl-C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    finally:
+        server.server_close()
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="dzcto", description="Day Zero CTO local skill helper")
     sub = parser.add_subparsers(dest="command", required=True)
 
     setup = sub.add_parser("setup", help="Install Day Zero CTO for Codex Desktop")
     setup.add_argument("--editable-skills", action="store_true", help="Also link skills into ~/.codex/skills for active Codex development")
+    setup.add_argument("--plugin-link", help="Where to create the local plugin symlink")
+    setup.add_argument("--marketplace-file", help="Codex plugin marketplace/settings JSON file")
+    setup.add_argument("--editable-skills-dir", help="Destination directory for editable skill symlinks")
+    setup.add_argument("--wiki-project", help="Optional project folder to initialize during setup")
+    setup.add_argument("--company-name")
+    setup.add_argument("--company-description")
+    setup.add_argument("--company-url")
+    setup.add_argument("--repo", action="append", default=[], help="Read-only code repository path for the wiki; may be repeated")
 
     doctor = sub.add_parser("doctor", help="Check install and optional project health")
     doctor.add_argument("--project", help="Optional project folder")
 
     init = sub.add_parser("init", help="Create or refresh a project knowledge wiki")
     init.add_argument("project", help="Project folder, such as ~/Documents/Acme")
+    init.add_argument("--company-name")
+    init.add_argument("--company-description")
+    init.add_argument("--company-url")
+    init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
+
+    refresh = sub.add_parser("refresh", help="Refresh wiki indexes, core HTML pages, and cadence alerts")
+    refresh.add_argument("project", help="Project folder")
+
+    serve = sub.add_parser("serve", help="Serve the wiki locally so the HTML refresh button can run Python")
+    serve.add_argument("project", help="Project folder")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8765)
 
     stale = sub.add_parser("check-stale", help="Check whether generated artifacts need attention")
     stale.add_argument("project", help="Project folder")
@@ -178,6 +328,9 @@ def main(argv: list[str]) -> int:
     bundle.add_argument("project", help="Project folder")
     bundle.add_argument("--output", help="Optional zip output path")
     bundle.add_argument("--no-redact", action="store_true", help="Do not redact config/log text")
+
+    claude_desktop = sub.add_parser("package-claude-desktop", help="Build an uploadable Claude Desktop custom skill zip")
+    claude_desktop.add_argument("--output", help="Zip output path")
 
     artifact = sub.add_parser("artifact", help="Generate a structured report artifact")
     artifact.add_argument("--project", required=True)
@@ -208,18 +361,42 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "setup":
-        progress = Progress(4 if args.editable_skills else 3)
+        total = 3 + (1 if args.editable_skills else 0) + (1 if args.wiki_project else 0)
+        progress = Progress(total)
         progress.step("Install Codex plugin marketplace entry")
-        code = run_script("install_local_marketplace.py", [])
+        setup_args = []
+        if args.plugin_link:
+            setup_args.extend(["--plugin-link", args.plugin_link])
+        if args.marketplace_file:
+            setup_args.extend(["--marketplace-file", args.marketplace_file])
+        code = run_script("install_local_marketplace.py", setup_args)
         if code:
             return code
         if args.editable_skills:
             progress.step("Install editable Codex skill links")
-            code = run_script("install_local_skills.py", [])
+            skill_args = []
+            if args.editable_skills_dir:
+                skill_args.extend(["--dest-dir", args.editable_skills_dir])
+            code = run_script("install_local_skills.py", skill_args)
+            if code:
+                return code
+        if args.wiki_project:
+            progress.step("Initialize project wiki")
+            init_args = ["--project", str(resolve_project(args.wiki_project)), "--init"]
+            if args.company_name:
+                init_args.extend(["--company-name", args.company_name])
+            if args.company_description:
+                init_args.extend(["--company-description", args.company_description])
+            if args.company_url:
+                init_args.extend(["--company-url", args.company_url])
+            for repo in args.repo:
+                init_args.extend(["--repo", repo])
+            code = run_script("dzcto_artifact.py", init_args)
             if code:
                 return code
         progress.step("Run install doctor")
-        code = run_script("dzcto_doctor.py", [])
+        doctor_args = ["--project", str(resolve_project(args.wiki_project))] if args.wiki_project else []
+        code = run_script("dzcto_doctor.py", doctor_args)
         if code:
             return code
         progress.step("Next step", "restart Codex Desktop or start a fresh session")
@@ -231,7 +408,22 @@ def main(argv: list[str]) -> int:
 
     if args.command == "init":
         project = resolve_project(args.project)
-        return run_script("dzcto_artifact.py", ["--project", str(project), "--init"])
+        init_args = ["--project", str(project), "--init"]
+        if args.company_name:
+            init_args.extend(["--company-name", args.company_name])
+        if args.company_description:
+            init_args.extend(["--company-description", args.company_description])
+        if args.company_url:
+            init_args.extend(["--company-url", args.company_url])
+        for repo in args.repo:
+            init_args.extend(["--repo", repo])
+        return run_script("dzcto_artifact.py", init_args)
+
+    if args.command == "refresh":
+        return refresh_project(resolve_project(args.project))
+
+    if args.command == "serve":
+        return serve_project(resolve_project(args.project), args.host, args.port)
 
     if args.command == "check-stale":
         project = resolve_project(args.project)
@@ -246,6 +438,12 @@ def main(argv: list[str]) -> int:
         project = resolve_project(args.project)
         output = Path(args.output).expanduser().resolve() if args.output else None
         path = collect_issue_bundle(project, output, not args.no_redact)
+        print(path)
+        return 0
+
+    if args.command == "package-claude-desktop":
+        output = Path(args.output).expanduser().resolve() if args.output else None
+        path = package_claude_desktop(output)
         print(path)
         return 0
 

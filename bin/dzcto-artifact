@@ -3,15 +3,9 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PY_SCRIPT="$SCRIPT_DIR/../scripts/dzcto_artifact.py"
-RB_SCRIPT="$SCRIPT_DIR/../scripts/dzcto-artifact.rb"
 
 if command -v python3 >/dev/null 2>&1; then
   exec python3 "$PY_SCRIPT" "$@"
-fi
-
-if command -v ruby >/dev/null 2>&1; then
-  echo "Day Zero CTO is using the legacy Ruby artifact helper because python3 was not found." >&2
-  exec ruby "$RB_SCRIPT" "$@"
 fi
 
 echo "Day Zero CTO requires python3 to run dzcto-artifact. Install Python 3.10+ or use an agent/runtime that provides it." >&2

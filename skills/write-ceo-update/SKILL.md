@@ -11,7 +11,7 @@ Translate engineering reality into concise business signal for the CEO or foundi
 
 1. Identify the audience and time window. If unspecified, assume a weekly CEO update.
 2. Resolve the project folder. If unknown, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
-3. Resolve an optional code repo pointer separately. Treat the code repo as read-only evidence unless the user explicitly asks for code changes.
+3. Resolve one or more optional code repo pointers separately. Treat code repos as read-only evidence unless the user explicitly asks for code changes.
 4. Load relevant context: `core/STRATEGY.md`, recent `reports/weekly-reviews/` files, `core/RISKS.md`, `core/DECISIONS.md`, planning docs, incidents, recent commits, and user notes.
 5. Extract only the information that changes business judgment: progress, blocked outcomes, customer impact, risk, asks, and upcoming decisions.
 6. Draft the update in the requested tone. If no tone is specified, use direct, calm, non-defensive language.
@@ -48,4 +48,4 @@ The helper owns the HTML template; the agent owns the judgment and structured co
 - Do not oversell progress or hide uncertainty.
 - Make asks explicit.
 - Preserve nuance when the news is mixed: confidence, caveats, and tradeoffs belong in the update.
-- Do not write CEO updates into the code repo by default.
+- Do not write CEO updates into code repos by default.

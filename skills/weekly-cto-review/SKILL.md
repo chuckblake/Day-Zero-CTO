@@ -10,7 +10,7 @@ Turn scattered engineering activity into a clear operating picture and next-week
 ## Workflow
 
 1. Resolve the project folder. If unknown, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
-2. Resolve an optional code repo pointer separately. Treat the code repo as read-only evidence unless the user explicitly asks for code changes.
+2. Resolve one or more optional code repo pointers separately. Treat code repos as read-only evidence unless the user explicitly asks for code changes.
 3. Load context files from `<project>/knowledge/wiki/` if present: `core/STRATEGY.md`, `core/TEAM.md`, `core/OPERATING_CADENCE.md`, `core/DECISIONS.md`, `core/RISKS.md`, and recent reports.
 4. Gather current evidence from available read-only sources: recent commits, open diffs, test/CI status, issues, project docs, incidents, and user-provided notes.
 5. Compare progress against the company's current goals, not against generic engineering ideals.
@@ -49,4 +49,4 @@ The helper owns the HTML template; the agent owns the judgment and structured co
 - Prefer fewer sharper risks over a long risk catalog.
 - Distinguish delivery slippage, product uncertainty, technical risk, and people/process risk.
 - Preserve or update `core/RISKS.md` and `core/DECISIONS.md` only in the project knowledge wiki, and only when the user asks for durable follow-through.
-- Do not write Day Zero CTO reports into the code repo by default.
+- Do not write Day Zero CTO reports into code repos by default.

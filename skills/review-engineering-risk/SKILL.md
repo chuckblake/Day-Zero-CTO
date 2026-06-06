@@ -10,7 +10,7 @@ Find the engineering risks that could realistically hurt the startup's current g
 ## Workflow
 
 1. Resolve the project folder. If unknown, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
-2. Resolve an optional code repo pointer separately. Treat the code repo as read-only evidence unless the user explicitly asks for code changes.
+2. Resolve one or more optional code repo pointers separately. Treat code repos as read-only evidence unless the user explicitly asks for code changes.
 3. Load company context from `<project>/knowledge/wiki/`: `core/STRATEGY.md`, `core/RISKS.md`, `core/DECISIONS.md`, planning docs, incident notes, and relevant reports.
 4. Define the review horizon: launch, next week, next month, fundraise, enterprise sale, major migration, or ongoing operations.
 5. Inspect evidence before asserting risk. Use code, docs, incidents, tests, CI, architecture notes, and user-provided context.
@@ -63,4 +63,4 @@ The helper owns the HTML template; the agent owns the judgment and structured co
 - Do not confuse code ugliness with startup risk.
 - Prefer mitigations that reduce risk without freezing product learning.
 - Call out when the cheapest mitigation is a manual process, monitoring habit, or sharper owner assignment.
-- Do not write risk reviews or Day Zero CTO context files into the code repo by default.
+- Do not write risk reviews or Day Zero CTO context files into code repos by default.

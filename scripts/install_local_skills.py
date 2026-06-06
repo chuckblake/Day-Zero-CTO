@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from dzcto_progress import Progress
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = REPO_ROOT / "skills"
-DEST_DIR = Path.home() / ".codex" / "skills"
+DEFAULT_DEST_DIR = Path.home() / ".codex" / "skills"
 
 
 def resolved_symlink(path: Path) -> Path:
@@ -22,11 +23,11 @@ def skill_sources() -> list[Path]:
     return sorted(source for source in SKILLS_DIR.iterdir() if source.is_dir() and (source / "SKILL.md").exists())
 
 
-def stale_links() -> list[Path]:
-    if not DEST_DIR.exists():
+def stale_links(dest_dir: Path) -> list[Path]:
+    if not dest_dir.exists():
         return []
     links = []
-    for destination in sorted(DEST_DIR.iterdir()):
+    for destination in sorted(dest_dir.iterdir()):
         if not destination.is_symlink():
             continue
         current_target = resolved_symlink(destination)
@@ -39,18 +40,23 @@ def stale_links() -> list[Path]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Install editable Day Zero CTO skills into a local skills directory")
+    parser.add_argument("--dest-dir", default=str(DEFAULT_DEST_DIR), help="Destination skills directory")
+    args = parser.parse_args()
+    dest_dir = Path(args.dest_dir).expanduser().resolve()
+
     if not SKILLS_DIR.is_dir():
         raise SystemExit(f"Missing skills directory: {SKILLS_DIR}")
 
     sources = skill_sources()
-    stale = stale_links()
+    stale = stale_links(dest_dir)
     progress = Progress(5 + len(stale) + len(sources))
     progress.step("Verify install target", "Codex Desktop editable local skills only")
     progress.note("For Claude Code, use the plugin marketplace or launch with claude --plugin-dir; do not use this script.")
     progress.step("Verify skills source", str(SKILLS_DIR))
     progress.note(f"Found {len(sources)} skill folders")
-    progress.step("Ensure Codex skills destination", str(DEST_DIR))
-    DEST_DIR.mkdir(parents=True, exist_ok=True)
+    progress.step("Ensure Codex skills destination", str(dest_dir))
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
     progress.step("Remove stale editable skill links", f"{len(stale)} stale links")
     for destination in stale:
@@ -59,7 +65,7 @@ def main() -> int:
         progress.note(f"Removed {destination}")
 
     for source in sources:
-        destination = DEST_DIR / source.name
+        destination = dest_dir / source.name
         progress.step("Link editable skill", source.name)
         if destination.is_symlink():
             current_target = resolved_symlink(destination)

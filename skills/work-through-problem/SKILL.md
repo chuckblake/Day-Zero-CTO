@@ -11,7 +11,7 @@ Help the CTO make a clear, grounded decision without turning uncertainty into fa
 
 1. Name the problem in one sentence and identify the decision that actually has to be made.
 2. Resolve the project folder. If it is unknown and the user wants durable output, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
-3. Resolve an optional code repo pointer separately. Treat the code repo as read-only evidence unless the user explicitly asks for code changes.
+3. Resolve one or more optional code repo pointers separately. Treat code repos as read-only evidence unless the user explicitly asks for code changes.
 4. Load relevant Day Zero CTO context when available: `core/STRATEGY.md`, `core/TEAM.md`, `core/OPERATING_CADENCE.md`, `core/DECISIONS.md`, `core/RISKS.md`, recent reports, issue notes, or code/docs tied to the problem from `<project>/knowledge/wiki/`.
 5. Separate facts, assumptions, constraints, and unknowns.
 6. Identify the affected parties: CEO/founders, customers, engineers, sales/support, investors, or future maintainers.
@@ -53,4 +53,4 @@ The chat response should summarize the recommendation and link to the generated 
 - Be candid about weak evidence.
 - Avoid generic executive advice. Tie claims to the startup's actual stage, constraints, code, customers, or team.
 - Prefer reversible decisions when uncertainty is high and the cost of learning is low.
-- Record important decisions in the project knowledge wiki, not the code repo, when the user wants a durable artifact.
+- Record important decisions in the project knowledge wiki, not code repos, when the user wants a durable artifact.

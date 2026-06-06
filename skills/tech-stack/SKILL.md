@@ -1,26 +1,26 @@
 ---
 name: tech-stack
-description: "Review a startup codebase or technical workspace and create a durable HTML Tech Stack report in the project knowledge wiki. Use when the user asks what stack is being used, wants codebase onboarding, needs a technology inventory, wants architecture/system context, or asks for a stack review across frameworks, languages, infrastructure, data stores, integrations, tooling, and operational risks."
+description: "Review one or more startup codebases or technical workspaces and create a durable HTML Tech Stack report in the project knowledge wiki. Use when the user asks what stack is being used, wants codebase onboarding, needs a technology inventory, wants architecture/system context, or asks for a stack review across frameworks, languages, infrastructure, data stores, integrations, tooling, and operational risks."
 ---
 
 # Tech Stack
 
-Create a grounded technology inventory and system map from the codebase without assuming a framework or language.
+Create a grounded technology inventory and system map from one or more codebases without assuming a framework or language.
 
 ## Workflow
 
 1. Resolve the project folder. If unknown, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
-2. Resolve the codebase location separately. A Tech Stack report normally needs a codebase; if none is available, clearly label the report as docs-only.
-3. Treat the codebase as read-only unless the user explicitly asks for code changes.
+2. Resolve one or more codebase locations separately. A Tech Stack report normally needs codebase evidence; if none is available, clearly label the report as docs-only.
+3. Treat codebases as read-only unless the user explicitly asks for code changes.
 4. Load relevant context from `<project>/knowledge/wiki/`: `core/STRATEGY.md`, recent reports, `core/RISKS.md`, `core/DECISIONS.md`, and any existing Tech Stack report.
-5. Inspect stack evidence across the repo, choosing files by ecosystem instead of assuming one:
+5. Inspect stack evidence across each repo, choosing files by ecosystem instead of assuming one:
    - Package manifests and lockfiles.
    - Framework configuration and app entrypoints.
    - Database schemas, migrations, ORM config, seeds, and data access layers.
    - CI, deployment, container, infrastructure, hosting, and process manager config.
    - Runtime service docs, environment examples, queue/cache/search/storage integrations, and API clients.
    - Test, lint, formatting, observability, error reporting, analytics, and security tooling.
-6. Separate facts from inferences. Use `Assumption:` where evidence is partial.
+6. Separate facts from inferences. Use `Assumption:` where evidence is partial. When multiple repos are involved, make the source repo clear in evidence and sources.
 7. Write structured JSON report data and render the canonical HTML artifact under `<project>/knowledge/wiki/reports/tech-stack/`.
 8. Summarize the stack shape, biggest onboarding clues, and any stack risks in chat.
 

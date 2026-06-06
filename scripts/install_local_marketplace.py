@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -12,20 +13,31 @@ from dzcto_progress import Progress
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_NAME = "day-zero-cto"
-PLUGIN_LINK = Path.home() / "plugins" / PLUGIN_NAME
-MARKETPLACE_PATH = Path.home() / ".agents" / "plugins" / "marketplace.json"
+DEFAULT_PLUGIN_LINK = Path.home() / "plugins" / PLUGIN_NAME
+DEFAULT_MARKETPLACE_PATH = Path.home() / ".agents" / "plugins" / "marketplace.json"
 
 
-def read_marketplace(progress: Progress) -> dict:
-    if MARKETPLACE_PATH.exists():
+def absolute_without_resolving(path: str) -> Path:
+    expanded = Path(path).expanduser()
+    return expanded if expanded.is_absolute() else (Path.cwd() / expanded).absolute()
+
+
+def plugin_source_path(plugin_link: Path, marketplace_path: Path) -> str:
+    if plugin_link == DEFAULT_PLUGIN_LINK and marketplace_path == DEFAULT_MARKETPLACE_PATH:
+        return f"./plugins/{PLUGIN_NAME}"
+    return str(plugin_link)
+
+
+def read_marketplace(progress: Progress, marketplace_path: Path) -> dict:
+    if marketplace_path.exists():
         try:
-            payload = json.loads(MARKETPLACE_PATH.read_text(encoding="utf-8"))
-            progress.note(f"Loaded existing marketplace: {MARKETPLACE_PATH}")
+            payload = json.loads(marketplace_path.read_text(encoding="utf-8"))
+            progress.note(f"Loaded existing marketplace: {marketplace_path}")
             return payload if isinstance(payload, dict) else {}
         except json.JSONDecodeError:
-            progress.note(f"Existing marketplace was invalid JSON; rewriting: {MARKETPLACE_PATH}")
+            progress.note(f"Existing marketplace was invalid JSON; rewriting: {marketplace_path}")
             return {}
-    progress.note(f"No marketplace yet; creating: {MARKETPLACE_PATH}")
+    progress.note(f"No marketplace yet; creating: {marketplace_path}")
     return {
         "name": "personal",
         "interface": {
@@ -35,16 +47,16 @@ def read_marketplace(progress: Progress) -> dict:
     }
 
 
-def write_marketplace_entry(progress: Progress) -> None:
-    MARKETPLACE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = read_marketplace(progress)
+def write_marketplace_entry(progress: Progress, plugin_link: Path, marketplace_path: Path) -> None:
+    marketplace_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = read_marketplace(progress, marketplace_path)
     payload.setdefault("plugins", [])
 
     entry = {
         "name": PLUGIN_NAME,
         "source": {
             "source": "local",
-            "path": f"./plugins/{PLUGIN_NAME}",
+            "path": plugin_source_path(plugin_link, marketplace_path),
         },
         "policy": {
             "installation": "AVAILABLE",
@@ -62,38 +74,46 @@ def write_marketplace_entry(progress: Progress) -> None:
         payload["plugins"].append(entry)
         progress.note("Added day-zero-cto marketplace entry")
 
-    MARKETPLACE_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    marketplace_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def link_plugin(progress: Progress) -> None:
-    PLUGIN_LINK.parent.mkdir(parents=True, exist_ok=True)
+def link_plugin(progress: Progress, plugin_link: Path) -> None:
+    plugin_link.parent.mkdir(parents=True, exist_ok=True)
 
-    if PLUGIN_LINK.is_symlink():
-        current_target = (PLUGIN_LINK.parent / os.readlink(PLUGIN_LINK)).resolve()
+    if plugin_link.is_symlink():
+        current_target = (plugin_link.parent / os.readlink(plugin_link)).resolve()
         if current_target != REPO_ROOT:
-            PLUGIN_LINK.unlink()
-            PLUGIN_LINK.symlink_to(REPO_ROOT)
-            progress.note(f"Repointed plugin link: {PLUGIN_LINK} -> {REPO_ROOT}")
+            plugin_link.unlink()
+            plugin_link.symlink_to(REPO_ROOT)
+            progress.note(f"Repointed plugin link: {plugin_link} -> {REPO_ROOT}")
         else:
-            progress.note(f"Plugin link already correct: {PLUGIN_LINK} -> {REPO_ROOT}")
-    elif PLUGIN_LINK.exists():
-        raise SystemExit(f"{PLUGIN_LINK} already exists and is not a symlink. Move it aside, then rerun this script.")
+            progress.note(f"Plugin link already correct: {plugin_link} -> {REPO_ROOT}")
+    elif plugin_link.exists():
+        raise SystemExit(f"{plugin_link} already exists and is not a symlink. Move it aside, then rerun this script.")
     else:
-        PLUGIN_LINK.symlink_to(REPO_ROOT)
-        progress.note(f"Created plugin link: {PLUGIN_LINK} -> {REPO_ROOT}")
+        plugin_link.symlink_to(REPO_ROOT)
+        progress.note(f"Created plugin link: {plugin_link} -> {REPO_ROOT}")
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Install Day Zero CTO into a local Codex Desktop plugin marketplace")
+    parser.add_argument("--plugin-link", default=str(DEFAULT_PLUGIN_LINK), help="Where to create the local plugin symlink")
+    parser.add_argument("--marketplace-file", default=str(DEFAULT_MARKETPLACE_PATH), help="Codex plugin marketplace/settings JSON file")
+    args = parser.parse_args()
+
+    plugin_link = absolute_without_resolving(args.plugin_link)
+    marketplace_path = absolute_without_resolving(args.marketplace_file)
+
     progress = Progress(6)
     progress.step("Verify install target", "Codex Desktop local plugin marketplace")
     progress.step("Locate repo", str(REPO_ROOT))
     progress.step("Create or update plugin symlink")
-    link_plugin(progress)
+    link_plugin(progress, plugin_link)
     progress.step("Create or update marketplace entry")
-    write_marketplace_entry(progress)
+    write_marketplace_entry(progress, plugin_link, marketplace_path)
     progress.step("Summarize install")
-    progress.note(f"Plugin link: {PLUGIN_LINK} -> {REPO_ROOT}")
-    progress.note(f"Marketplace: {MARKETPLACE_PATH}")
+    progress.note(f"Plugin link: {plugin_link} -> {REPO_ROOT}")
+    progress.note(f"Marketplace: {marketplace_path}")
     progress.step("Next step", "Restart Codex Desktop or start a fresh session")
     return 0
 

@@ -2,32 +2,30 @@
 
 Day Zero CTO is a cross-agent skill pack for the earliest version of the CTO job: making technical judgment, operating the engineering loop, and communicating clearly before the company has much process.
 
-It supports Codex Desktop and Claude Code from the same shared `skills/` and `scripts/` implementation.
+It supports Codex Desktop, Claude Code, and Claude Desktop custom-skill style usage from the same shared `skills/` and Python helper implementation.
 
-The core idea is simple: do not build a generic executive coach. Build a portable CTO operating system that becomes company-specific through local context.
-
-Day Zero CTO is adjacent to AI shipping stacks, but it is not trying to be another virtual engineering team. It is the leadership wrapper around that work: the context, cadence, decisions, risk register, codebase map, and executive communication that make shipping fit the company.
+The core idea is simple: build a portable CTO operating system that becomes company-specific through local context.
 
 ## What This Is
 
 Day Zero CTO gives early-stage technical leaders a first set of repeatable CTO workflows:
 
 - Think through hard technical, product, team, and process problems.
-- Keep a lightweight memory of strategy, decisions, risks, team shape, and operating cadence in a project-level `knowledge/wiki` workspace.
+- Keep strategy, decisions, risks, team shape, and operating cadence in a project-level `knowledge/wiki` workspace.
 - Run recurring CTO reviews that produce durable HTML artifacts.
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
-- Map the tech stack so future agents and technical leaders can understand the codebase quickly.
+- Map tech stacks across one or more read-only codebases.
 - Review code through the lens of startup risk and leverage.
 - Teach system knowledge with spaced repetition.
 
 It is intentionally small. The first version should earn trust by observing the company, naming reality clearly, and producing useful artifacts.
 
-## First Skill Set
+## Skill Set
 
 | Skill | Purpose |
 | --- | --- |
-| `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, connect read-only codebases, create core context, and offer initial reports and learning setup. |
-| `tech-stack` | Review the codebase and create a durable Tech Stack report. |
+| `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, capture company context, connect read-only codebases, create core context, and offer initial reports and learning setup. |
+| `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
 | `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
 | `write-ceo-update` | Translate engineering work, risks, and asks into CEO-facing signal. |
@@ -35,15 +33,15 @@ It is intentionally small. The first version should earn trust by observing the 
 | `cto-code-review` | Review code with a startup CTO lens: correctness, trust, operability, speed, and maintainability. |
 | `learning` | Teach one focused system concept and schedule it for spaced repetition. |
 
-## Context Files
+## Project Wiki
 
-The pack works best when each startup or engagement has a project folder outside the code repo, for example:
+Each startup or engagement gets a project folder outside the code repo, for example:
 
 ```text
 ~/Documents/<Company>/
 ```
 
-Day Zero CTO creates and owns `knowledge/wiki/` inside that project folder. Code repos are read-only evidence sources by default. Day Zero CTO context and reports should live in the project knowledge wiki unless the user explicitly asks to write into a code repo.
+Day Zero CTO creates and owns `knowledge/wiki/` inside that project folder. The `--wiki-project` or `dzcto init <project>` path controls both the directory name and where the wiki lands. Code repos are read-only evidence sources by default, and `--repo` can be repeated for products that span multiple repos.
 
 Recommended folder shape:
 
@@ -60,10 +58,15 @@ Recommended folder shape:
           latest.log
       core/
         STRATEGY.md
+        strategy.html
         TEAM.md
+        team.html
         OPERATING_CADENCE.md
+        operating-cadence.html
         DECISIONS.md
+        decisions.html
         RISKS.md
+        risks.html
       reports/
         tech-stack/
         engineering-risk/
@@ -72,91 +75,159 @@ Recommended folder shape:
         decisions/
         code-reviews/
       learning/
-      handoffs/
+        index.html
+        checklists/
 ```
 
-The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company and shows company context from `core/STRATEGY.md` under the title. The page organizes the workspace into collapsible sections: Core Context, Reports, Learning, Help, and Misc. Reports show run dates next to links and include cadence status from `core/OPERATING_CADENCE.md`; Help contains commands the user can run in their agent; Misc contains handoffs and other non-report artifacts.
+All user-facing wiki pages are HTML. Core context starts as editable Markdown source under `core/`, then the helper renders matching HTML pages. The bookmarkable command center is `knowledge/wiki/index.html`.
 
-The hidden `knowledge/wiki/.dzcto/` directory is the local metadata sidecar for generated artifacts. It stores the project config, artifact manifest, diagnostics, and latest helper log. Generated HTML pages also embed a small provenance JSON block with the Day Zero CTO version, generation time, config hash, source hashes when available, and artifact ID. Use `dzcto check-stale "<project folder>"` to compare the sidecar, manifest, and cadence rules against the current wiki state.
+The index shows company information under the title, then collapsible command-center sections:
 
-Core files:
+- `Cadence`: due alerts from `core/OPERATING_CADENCE.md`.
+- `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
+- `Reports`: dated links to report artifacts.
+- `Learning`: spaced-repetition state and mastery progress.
+- `Commands`: useful Day Zero CTO prompts and helper commands.
 
-- `STRATEGY.md`: stage, customer, product thesis, current goals, constraints, and non-goals.
-- `TEAM.md`: people, roles, ownership, responsibilities, and communication preferences.
-- `OPERATING_CADENCE.md`: weekly review, CEO update rhythm, planning cycle, incident reviews, and expected artifacts.
-- `DECISIONS.md`: decision log with context, options, rationale, owner, and revisit trigger.
-- `RISKS.md`: risk register with evidence, impact, likelihood, owner, mitigation, and review date.
+The hidden `.dzcto/` directory is the local metadata sidecar. It stores project config, connected repo paths, artifact manifests, diagnostics, and latest helper logs. Generated HTML pages embed a `dzcto-provenance` JSON block with tool version, generation time, config hash, source hashes when available, and artifact ID.
 
-The `bootstrap-cto-context` skill can create these files under `knowledge/wiki/core/` and mark missing information as `Unknown` instead of inventing company facts.
+## Cadence Rules
 
-`OPERATING_CADENCE.md` may include an `Index Cadence Rules` section. The helper reads this table whenever it regenerates the index and shows an alert when a scheduled report has never run or is due:
+`OPERATING_CADENCE.md` may include an `Index Cadence Rules` section. The helper reads this table whenever it regenerates the index and shows an alert when a scheduled Day Zero CTO report has never run or is due:
 
 ```markdown
 ## Index Cadence Rules
 
 | Report | Folder | Cadence | Grace Days | Command |
 | --- | --- | --- | --- | --- |
-| Weekly CTO Review | weekly-reviews | weekly | 0 | Run the weekly CTO review for Acme. Use project folder `~/Documents/Acme`. |
+| Weekly CTO Review | weekly-reviews | weekly | 0 | Run the weekly CTO review for Acme. |
 ```
 
 Supported cadences include `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, and `every N days/weeks/months`.
 
-## Repo Structure
+The dashboard refresh button can update cadence alerts only when the wiki is served through the local helper:
 
-```text
-day-zero-cto/
-├── .codex-plugin/
-│   └── plugin.json
-├── .claude-plugin/
-│   ├── plugin.json
-│   └── marketplace.json
-├── .github/
-│   └── ISSUE_TEMPLATE/
-├── bin/
-│   ├── dzcto
-│   ├── dzcto-artifact
-│   ├── dzcto-doctor
-│   └── dzcto-learning
-├── skills/
-│   ├── bootstrap-cto-context/
-│   ├── tech-stack/
-│   ├── work-through-problem/
-│   ├── weekly-cto-review/
-│   ├── write-ceo-update/
-│   ├── review-engineering-risk/
-│   ├── cto-code-review/
-│   └── learning/
-├── scripts/
-│   ├── dzcto.py
-│   ├── dzcto_artifact.py
-│   ├── dzcto_common.py
-│   ├── dzcto_doctor.py
-│   ├── dzcto_learning.py
-│   ├── install_local_marketplace.py
-│   ├── install_local_skills.py
-│   ├── uninstall_local.py
-│   ├── dzcto-artifact.rb
-│   ├── dzcto-learning.rb
-│   ├── install-local-marketplace.rb
-│   └── install-local-skills.rb
-├── AGENTS.md
-├── INSTALL_FOR_AGENTS.md
-└── README.md
+```bash
+dzcto serve "<project folder>"
 ```
 
-Each skill is a normal skill folder with a `SKILL.md` file. `agents/openai.yaml` files are Codex UI metadata. Claude Code reads the shared `SKILL.md` files through the plugin.
+Open the printed local URL and click `Refresh Cadence`. A plain `file://` page cannot run Python directly, so the button will tell the user to use `dzcto serve`.
 
-`scripts/dzcto.py` is the canonical local command surface used by the skills and public install docs. It exposes `setup`, `doctor`, `init`, `artifact`, `learning`, `check-stale`, and `collect-issue-bundle`.
+## Install
 
-`scripts/dzcto_artifact.py` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes `.dzcto` sidecar metadata, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Learning, Help, and Misc sections.
+### Codex Desktop
 
-Report bodies are template-rendered from structured JSON via `--data-file`. The agent supplies judgment and report facts; the helper owns the HTML structure, styling, ordering, escaping, and repeated section layout. Raw `--body-file` HTML remains as a legacy fallback.
+Use this path when you want Day Zero CTO available as a Codex Desktop plugin:
 
-`scripts/dzcto_learning.py` manages spaced-repetition learning items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, writes a mastery checklist under `knowledge/wiki/learning/checklists/`, and refreshes the wiki index after learning state changes.
+```bash
+git clone https://github.com/chuckblake/Day-Zero-CTO.git
+cd Day-Zero-CTO
+bin/dzcto setup
+```
 
-`bin/dzcto` is the convenience wrapper for the canonical command. `bin/dzcto-artifact`, `bin/dzcto-learning`, and `bin/dzcto-doctor` remain as compatibility wrappers for existing installs. Claude Code adds plugin `bin/` executables to the Bash tool `PATH`; Codex users can run `bin/dzcto` from the repo or call `python3 scripts/dzcto.py`.
+The installer requires Python 3.10+ and uses only the Python standard library. It prints small numbered progress steps such as `[1/5]`.
 
-Current runtime requirement: Python 3.10+. The helpers use only the Python standard library. The older Ruby helpers remain as a legacy fallback for existing local installs, but new public install instructions and wrappers are Python-first. Run `bin/dzcto doctor` to check the runtime, manifests, wrappers, helper syntax, and optional project folder before promising generated artifacts.
+Default install locations:
+
+- Plugin symlink: `~/plugins/day-zero-cto`
+- Codex plugin marketplace/settings file: `~/.agents/plugins/marketplace.json`
+- Optional editable skill symlinks: `~/.codex/skills`
+
+You can choose the wiki project folder, plugin link, marketplace/settings file, and editable skill directory during install:
+
+```bash
+bin/dzcto setup \
+  --wiki-project "$HOME/Documents/Acme CTO" \
+  --company-name "Acme" \
+  --company-url "https://acme.example" \
+  --repo "$HOME/code/acme-app" \
+  --repo "$HOME/code/acme-api" \
+  --plugin-link "$HOME/plugins/day-zero-cto" \
+  --marketplace-file "$HOME/.agents/plugins/marketplace.json" \
+  --editable-skills \
+  --editable-skills-dir "$HOME/.codex/skills"
+```
+
+Use `--company-description` instead of `--company-url` when you want to provide the company summary yourself.
+
+To refresh an existing local Codex install after pulling changes:
+
+```bash
+git pull
+bin/dzcto setup
+```
+
+For a complete local reinstall from an existing clone:
+
+```bash
+python3 scripts/uninstall_local.py
+bin/dzcto setup
+```
+
+`uninstall_local.py` only removes Day Zero CTO marketplace entries and symlinks that point at the current clone.
+
+If you installed with custom settings paths, pass the matching paths to uninstall:
+
+```bash
+python3 scripts/uninstall_local.py \
+  --plugin-link "$HOME/plugins/day-zero-cto" \
+  --marketplace-file "$HOME/.agents/plugins/marketplace.json" \
+  --editable-skills-dir "$HOME/.codex/skills"
+```
+
+### Claude Code
+
+Claude Code can install Day Zero CTO as a plugin marketplace:
+
+```bash
+claude plugin marketplace add chuckblake/Day-Zero-CTO
+claude plugin install day-zero-cto@day-zero-cto
+```
+
+Inside interactive Claude Code:
+
+```text
+/plugin marketplace add chuckblake/Day-Zero-CTO
+/plugin install day-zero-cto@day-zero-cto
+```
+
+For local development without installing:
+
+```bash
+git clone https://github.com/chuckblake/Day-Zero-CTO.git
+claude --plugin-dir ./Day-Zero-CTO
+```
+
+Claude Code plugin install does not require Ruby. The installed `dzcto` helper command requires Python 3.10+ wherever Claude Code executes shell commands.
+
+### Claude Desktop
+
+Claude Desktop style usage is packaged as an uploadable custom skill bundle:
+
+```bash
+git clone https://github.com/chuckblake/Day-Zero-CTO.git
+cd Day-Zero-CTO
+bin/dzcto package-claude-desktop
+```
+
+Upload `dist/day-zero-cto-claude-desktop.zip` as a custom skill where your Claude plan/client supports custom skills.
+
+Claude Desktop chat can follow the Day Zero CTO procedures and create downloadable artifacts in its workspace. Durable local filesystem wikis, browser refresh, and stale checks still need a local helper with filesystem access, such as Codex Desktop, Claude Code, or a terminal running `dzcto init`, `dzcto artifact`, `dzcto refresh`, or `dzcto serve`.
+
+## Helper Commands
+
+Run these from a session where the plugin `bin/` directory is on `PATH`, or from a local clone with `bin/dzcto`.
+
+```bash
+dzcto setup
+dzcto init "<project folder>" --company-name "<name>" --company-description "<summary>" --repo "<repo path>"
+dzcto refresh "<project folder>"
+dzcto serve "<project folder>"
+dzcto doctor --project "<project folder>"
+dzcto check-stale "<project folder>"
+dzcto collect-issue-bundle "<project folder>"
+dzcto package-claude-desktop
+```
 
 ## Report Payloads
 
@@ -179,127 +250,50 @@ The supported report kinds have fixed section templates:
 
 Optional `metrics` are rendered as summary cards when present.
 
-## Install
-
-### Codex Desktop
-
-Use this path when you want Day Zero CTO available as a Codex Desktop plugin. The installer prints numbered progress like `[1/6]` so agent transcripts are easy to follow.
-
-```bash
-git clone https://github.com/chuckblake/Day-Zero-CTO.git
-cd Day-Zero-CTO
-bin/dzcto setup
-```
-
-The installer requires Python 3.10+ and uses only the Python standard library.
-
-Steps:
-
-1. Clone the repo.
-2. `cd` into the repo.
-3. Run `bin/dzcto setup`.
-4. Confirm the setup output ends with `Day Zero CTO install is ready.`
-5. Restart Codex Desktop or start a fresh session.
-
-The installer points `~/plugins/day-zero-cto` at your clone and creates or updates `~/.agents/plugins/marketplace.json` with this plugin entry:
-
-```json
-{
-  "name": "day-zero-cto",
-  "source": {
-    "source": "local",
-    "path": "./plugins/day-zero-cto"
-  },
-  "policy": {
-    "installation": "AVAILABLE",
-    "authentication": "ON_INSTALL"
-  },
-  "category": "Productivity"
-}
-```
-
-Because `~/plugins/day-zero-cto` is a symlink to your clone, future `git pull` updates flow into the local Codex plugin.
-
-For active Codex skill development only, symlink the individual skills directly into Codex's local skills directory:
-
-```bash
-python3 scripts/install_local_skills.py
-```
-
-This development installer requires Python 3.10+ and prints one numbered step per skill. Do not use `install_local_skills.py` for Claude Code; Claude should use the plugin marketplace commands or `claude --plugin-dir`.
-
-This links each folder under `skills/` into `~/.codex/skills/`. Edit the skill files in this repo, then restart Codex Desktop or start a fresh session to reload skill metadata.
-
-To refresh an existing local Codex install after pulling changes:
-
-```bash
-git pull
-bin/dzcto setup
-```
-
-For a complete local reinstall from an existing clone:
-
-```bash
-python3 scripts/uninstall_local.py
-bin/dzcto setup
-```
-
-`uninstall_local.py` only removes the Day Zero CTO Codex marketplace entry plus plugin and editable-skill symlinks that point at the current clone. It skips unrelated files and non-symlink directories.
-
-For a complete reinstall from a fresh clone, remove the old clone after running the uninstall helper from it, clone again, then run:
-
-```bash
-bin/dzcto setup
-```
-
-### Claude Code
-
-Claude Code can install Day Zero CTO as a plugin marketplace:
-
-```bash
-claude plugin marketplace add chuckblake/Day-Zero-CTO
-claude plugin install day-zero-cto@day-zero-cto
-```
-
-The plugin can be installed without Ruby. Running Day Zero CTO artifact and learning helpers requires Python 3.10+ on the machine where Claude Code executes shell commands. The wrappers print a clear error if `python3` is missing.
-
-Steps:
-
-1. Run `claude plugin marketplace add chuckblake/Day-Zero-CTO`.
-2. Run `claude plugin install day-zero-cto@day-zero-cto`.
-3. Start a fresh Claude Code session.
-4. Run `/help` and confirm the Day Zero CTO skills appear.
-5. Run `dzcto doctor` from a session where the plugin `bin/` is on `PATH`, or run `python3 scripts/dzcto.py doctor` from a local clone.
-
-Inside interactive Claude Code, use the slash-command equivalents:
+## Repo Structure
 
 ```text
-/plugin marketplace add chuckblake/Day-Zero-CTO
-/plugin install day-zero-cto@day-zero-cto
+day-zero-cto/
+├── .codex-plugin/
+├── .claude-plugin/
+├── .github/
+├── bin/
+│   ├── dzcto
+│   ├── dzcto-artifact
+│   ├── dzcto-doctor
+│   └── dzcto-learning
+├── skills/
+│   ├── bootstrap-cto-context/
+│   ├── tech-stack/
+│   ├── work-through-problem/
+│   ├── weekly-cto-review/
+│   ├── write-ceo-update/
+│   ├── review-engineering-risk/
+│   ├── cto-code-review/
+│   └── learning/
+├── scripts/
+│   ├── dzcto.py
+│   ├── dzcto_artifact.py
+│   ├── dzcto_common.py
+│   ├── dzcto_doctor.py
+│   ├── dzcto_learning.py
+│   ├── install_local_marketplace.py
+│   ├── install_local_skills.py
+│   └── uninstall_local.py
+├── AGENTS.md
+├── INSTALL_FOR_AGENTS.md
+└── README.md
 ```
 
-For local development without installing:
+`scripts/dzcto.py` is the canonical local command surface. It exposes `setup`, `doctor`, `init`, `refresh`, `serve`, `artifact`, `learning`, `check-stale`, `collect-issue-bundle`, and `package-claude-desktop`.
 
-```bash
-git clone https://github.com/chuckblake/Day-Zero-CTO.git
-claude --plugin-dir ./Day-Zero-CTO
-```
+`scripts/dzcto_artifact.py` owns HTML generation, sidecar metadata, generated core HTML pages, report templates, learning index rendering, cadence alerts, and the command-center index.
 
-For local Claude development, do not run `scripts/install_local_skills.py`; that script is only for Codex Desktop's `~/.codex/skills` directory.
+`scripts/dzcto_learning.py` manages spaced-repetition items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, writes a mastery checklist, and refreshes the wiki index after learning state changes.
 
-After published updates:
+Current runtime requirement: Python 3.10+. The helpers use only the Python standard library. Run `bin/dzcto doctor` to check runtime, manifests, wrappers, helper syntax, and an optional project folder.
 
-```bash
-claude plugin update day-zero-cto@day-zero-cto
-```
-
-Claude Code plugin skills are namespaced. For example:
-
-```text
-/day-zero-cto:bootstrap-cto-context Onboard Day Zero CTO for this startup. Use project folder `~/Documents/Acme`.
-```
-
-### Agent Handoff
+## Agent Handoff
 
 If another agent session needs to install or update Day Zero CTO, point it at:
 
@@ -307,17 +301,15 @@ If another agent session needs to install or update Day Zero CTO, point it at:
 https://raw.githubusercontent.com/chuckblake/Day-Zero-CTO/main/INSTALL_FOR_AGENTS.md
 ```
 
-That file includes both Codex Desktop and Claude Code install paths plus the first useful prompt.
-
 ## Usage
 
 Install or load this plugin, then ask for one of the workflows in natural language:
 
-- "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme` as the project folder and `~/code/acme-app` as the read-only code repo."
-- "Create a Tech Stack report from the codebase and write it into the project knowledge wiki."
+- "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme CTO` as the project folder, company name `Acme`, company URL `https://acme.example`, and read-only repos `~/code/acme-app` and `~/code/acme-api`."
+- "Create a Tech Stack report from the connected codebases and write it into the project knowledge wiki."
 - "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
 - "Write a CEO update from this week's engineering work."
-- "Review engineering risk before launch. Treat the code repo as read-only."
+- "Review engineering risk before launch. Treat the code repos as read-only."
 - "Review this PR as a startup CTO and save a durable review artifact."
 - "Run a Day Zero CTO learning prompt."
 
@@ -329,7 +321,7 @@ Install or load this plugin, then ask for one of the workflows in natural langua
 - Ground advice in local evidence: code, docs, decisions, risks, incidents, and user notes.
 - Label assumptions instead of laundering uncertainty into confidence.
 - Prefer startup-relevant judgment over generic best practices.
-- Produce durable HTML artifacts for reports and reviews, then keep `index.html` current.
+- Produce durable HTML artifacts for every user-facing page.
 - Use spaced repetition to help the user retain system knowledge over time.
 
 ## License
