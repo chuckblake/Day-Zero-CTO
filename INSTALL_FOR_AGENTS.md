@@ -12,7 +12,7 @@ Ask the user for these values before running Day Zero CTO work:
 - Company description or company website URL.
 - Optional read-only codebase paths. Multiple codebases are allowed.
 
-Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, setup checklist, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
+Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, dedicated setup checklist page, dashboard setup alert/reference, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
 
 Dashboard description note: edit the first real paragraph in `<project>/knowledge/wiki/core/STRATEGY.md` under `Product Thesis`, `Company`, or `Stage`. Do not edit generated `index.html` directly.
 
@@ -222,7 +222,7 @@ The generated wiki index has Help and Commands sections. Help contains a project
 
 The Commands section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
 
-The generated dashboard setup checklist is the self-serve readiness view. Use `dzcto status "<project folder>"` when a terminal-facing check is easier than opening the dashboard.
+The full setup checklist lives at `<project>/knowledge/wiki/setup/index.html`. The dashboard highlights it only while setup is incomplete; after completion, it becomes a quieter reference link. Use `dzcto status "<project folder>"` when a terminal-facing check is easier than opening the setup page.
 
 Use `day-zero-cto:review-decisions` when the user wants to review recorded decisions. Treat `DECISIONS.md` as a decision log, not a pending-decision queue; `Revisit Trigger` determines what needs another look.
 

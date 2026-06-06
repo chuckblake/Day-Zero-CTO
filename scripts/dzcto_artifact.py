@@ -598,10 +598,17 @@ def setup_checklist_items(
     ]
 
 
-def setup_checklist_html(items: list[dict[str, str]]) -> str:
-    complete = sum(1 for item in items if item["state"] == "done")
-    rows = "\n".join(
-        f"""<a class="setup-item" data-state="{esc(item["state"])}" href="{esc(item["href"])}">
+def setup_link(href: str, prefix: str = "") -> str:
+    if href.startswith("#"):
+        return href if not prefix else f"{prefix}index.html{href}"
+    if re.match(r"^(https?:|file:|/)", href):
+        return href
+    return f"{prefix}{href}"
+
+
+def setup_checklist_rows(items: list[dict[str, str]], prefix: str = "") -> str:
+    return "\n".join(
+        f"""<a class="setup-item" data-state="{esc(item["state"])}" href="{esc(setup_link(item["href"], prefix))}">
   <span class="setup-mark" aria-hidden="true"></span>
   <span class="setup-body">
     <span class="setup-title">{esc(item["label"])}</span>
@@ -611,6 +618,11 @@ def setup_checklist_html(items: list[dict[str, str]]) -> str:
 </a>"""
         for item in items
     )
+
+
+def setup_checklist_html(items: list[dict[str, str]], prefix: str = "") -> str:
+    complete = sum(1 for item in items if item["state"] == "done")
+    rows = setup_checklist_rows(items, prefix)
     return f"""
   <section class="setup-panel" id="sec-setup" aria-label="Setup checklist">
     <div class="setup-head">
@@ -618,9 +630,38 @@ def setup_checklist_html(items: list[dict[str, str]]) -> str:
         <h2>Setup Checklist</h2>
         <p>{esc(complete)} of {esc(len(items))} complete</p>
       </div>
-      <a class="setup-help" href="#sec-commands">Commands</a>
+      <a class="setup-help" href="{esc(setup_link("#sec-commands", prefix))}">Commands</a>
     </div>
     <div class="setup-list">{rows}</div>
+  </section>
+"""
+
+
+def setup_dashboard_summary_html(items: list[dict[str, str]]) -> str:
+    complete = sum(1 for item in items if item["state"] == "done")
+    remaining = len(items) - complete
+    if remaining:
+        next_items = [item for item in items if item["state"] != "done"][:3]
+        preview = "".join(f"<li>{esc(item['label'])}: {esc(item['action'])}</li>" for item in next_items)
+        return f"""
+  <section class="setup-summary setup-alert" id="sec-setup" aria-label="Setup needs attention">
+    <div>
+      <span class="setup-kicker">Setup needs attention</span>
+      <h2>{esc(remaining)} of {esc(len(items))} setup items remain</h2>
+      <p>Finish these before treating the command center as fully operational.</p>
+      <ul>{preview}</ul>
+    </div>
+    <a class="setup-primary" href="setup/index.html">Open checklist</a>
+  </section>
+"""
+    return f"""
+  <section class="setup-summary setup-reference" id="sec-setup" aria-label="Setup reference">
+    <div>
+      <span class="setup-kicker">Setup complete</span>
+      <h2>Setup checklist is complete</h2>
+      <p>The full onboarding checklist is kept as a reference page for audits, handoffs, and future project changes.</p>
+    </div>
+    <a class="setup-primary" href="setup/index.html">View reference</a>
   </section>
 """
 
@@ -1348,7 +1389,10 @@ def write_search_index(
     core_pages: list[dict[str, Any]],
     report_entries: list[tuple[str, str, list[Path]]],
     learning_items: list[dict[str, Any]],
+    setup_items: list[dict[str, str]] | None = None,
 ) -> None:
+    setup_items = setup_items or []
+    setup_complete = sum(1 for item in setup_items if item.get("state") == "done")
     entries: list[dict[str, str]] = [
         search_entry(
             title=f"{company} Day Zero CTO",
@@ -1358,6 +1402,17 @@ def write_search_index(
             summary=description,
         )
     ]
+    if setup_items:
+        entries.append(
+            search_entry(
+                title=f"{company} Setup Checklist",
+                kind="Setup",
+                url="setup/index.html",
+                text=" ".join(f"{item.get('label', '')} {item.get('detail', '')} {item.get('action', '')}" for item in setup_items),
+                summary=f"{setup_complete} of {len(setup_items)} setup items complete.",
+                section="setup",
+            )
+        )
 
     core_dir = wiki_root / "core"
     for page in core_pages:
@@ -1903,6 +1958,48 @@ h1.title { font-size: 38px; font-weight: 800; }
 .setup-detail { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
 .setup-action { grid-column: 2; color: var(--accent); font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
 .setup-item[data-state="done"] .setup-action { color: var(--good); }
+.setup-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: -8px 0 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+}
+.setup-summary h2 { margin-top: 3px; font-size: 17px; font-weight: 800; }
+.setup-summary p { margin-top: 4px; font-size: 12.5px; }
+.setup-summary ul { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.setup-summary li {
+  border: 1px solid var(--high-line);
+  border-radius: var(--r-pill);
+  background: var(--high-soft);
+  color: var(--high);
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.setup-kicker { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.setup-primary {
+  flex: 0 0 auto;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.setup-primary:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.setup-alert { border-color: var(--high-line); background: var(--high-soft); }
+.setup-alert .setup-kicker, .setup-alert h2 { color: var(--high); }
+.setup-alert .setup-primary { border-color: var(--high-line); background: var(--surface); color: var(--high); }
+.setup-reference { opacity: .86; }
+.setup-reference:hover { opacity: 1; }
+.setup-reference .setup-primary { color: var(--good); border-color: var(--good-line); background: var(--good-soft); }
 .today {
   margin-bottom: 34px;
   overflow: hidden;
@@ -2202,6 +2299,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .today-col { border-right: 0; border-bottom: 1px solid var(--line); }
   .today-col:last-child { border-bottom: 0; }
   .reports, .reports-grid, .cmd-grid, .copy-grid, .learn, .learning-grid { grid-template-columns: 1fr; }
+  .setup-summary { align-items: flex-start; flex-direction: column; }
+  .setup-primary { width: 100%; text-align: center; }
   .action-grid { grid-template-columns: 1fr; }
   .help-grid { grid-template-columns: 1fr 1fr; }
   h1.title { font-size: 30px; }
@@ -2654,6 +2753,49 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
 """
 
 
+def write_setup_page(wiki_root: Path, project_folder: Path, company: str, setup_items: list[dict[str, str]]) -> None:
+    setup_dir = wiki_root / "setup"
+    setup_dir.mkdir(parents=True, exist_ok=True)
+    ensure_sidecar(wiki_root, project_folder, "render-setup-page")
+    complete = sum(1 for item in setup_items if item["state"] == "done")
+    remaining = len(setup_items) - complete
+    status = "Complete" if remaining == 0 else "Needs attention"
+    status_class = "status-good" if remaining == 0 else "status-warn"
+    generated_at = utc_now()
+    provenance = provenance_payload(
+        wiki_root,
+        artifact_id="setup-checklist",
+        artifact_kind="setup-checklist",
+        relative_path="setup/index.html",
+        title=f"{company} Setup Checklist",
+        generated_at=generated_at,
+    )
+    content = f"""
+  <div class="status-grid">
+    <div class="status-card {status_class}"><span>Status</span><strong>{esc(status)}</strong></div>
+    <div class="status-card"><span>Complete</span><strong>{esc(complete)}/{esc(len(setup_items))}</strong></div>
+    <div class="status-card"><span>Remaining</span><strong>{esc(remaining)}</strong></div>
+    <div class="status-card"><span>Updated</span><strong>{esc(dt.date.today().isoformat())}</strong></div>
+  </div>
+  {setup_checklist_html(setup_items, prefix="../")}
+  <section class="artifact-section prose">
+    <h2>How to Use This Page</h2>
+    <p>This checklist is the setup reference for the Day Zero CTO command center. If the dashboard highlights setup, finish the items here first. After everything is complete, keep this page as a lightweight audit and handoff reference.</p>
+    <p>For terminal checks, run <code>dzcto status "{esc(project_folder)}"</code>. For guided updates to Strategy, Team, Operating Cadence, Decisions, or Risks, ask an agent to use <code>day-zero-cto:refine-core-context</code>.</p>
+  </section>
+"""
+    body = page_shell(
+        content,
+        prefix="../",
+        eyebrow="Setup - Day Zero CTO",
+        title=f"{company} Setup Checklist",
+        subtitle="Onboarding readiness, setup health, and what must be complete before relying on the command center.",
+        crumbs=[("Setup", None)],
+    )
+    write_html_page(setup_dir / "index.html", f"{company} Setup Checklist", body, provenance)
+    update_manifest(wiki_root, provenance)
+
+
 def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, Any]]:
     core_dir = wiki_root / "core"
     core_dir.mkdir(parents=True, exist_ok=True)
@@ -2772,15 +2914,6 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
     write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
-    write_search_index(
-        wiki_root,
-        project_folder,
-        company=company,
-        description=description,
-        core_pages=core_pages,
-        report_entries=report_entries,
-        learning_items=learning_items,
-    )
 
     if not cadence_rules:
         cadence_status_html = '<div class="cadence-alert"><strong>No cadence rules</strong><p>Add an Index Cadence Rules table to Operating Cadence when this project has recurring DZCTO reports.</p></div>'
@@ -2819,7 +2952,18 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         learning_items=learning_items,
         repos=repos,
     )
-    setup_html = setup_checklist_html(setup_items)
+    setup_html = setup_dashboard_summary_html(setup_items)
+    write_setup_page(wiki_root, project_folder, company, setup_items)
+    write_search_index(
+        wiki_root,
+        project_folder,
+        company=company,
+        description=description,
+        core_pages=core_pages,
+        report_entries=report_entries,
+        learning_items=learning_items,
+        setup_items=setup_items,
+    )
 
     ai_prompts = [
         (rule["label"], enrich_ai_prompt(rule["label"], exact_prompt(display_command(rule["command"]), project_folder, repos)))

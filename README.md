@@ -91,7 +91,7 @@ All user-facing wiki pages are HTML. Core context starts as editable Markdown so
 Generated wiki pages use a compact command-center interface:
 
 - Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
-- A setup checklist for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
+- A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
 - A linked `What needs you today` panel with decisions, high-priority risks, and operating cadence.
 - Risk register cards parsed from `core/RISKS.md` tables or headings, with severity filtering.
 - Report, core context, learning, and command sections modeled after the Arwen command-center template.
@@ -108,7 +108,7 @@ For substantive core context updates, ask an agent to use the `refine-core-conte
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: decision revisit triggers, priority risks, and cadence from core context.
-- `Setup Checklist`: self-serve onboarding readiness and the next action for incomplete setup items.
+- `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it becomes a quieter reference link to `setup/index.html`.
 - `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.
@@ -357,7 +357,7 @@ dzcto <command> -h
 | `dzcto init "<project folder>"` | Create or refresh `<project>/knowledge/wiki`, sidecar metadata, generated core pages, search index, and dashboard. | `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, repeatable `--repo <path>`. |
 | `dzcto refresh "<project folder>"` | Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance. | Project folder argument. |
 | `dzcto serve "<project folder>"` | Serve the wiki locally so search JSON loads reliably and local refresh works. | `--host 127.0.0.1`, `--port 8765`. |
-| `dzcto status "<project folder>"` | Show the setup checklist and operating health for the project. | `--json` for machine-readable output. |
+| `dzcto status "<project folder>"` | Show the terminal setup checklist and operating health for the project. | `--json` for machine-readable output. |
 | `dzcto doctor` | Check install health, manifests, helper syntax, wrappers, and optional project files. | `--project <project>`, `--json`. |
 | `dzcto check-stale "<project folder>"` | Check stale generated pages, generator version drift, missing artifacts, and cadence due state. | `--json`, `--fail-on-stale`. |
 
