@@ -33,8 +33,6 @@ REPORT_FOLDERS = {
     "engineering-risk": "Engineering Risk",
     "weekly-reviews": "Weekly Reviews",
     "ceo-updates": "CEO Updates",
-    "decisions": "Decisions",
-    "code-reviews": "Code Reviews",
 }
 
 RISK_SIGNAL_REPORT_FIELDS = {
@@ -52,6 +50,26 @@ THEME_PATTERNS = [
     ("product readiness", r"\b(beta|launch|customer|gtm|billing|user|channel|tpa|employer)\b"),
     ("team and process", r"\b(team|owner|founder|hiring|bus factor|runbook|process|cadence)\b"),
 ]
+
+TABLE_FILTER_PROFILES = {
+    "decisions": [
+        ("date", "Date", ("date", "decision_date", "decided", "when")),
+        ("owner", "Owner", ("owner", "responsible")),
+        ("options", "Options", ("options_considered", "options", "alternatives")),
+        ("status", "Revisit", ("revisit_trigger", "revisit", "needed_by", "due", "status")),
+    ],
+    "risks": [
+        ("owner", "Owner", ("owner", "responsible", "owner_horizon")),
+        ("source", "Source", ("source", "sources", "origin", "report", "reported_from")),
+        ("status", "Severity / Likelihood", ("status", "severity", "priority", "likelihood")),
+        ("date", "Review", ("review", "review_date", "next_review", "due", "horizon", "needed_by")),
+    ],
+    "risk-signals": [
+        ("status", "Status", ("status",)),
+        ("source", "Source", ("source",)),
+        ("severity", "Severity", ("severity",)),
+    ],
+}
 
 CORE_DOCS = [
     "STRATEGY.md",
@@ -142,6 +160,7 @@ def plain_html(value: str | None) -> str:
     text = value or ""
     text = re.sub(r"<script\b[^>]*>.*?</script>", " ", text, flags=re.I | re.S)
     text = re.sub(r"<style\b[^>]*>.*?</style>", " ", text, flags=re.I | re.S)
+    text = re.sub(r'<header\b[^>]*class=["\'][^"\']*sticky-nav[^"\']*["\'][^>]*>.*?</header>', " ", text, flags=re.I | re.S)
     text = re.sub(r'<header\b[^>]*class=["\'][^"\']*masthead[^"\']*["\'][^>]*>.*?</header>', " ", text, flags=re.I | re.S)
     text = re.sub(r'<aside\b[^>]*class=["\'][^"\']*shell-sidebar[^"\']*["\'][^>]*>.*?</aside>', " ", text, flags=re.I | re.S)
     text = re.sub(r'<div\b[^>]*class=["\'][^"\']*search[^"\']*["\'][^>]*>.*?</div>', " ", text, flags=re.I | re.S)
@@ -506,7 +525,6 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
             ),
         ),
         ("Learning", exact_prompt(f"Run a Day Zero CTO learning prompt for {company}.", project_folder, repos)),
-        ("Decision Help", exact_prompt(f"Help me work through a CTO decision for {company}: <decision or problem>.", project_folder, repos)),
         (
             "Review Decisions",
             exact_prompt(
@@ -553,15 +571,6 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
                 f"Use the Day Zero CTO refine-core-context workflow to refine core/RISKS.md for {company}. Interview me about current risks, draft risk register updates for approval, write the approved Markdown source, and refresh the wiki.",
                 project_folder,
                 repos,
-            ),
-        ),
-        (
-            "CTO Code Review",
-            exact_prompt(
-                f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo(s) as read-only unless I explicitly ask for code changes.",
-                project_folder,
-                repos,
-                report_prompt_context,
             ),
         ),
     ]
@@ -1150,16 +1159,6 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
             action_group("Onboarding", value_at(data, "onboarding_notes", "notes")),
             action_group("Integrations", value_at(data, "integrations")),
         ],
-        "decisions": [
-            action_group("Recommendation", value_at(data, "recommendation")),
-            action_group("Follow-Ups", value_at(data, "follow_ups", "followups")),
-            action_group("Watchpoints", value_at(data, "watchpoints")),
-        ],
-        "code-reviews": [
-            action_group("Recommendation", value_at(data, "merge_recommendation", "recommendation")),
-            action_group("Blocking", value_at(data, "blocking")),
-            action_group("Questions", value_at(data, "questions")),
-        ],
     }
     groups = [(label, items) for label, items in groups_by_kind.get(kind, []) if items]
     if not groups:
@@ -1244,35 +1243,6 @@ def render_tech_stack(data: dict[str, Any]) -> str:
     )
 
 
-def render_decision(data: dict[str, Any]) -> str:
-    return "".join(
-        [
-            render_text_section("Decision", value_at(data, "decision")),
-            render_text_section("Context", value_at(data, "context")),
-            render_table_section("Options", value_at(data, "options"), [("Option", "option"), ("Upside", "upside"), ("Downside", "downside"), ("Reversibility", "reversibility")]),
-            render_table_section("Tradeoffs", value_at(data, "tradeoffs"), [("Axis", "axis"), ("Implication", "implication"), ("Note", "note")]),
-            render_text_section("Recommendation", value_at(data, "recommendation")),
-            render_list_section("Watchpoints", value_at(data, "watchpoints")),
-            render_list_section("Follow-Ups", value_at(data, "follow_ups", "followups")),
-            render_sources(data),
-        ]
-    )
-
-
-def render_code_review(data: dict[str, Any]) -> str:
-    return "".join(
-        [
-            render_text_section("Merge Recommendation", value_at(data, "merge_recommendation", "recommendation")),
-            render_table_section("Blocking", value_at(data, "blocking"), [("Finding", "finding"), ("Evidence", "evidence"), ("Impact", "impact"), ("Recommendation", "recommendation")]),
-            render_table_section("FYI", value_at(data, "fyi"), [("Finding", "finding"), ("Evidence", "evidence"), ("Impact", "impact"), ("Recommendation", "recommendation")]),
-            render_table_section("Questions", value_at(data, "questions"), [("Question", "question"), ("Why It Matters", "why"), ("Owner", "owner")]),
-            render_text_section("Tests / Verification", value_at(data, "tests_verification", "verification")),
-            render_text_section("Startup Risk Note", value_at(data, "startup_risk_note", "risk_note")),
-            render_sources(data),
-        ]
-    )
-
-
 def render_generic_report(data: dict[str, Any]) -> str:
     summary = html_paragraph(value_at(data, "summary", "executive_read", "headline"))
     sections = []
@@ -1292,8 +1262,6 @@ def render_structured_report(kind: str, data: dict[str, Any]) -> str:
         "weekly-reviews": render_weekly_review,
         "ceo-updates": render_ceo_update,
         "engineering-risk": render_engineering_risk,
-        "decisions": render_decision,
-        "code-reviews": render_code_review,
     }
     body = renderers.get(kind, render_generic_report)(data)
     action_summary = render_action_summary(kind, data)
@@ -1332,22 +1300,93 @@ def inline_markdown(value: str) -> str:
     return text
 
 
-def render_markdown_table(lines: list[str], row_anchor_prefix: str | None = None, used_anchor_ids: set[str] | None = None) -> str:
+def table_filter_columns(headers: list[str], profile: str | None) -> list[dict[str, Any]]:
+    if not profile:
+        return []
+    normalized_headers = [normalize_key(plain_markdown(header)) for header in headers]
+    columns: list[dict[str, Any]] = []
+    for key, label, aliases in TABLE_FILTER_PROFILES.get(profile, []):
+        for index, header in enumerate(normalized_headers):
+            if header in {normalize_key(alias) for alias in aliases}:
+                columns.append({"key": key, "label": label, "index": index})
+                break
+    return columns
+
+
+def table_filter_controls(table_id: str, rows: list[list[str]], columns: list[dict[str, Any]]) -> str:
+    if not columns:
+        return ""
+
+    controls = [
+        f"""<label class="filter-field filter-search-field">
+  <span>Filter</span>
+  <input type="search" data-table-filter-search placeholder="Search rows">
+</label>"""
+    ]
+    for column in columns:
+        values = sorted(
+            {
+                plain_markdown(row[column["index"]]).strip()
+                for row in rows
+                if column["index"] < len(row) and has_real_value(plain_markdown(row[column["index"]]))
+            },
+            key=str.lower,
+        )
+        if not values:
+            continue
+        options = "".join(f'<option value="{esc(value)}">{esc(snippet(value, 54))}</option>' for value in values)
+        controls.append(
+            f"""<label class="filter-field">
+  <span>{esc(column["label"])}</span>
+  <select data-table-filter-select="{esc(column["key"])}">
+    <option value="">All</option>
+    {options}
+  </select>
+</label>"""
+        )
+
+    if len(controls) == 1:
+        return ""
+
+    return f"""
+<div class="table-filter" data-table-filter-controls="{esc(table_id)}">
+  {''.join(controls)}
+  <button type="button" class="filter-clear" data-table-filter-clear>Clear</button>
+  <span class="filter-count" data-table-filter-count>{esc(len(rows))} rows</span>
+</div>
+"""
+
+
+def render_markdown_table(
+    lines: list[str],
+    row_anchor_prefix: str | None = None,
+    used_anchor_ids: set[str] | None = None,
+    filter_profile: str | None = None,
+) -> str:
     rows = [split_markdown_row(line) for line in lines]
     if len(rows) < 2:
         return ""
-    headers = "".join(f"<th>{inline_markdown(cell)}</th>" for cell in rows[0])
+    header_cells = rows[0]
+    data_rows = rows[2:]
+    headers = "".join(f"<th>{inline_markdown(cell)}</th>" for cell in header_cells)
     body_rows = []
     used_anchor_ids = used_anchor_ids if used_anchor_ids is not None else set()
-    for row in rows[2:]:
+    filter_columns = table_filter_columns(header_cells, filter_profile)
+    table_id = unique_anchor_id("table", f"{filter_profile or 'markdown'}-{header_cells[0] if header_cells else 'rows'}", used_anchor_ids)
+    for row in data_rows:
         anchor_attr = ""
         if row_anchor_prefix and row:
             anchor_attr = f' id="{esc(unique_anchor_id(row_anchor_prefix, row[0], used_anchor_ids))}"'
-        body_rows.append(f"<tr{anchor_attr}>" + "".join(f"<td>{inline_markdown(cell)}</td>" for cell in row) + "</tr>")
-    return f'<div class="markdown-table"><table><thead><tr>{headers}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>'
+        filter_attrs = [f' data-filter-text="{search_text_attr(*row)}"']
+        for column in filter_columns:
+            value = plain_markdown(row[column["index"]]).strip() if column["index"] < len(row) else ""
+            filter_attrs.append(f' data-filter-{esc(column["key"])}="{esc(value)}"')
+        body_rows.append(f"<tr{anchor_attr}{''.join(filter_attrs)}>" + "".join(f"<td>{inline_markdown(cell)}</td>" for cell in row) + "</tr>")
+    controls = table_filter_controls(table_id, data_rows, filter_columns)
+    return f'{controls}<div class="markdown-table" id="{esc(table_id)}" data-filterable-table><table><thead><tr>{headers}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>'
 
 
-def markdown_to_html(markdown: str, table_anchor_prefix: str | None = None) -> str:
+def markdown_to_html(markdown: str, table_anchor_prefix: str | None = None, table_filter_profile: str | None = None) -> str:
     lines = markdown.splitlines()
     blocks: list[str] = []
     paragraph: list[str] = []
@@ -1372,7 +1411,7 @@ def markdown_to_html(markdown: str, table_anchor_prefix: str | None = None) -> s
     def flush_table() -> None:
         nonlocal table_lines
         if table_lines:
-            rendered = render_markdown_table(table_lines, row_anchor_prefix=table_anchor_prefix, used_anchor_ids=used_anchor_ids)
+            rendered = render_markdown_table(table_lines, row_anchor_prefix=table_anchor_prefix, used_anchor_ids=used_anchor_ids, filter_profile=table_filter_profile)
             if rendered:
                 blocks.append(rendered)
             table_lines = []
@@ -2189,9 +2228,11 @@ def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "
 
     active_titles, closed_titles = risk_titles_by_status(core_dir)
     rows = []
+    filter_rows: list[list[str]] = []
     for signal in signals[:24]:
         status = risk_signal_status(signal, active_titles, closed_titles)
         tone = "ready" if status == "In active register" else "low" if status == "Closed or accepted" else "medium"
+        filter_rows.append([signal["severity"], status, signal["source_label"]])
         source_links = []
         hrefs = signal["href"].split(" | ") if signal["href"] else []
         labels = signal["source_label"].split(" | ")
@@ -2204,7 +2245,7 @@ def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "
         detail = signal["evidence"] or signal["impact"] or "No detail captured in the structured report data."
         action = signal["mitigation"] or ("Promote into RISKS.md with owner, mitigation, source, and next review date." if status == "Needs promotion" else "Keep source link for traceability.")
         rows.append(
-            f"""<tr>
+            f"""<tr data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], detail, action)}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(signal["source_label"])}">
   <td><strong>{esc(signal["title"])}</strong><br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
   <td><span class="tag {tone}">{esc(status)}</span></td>
   <td>{' / '.join(source_links)}</td>
@@ -2213,11 +2254,23 @@ def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "
 </tr>"""
         )
 
+    table_id = "risk-signal-table"
+    controls = table_filter_controls(
+        table_id,
+        filter_rows,
+        [
+            {"key": "severity", "label": "Severity", "index": 0},
+            {"key": "status", "label": "Status", "index": 1},
+            {"key": "source", "label": "Source", "index": 2},
+        ],
+    )
+
     return f"""
   <section class="artifact-section risk-signals" id="risk-signals">
     <h2>Risk Signals From Reports</h2>
     <p class="artifact-note">Generated from structured Tech Stack, Engineering Risk, Weekly Review, and CEO Update report data. Use this as an intake queue; promote actionable signals into <code>RISKS.md</code> so they get an owner, mitigation, source, and dated next review.</p>
-    <div class="markdown-table">
+    {controls}
+    <div class="markdown-table" id="{esc(table_id)}" data-filterable-table>
       <table>
         <thead><tr><th>Signal</th><th>Status</th><th>Source</th><th>Evidence</th><th>Action</th></tr></thead>
         <tbody>{''.join(rows)}</tbody>
@@ -2723,8 +2776,15 @@ h1.title { font-size: 38px; font-weight: 800; }
 .report.empty, .report-card.empty { background: var(--surface-2); border-style: dashed; box-shadow: none; }
 .rp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .rp-name, .report-title { color: var(--ink); font-size: 15px; font-weight: 800; }
-.rp-cad, .report-count { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
+.rp-count, .report-count { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
 .rp-prev { color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+.report-history { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 9px; }
+.rh-label { color: var(--faint); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.rh-item { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 9px; color: var(--ink-2); font-size: 11.5px; line-height: 1.35; }
+.rh-item:hover { color: var(--accent); text-decoration: none; }
+.rh-item span { color: var(--muted); font-family: var(--mono); }
+.rh-item strong { min-width: 0; overflow: hidden; color: inherit; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.rh-more { color: var(--muted); font-size: 11px; }
 .rp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
 .rp-date, .report-date { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
 .rp-open { color: var(--accent); font-size: 12.5px; font-weight: 800; }
@@ -2828,6 +2888,41 @@ h1.title { font-size: 38px; font-weight: 800; }
 .toc-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .toc-links a { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 800; padding: 5px 9px; }
 .toc-links a:hover { background: var(--accent-soft); text-decoration: none; }
+.table-filter {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 16px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: 11px;
+}
+.filter-field { display: grid; gap: 4px; min-width: 150px; }
+.filter-search-field { min-width: min(280px, 100%); flex: 1 1 260px; }
+.filter-field span { color: var(--muted); font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
+.filter-field input, .filter-field select {
+  min-height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 6px 9px;
+  font-size: 13px;
+}
+.filter-clear {
+  min-height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.filter-clear:hover { border-color: var(--accent); color: var(--accent); }
+.filter-count { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 34px; }
 .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); margin: 20px 0 24px; }
 .status-card, .cadence-alert, .cadence-ok {
   border: 1px solid var(--line);
@@ -2922,6 +3017,18 @@ h1.title { font-size: 38px; font-weight: 800; }
 .markdown-table tr[id] { scroll-margin-top: 24px; }
 .markdown-table tr:target { outline: 3px solid var(--accent); outline-offset: -3px; box-shadow: inset 4px 0 0 var(--accent); }
 .markdown-table tr:target td { background: var(--accent-soft); }
+.source-footnote {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.source-footnote span { color: var(--muted); }
 table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
 th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
 th { background: var(--surface-3); color: var(--ink); }
@@ -3186,6 +3293,48 @@ def refresh_script() -> str:
     });
   });
 
+  function filterDatasetKey(key) {
+    return `filter${String(key || '').replace(/(^|-)([a-z])/g, (_match, _sep, char) => char.toUpperCase())}`;
+  }
+
+  document.querySelectorAll('[data-table-filter-controls]').forEach((controls) => {
+    const tableId = controls.dataset.tableFilterControls;
+    const tableWrap = tableId ? document.getElementById(tableId) : null;
+    if (!tableWrap) return;
+
+    const rows = Array.from(tableWrap.querySelectorAll('tbody tr'));
+    const search = controls.querySelector('[data-table-filter-search]');
+    const selects = Array.from(controls.querySelectorAll('[data-table-filter-select]'));
+    const clear = controls.querySelector('[data-table-filter-clear]');
+    const count = controls.querySelector('[data-table-filter-count]');
+
+    const applyTableFilters = () => {
+      const query = String(search?.value || '').trim().toLowerCase();
+      let visible = 0;
+      rows.forEach((row) => {
+        const text = String(row.dataset.filterText || '').toLowerCase();
+        let show = !query || text.includes(query);
+        selects.forEach((select) => {
+          if (!show || !select.value) return;
+          show = String(row.dataset[filterDatasetKey(select.dataset.tableFilterSelect)] || '') === select.value;
+        });
+        row.hidden = !show;
+        if (show) visible += 1;
+      });
+      if (count) count.textContent = `${visible} of ${rows.length} shown`;
+    };
+
+    if (search) search.addEventListener('input', applyTableFilters);
+    selects.forEach((select) => select.addEventListener('change', applyTableFilters));
+    if (clear) clear.addEventListener('click', () => {
+      if (search) search.value = '';
+      selects.forEach((select) => select.value = '');
+      applyTableFilters();
+      if (search) search.focus();
+    });
+    applyTableFilters();
+  });
+
   document.addEventListener('keydown', (event) => {
     const active = document.activeElement;
     const typing = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
@@ -3441,16 +3590,15 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         relative_path = f"core/{core_doc_html_name(doc)}"
         if source_path.exists():
             source_text = source_path.read_text(encoding="utf-8")
-            content_html = markdown_to_html(source_text, table_anchor_prefix="risk" if doc == "RISKS.md" else None)
+            table_filter_profile = "risks" if doc == "RISKS.md" else "decisions" if doc == "DECISIONS.md" else None
+            content_html = markdown_to_html(source_text, table_anchor_prefix="risk" if doc == "RISKS.md" else None, table_filter_profile=table_filter_profile)
             source_paths = [source_path]
             if doc == "RISKS.md":
                 source_paths.extend(report_risk_signal_json_paths(wiki_root))
             source_hash = collect_source_hashes(source_paths)
-            status = "Ready"
         else:
             content_html = f'<p class="empty-item">{esc(doc)} has not been created yet.</p>'
             source_hash = {}
-            status = "Missing source"
 
         current_read_html = ""
         extra_core_html = ""
@@ -3470,18 +3618,16 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
             source_hashes=source_hash,
         )
         content = f"""
-  <div class="status-grid">
-    <div class="status-card {'status-good' if source_path.exists() else 'status-warn'}"><span>Status</span><strong>{esc(status)}</strong></div>
-    <div class="status-card"><span>Source</span><strong>{esc(doc)}</strong></div>
-    <div class="status-card"><span>Updated</span><strong>{esc(dt.date.today().isoformat())}</strong></div>
-    <div class="status-card"><span>Page</span><strong>HTML</strong></div>
-  </div>
   {current_read_html}
   {extra_core_html}
   <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
   <section class="artifact-section prose" data-toc-scope>
     {content_html}
   </section>
+  <div class="source-footnote">
+    <span>Source <code>{esc(doc)}</code></span>
+    <span>Updated {esc(dt.date.today().isoformat())}</span>
+  </div>
 """
         body = page_shell(content, prefix="../", eyebrow="Core Context - Day Zero CTO", title=title, subtitle=description, crumbs=[("Core", "index.html#sec-core"), (title, None)])
         write_html_page(wiki_root / relative_path, title, body, provenance)
@@ -3518,23 +3664,47 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     tech_stack_href = tech_stack_links[0].relative_to(wiki_root).as_posix() if tech_stack_links else "#sec-reports"
     report_sections = []
     for folder, label, links in report_entries:
-        cadence_label = "Scheduled"
         latest = report_run_date(links[0]) if links else ""
         if links:
             latest_path = links[0]
             href = latest_path.relative_to(wiki_root).as_posix()
             preview = report_summary(latest_path) or "Generated report artifact."
-            report_sections.append(
-                f"""<a class="report" href="{esc(href)}" data-search-text="{search_text_attr(label, preview, latest)}">
-  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-cad">{esc(cadence_label)}</span></div>
-  <p class="rp-prev">{esc(preview)}</p>
-  <div class="rp-foot"><span class="rp-date">{esc(latest)}</span><span class="rp-open">Open report</span></div>
+            history_items = []
+            history_search = []
+            for path in links[1:4]:
+                item_href = path.relative_to(wiki_root).as_posix()
+                item_title = html_title(path)
+                item_date = report_run_date(path)
+                history_search.extend([item_title, item_date, report_summary(path)])
+                history_items.append(
+                    f"""<a class="rh-item" href="{esc(item_href)}">
+  <span>{esc(item_date)}</span>
+  <strong>{esc(item_title)}</strong>
 </a>"""
+                )
+            history_more = f'<span class="rh-more">{esc(len(links) - 4)} older</span>' if len(links) > 4 else ""
+            history_html = (
+                f"""<div class="report-history">
+  <div class="rh-label">Previous</div>
+  {''.join(history_items)}
+  {history_more}
+</div>"""
+                if history_items or history_more
+                else ""
+            )
+            open_label = "Open latest" if len(links) > 1 else "Open report"
+            report_sections.append(
+                f"""<article class="report" data-search-text="{search_text_attr(label, preview, latest, *history_search)}">
+  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-count">{esc(pluralize(len(links), "report"))}</span></div>
+  <p class="rp-prev">{esc(preview)}</p>
+  {history_html}
+  <div class="rp-foot"><span class="rp-date">{esc(latest)}</span><a class="rp-open" href="{esc(href)}">{esc(open_label)}</a></div>
+</article>"""
             )
         else:
             report_sections.append(
                 f"""<article class="report empty" data-search-text="{search_text_attr(label, 'No reports generated yet')}">
-  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-cad">{esc(cadence_label)}</span></div>
+  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-count">No reports</span></div>
   <p class="rp-prev">No reports generated yet.</p>
   <div class="rp-foot"><span class="rp-date">No runs</span></div>
 </article>"""

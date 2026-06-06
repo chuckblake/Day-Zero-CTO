@@ -24,7 +24,7 @@ Establish the project `knowledge/wiki` workspace, connect read-only codebase evi
 9. If important facts are missing and cannot be inferred from local context, ask one concise question or mark the field as `Unknown`.
 10. Create or update the source core files below inside `<project>/knowledge/wiki/core/`. Preserve useful existing content; do not erase user notes. The helper renders user-facing `core/*.html` pages from these sources.
 11. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto refresh "<project folder>"` or `python3 scripts/dzcto.py refresh "<project folder>"`. The generated index should identify the company, show only company context under the title, and present a command-center dashboard with setup alert/reference, Cadence, Core Context, Reports, Learning, and one expandable Help document. The full setup checklist should live on `setup/index.html`; the dashboard should highlight setup only when incomplete and become a quiet reference once complete. The risk KPI should link to `core/risks.html`; do not duplicate the full risk register on the homepage. Help should include the project-specific command reference, copyable AI prompts with the exact project folder and read-only repo paths, plus copyable local helper commands. New report artifacts should use structured JSON via `--data-file`; raw `--body-file` HTML is only a legacy fallback.
-12. Ask: `Do you want to complete onboarding now?` If yes, offer these run-now options: Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, CTO Code Review if a branch/diff exists, and Initial Learning Seed.
+12. Ask: `Do you want to complete onboarding now?` If yes, offer these run-now options: Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, Review Risks, Review Decisions, and Initial Learning Seed.
 13. If the user chooses Initial Learning Seed, create exactly 25 evidence-backed learning items when enough evidence exists. Write them to a JSON array and run:
 
    ```bash
@@ -52,9 +52,9 @@ Use these files under `<project>/knowledge/wiki/core/` unless the user chooses a
 - `Tech Stack`: recommended when a codebase is available; creates `reports/tech-stack/`.
 - `Engineering Risk Review`: recommended after Tech Stack; creates `reports/engineering-risk/`.
 - `Review Risks`: useful when the user wants to maintain the active risk register one risk at a time; updates `core/RISKS.md`.
+- `Review Decisions`: useful when the user wants to revisit recorded decisions one at a time; updates `core/DECISIONS.md`.
 - `Weekly CTO Review`: useful when there is enough recent work signal; creates `reports/weekly-reviews/`.
 - `CEO Update`: useful when the user wants an executive-facing summary; creates `reports/ceo-updates/`.
-- `CTO Code Review`: only when a branch, PR, or diff is specified; creates `reports/code-reviews/`.
 - `Initial Learning Seed`: create 25 learning items from company context, Tech Stack findings, risk register, decisions, docs, and codebase evidence. Do not invent items just to reach 25; if evidence is thin, explain how many were safely created.
 
 ## Standards

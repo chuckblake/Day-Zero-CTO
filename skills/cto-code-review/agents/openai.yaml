@@ -1,4 +1,0 @@
-interface:
-  display_name: "CTO Code Review"
-  short_description: "Review code through CTO-level risk."
-  default_prompt: "Review this code as a startup CTO."

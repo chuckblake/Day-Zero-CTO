@@ -28,19 +28,13 @@ Run a decision-review ritual over the project decision log. `DECISIONS.md` is a 
    - Use past-tense rationale for decisions already made.
    - Update `Revisit Trigger` when the review outcome is a punt or a new trigger is known.
    - Add or update a `## Review History` table when useful, with `Review Date`, `Decision`, `Outcome`, `Notes`, and `Next Revisit`.
-8. When a review produces a major new or superseding decision, optionally create a durable decision report with:
-
-   ```bash
-   dzcto artifact --project "<project folder>" --kind decisions --title "<decision title>" --data-file "<json report data file>"
-   ```
-
-9. Regenerate the wiki:
+8. Regenerate the wiki:
 
    ```bash
    dzcto refresh "<project folder>"
    ```
 
-10. After refresh, the generated Decisions page should show an updated Current Read summary above the source log. Summarize decided, reaffirmed, punted, and evidence-needed items, plus the next review date or trigger for each punt.
+9. After refresh, the generated Decisions page should show an updated Current Read summary above the source log. Summarize decided, reaffirmed, punted, and evidence-needed items, plus the next review date or trigger for each punt.
 
 ## Standards
 

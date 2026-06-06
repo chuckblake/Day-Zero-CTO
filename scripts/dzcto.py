@@ -165,7 +165,7 @@ def command_reference_text(project: Path | None = None) -> str:
         Reports and artifacts
           dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
-              Kinds: tech-stack, engineering-risk, weekly-reviews, ceo-updates, decisions, code-reviews.
+              Kinds: tech-stack, engineering-risk, weekly-reviews, ceo-updates.
           dzcto collect-issue-bundle <project> [--output <zip>] [--no-redact]
               Create a troubleshooting bundle with redacted sidecar metadata and stale checks.
 
@@ -250,7 +250,6 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             Engineering Risk: top risks, mitigations, watchpoints.
             Review Risks: walk the risk register one item at a time and update RISKS.md.
             Tech Stack: architecture shape, stack components, candidate risks, onboarding notes.
-            CTO Code Review: blocking findings, FYI findings, questions, startup risk note.
 
             Reports are written under:
               {project_path}/knowledge/wiki/reports/
@@ -309,7 +308,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
               dzcto artifact --project {project_arg} --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json
 
             Supported kinds:
-              tech-stack, engineering-risk, weekly-reviews, ceo-updates, decisions, code-reviews
+              tech-stack, engineering-risk, weekly-reviews, ceo-updates
 
             Prefer --data-file so reports get structured sections and action summaries. Use --body-file only for legacy raw HTML.
         """,
@@ -693,7 +692,7 @@ def collect_issue_bundle(project: Path, output: Path | None, do_redact: bool) ->
 def claude_desktop_skill_markdown() -> str:
     return """---
 name: day-zero-cto
-description: "Run Day Zero CTO workflows for early-stage technical leaders: onboarding, CTO context, tech stack mapping, risk reviews, weekly CTO reviews, CEO updates, decision help, CTO code review, and spaced-repetition learning. Use when the user asks for Day Zero CTO, CTO onboarding, startup technical leadership workflows, or durable CTO artifacts."
+description: "Run Day Zero CTO workflows for early-stage technical leaders: onboarding, CTO context, tech stack mapping, risk reviews, decision-log reviews, weekly CTO reviews, CEO updates, and spaced-repetition learning. Use when the user asks for Day Zero CTO, CTO onboarding, startup technical leadership workflows, or durable CTO artifacts."
 ---
 
 # Day Zero CTO
@@ -719,9 +718,7 @@ Read the matching reference file when needed:
 - `references/review-risks.md`: risk-register review and update workflow.
 - `references/weekly-cto-review.md`: weekly CTO operating review.
 - `references/write-ceo-update.md`: CEO-facing update.
-- `references/work-through-problem.md`: decision and problem walkthroughs.
 - `references/review-decisions.md`: decision-log review and revisit workflow.
-- `references/cto-code-review.md`: startup CTO code review.
 - `references/learning.md`: spaced-repetition learning.
 
 Use concise, evidence-grounded judgment. When durable local HTML is needed, prefer the bundled Python helper if the environment can run it; otherwise provide the user with the exact `dzcto` command to run locally.

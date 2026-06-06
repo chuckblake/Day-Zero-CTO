@@ -15,7 +15,6 @@ Day Zero CTO gives early-stage technical leaders a first set of repeatable CTO w
 - Run recurring CTO reviews that produce durable HTML artifacts.
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
 - Map tech stacks across one or more read-only codebases.
-- Review code through the lens of startup risk and leverage.
 - Teach system knowledge with spaced repetition.
 
 It is intentionally small. The first version should earn trust by observing the company, naming reality clearly, and producing useful artifacts.
@@ -27,13 +26,11 @@ It is intentionally small. The first version should earn trust by observing the 
 | `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, capture company context, connect read-only codebases, create core context, and offer initial reports and learning setup. |
 | `refine-core-context` | Interview the user after onboarding to review, correct, and approve updates to core context files before refreshing the generated wiki. |
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
-| `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
 | `review-decisions` | Walk the decision log one recorded decision at a time, using revisit triggers to reaffirm, supersede, punt, or mark evidence needed. |
 | `review-risks` | Walk the risk register one active risk at a time, using review dates, severity, mitigation state, and evidence gaps to keep, update, close, punt, mark evidence needed, and log formal choices to `DECISIONS.md`. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
 | `write-ceo-update` | Translate engineering work, risks, and asks into CEO-facing signal. |
 | `review-engineering-risk` | Find risks that threaten product, customers, delivery, trust, or runway. |
-| `cto-code-review` | Review code with a startup CTO lens: correctness, trust, operability, speed, and maintainability. |
 | `learning` | Teach one focused system concept and schedule it for spaced repetition. |
 
 ## Project Wiki
@@ -80,8 +77,6 @@ Recommended folder shape:
         engineering-risk/
         weekly-reviews/
         ceo-updates/
-        decisions/
-        code-reviews/
       learning/
         index.html
         checklists/
@@ -96,7 +91,9 @@ Generated wiki pages use a compact command-center interface:
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
 - A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
 - Generated "Current Read" summaries on the Decisions and Risks core pages. These are regenerated from source rows on every refresh and stay short: one paragraph that emphasizes frequent and newer themes.
+- Filterable Decisions and Risks pages for narrowing the source logs by owner, date/review timing, source, severity, likelihood, options, or revisit fields when those columns exist.
 - A canonical Risks page with the active `core/RISKS.md` log plus a generated `Risk Signals From Reports` intake queue with source links back to Tech Stack, Engineering Risk, Weekly Review, and CEO Update artifacts.
+- Report cards show factual artifact counts and, when a report folder has multiple artifacts, a compact previous-run list under the latest report.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
 - Breadcrumbs, automatic page tables of contents, and a light/dark theme on generated pages.
@@ -377,7 +374,7 @@ dzcto <command> -h
 
 | Command | Use when | Key options |
 | --- | --- | --- |
-| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `tech-stack`, `engineering-risk`, `weekly-reviews`, `ceo-updates`, `decisions`, `code-reviews`. |
+| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `tech-stack`, `engineering-risk`, `weekly-reviews`, `ceo-updates`. |
 | `dzcto collect-issue-bundle "<project folder>"` | Create a troubleshooting bundle with redacted sidecar metadata and stale checks. | `--output <zip>`, `--no-redact`. |
 
 ### Learning
@@ -417,8 +414,6 @@ The supported report kinds have fixed section templates:
 | `weekly-reviews` | `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
 | `ceo-updates` | `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources` |
 | `engineering-risk` | `executive_read`, `top_risks`, `mitigations`, `watchpoints`, `sources` |
-| `decisions` | `decision`, `context`, `options`, `tradeoffs`, `recommendation`, `watchpoints`, `follow_ups`, `sources` |
-| `code-reviews` | `merge_recommendation`, `blocking`, `fyi`, `questions`, `tests_verification`, `startup_risk_note`, `sources` |
 
 Optional `metrics` are rendered as summary cards when present.
 
@@ -440,13 +435,11 @@ day-zero-cto/
 │   ├── bootstrap-cto-context/
 │   ├── refine-core-context/
 │   ├── tech-stack/
-│   ├── work-through-problem/
 │   ├── review-decisions/
 │   ├── review-risks/
 │   ├── weekly-cto-review/
 │   ├── write-ceo-update/
 │   ├── review-engineering-risk/
-│   ├── cto-code-review/
 │   └── learning/
 ├── scripts/
 │   ├── dzcto.py

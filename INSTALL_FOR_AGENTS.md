@@ -245,5 +245,5 @@ Claude Code:
 ## First Useful Prompt
 
 ```text
-Onboard Day Zero CTO for this startup. Ask for the project folder, company name, company description or website URL, and one or more optional read-only codebase paths. Ask whether to complete onboarding now, including Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, CTO Code Review if a branch or diff exists, and seeding the first 25 learning items.
+Onboard Day Zero CTO for this startup. Ask for the project folder, company name, company description or website URL, and one or more optional read-only codebase paths. Ask whether to complete onboarding now, including Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, Review Risks, Review Decisions, and seeding the first 25 learning items.
 ```
