@@ -1,6 +1,6 @@
 {
   "name": "day-zero-cto",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Cross-agent CTO operating skills and durable artifacts for early-stage startups.",
   "author": {
     "name": "Chuck Blake"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Day Zero CTO",
     "shortDescription": "CTO skills and artifacts for startups.",
-    "longDescription": "Day Zero CTO helps early-stage technical leaders run the operating loop from a project-level knowledge wiki in Codex Desktop, Claude Code, and Claude Desktop custom skills: onboarding, context setup, guided core context refinement through interview, draft, approval, and refresh loops, tech stack mapping across multiple repos, hard decisions, weekly reviews, CEO updates, risk reviews, CTO-level code review, a skill-first workflow with one Python `dzcto` helper command, configurable install/wiki locations, local install updates with numbered progress, local dashboard serving, stale artifact checks, redacted issue bundles, sidecar metadata, embedded HTML provenance, generated HTML core context pages, an Arwen-style command-center dashboard with KPIs, today panel, risk register, reports grid, top search, breadcrumbs, page tables of contents, and light/dark theme, spaced-repetition learning with a mastery checklist, structured JSON-to-HTML report templates, durable HTML reports with dated index references, company-aware command-center index context, copyable AI prompt cards with exact project/repo context, copyable local helper commands, cadence alerts, and a bookmarkable local index at knowledge/wiki/index.html.",
+    "longDescription": "Day Zero CTO helps early-stage technical leaders run the operating loop from a project-level knowledge wiki in Codex Desktop, Claude Code, and Claude Desktop custom skills: onboarding, context setup, guided core context refinement through interview, draft, approval, and refresh loops, tech stack mapping across multiple repos, hard decisions, weekly reviews, CEO updates, risk reviews, CTO-level code review, a skill-first workflow with one Python `dzcto` helper command, configurable install/wiki locations, local install updates with numbered progress, local dashboard serving, stale artifact checks, redacted issue bundles, sidecar metadata, embedded HTML provenance, generated HTML core context pages with a visible skills-version footer, an Arwen-style command-center dashboard with KPIs, today panel, risk register, reports grid, top search, breadcrumbs, page tables of contents, and light/dark theme, spaced-repetition learning with a mastery checklist, structured JSON-to-HTML report templates, durable HTML reports with dated index references, company-aware command-center index context, copyable AI prompt cards with exact project/repo context, copyable local helper commands, cadence alerts, and a bookmarkable local index at knowledge/wiki/index.html.",
     "developerName": "Chuck Blake",
     "category": "Productivity",
     "capabilities": [],

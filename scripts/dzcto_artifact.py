@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from dzcto_common import (
+    TOOL_VERSION,
     ensure_sidecar,
     provenance_block,
     provenance_payload,
@@ -543,6 +544,9 @@ def page_shell(
     </div>
   </header>
     {content}
+  <footer class="app-footer">
+    <span>Day Zero CTO skills v{esc(TOOL_VERSION)}</span>
+  </footer>
 </main>
 """
 
@@ -1805,6 +1809,16 @@ table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 
 th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
 th { background: var(--surface-3); color: var(--ink); }
 code { border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); padding: 1px 5px; }
+.app-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
 @media (max-width: 1040px) {
   .kpis { grid-template-columns: repeat(3, 1fr); }
   .core { grid-template-columns: repeat(3, 1fr); }
@@ -1825,6 +1839,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
 @media (max-width: 560px) {
   .app { padding: 24px 16px 70px; }
   .kpis, .core, .status-grid, .summary, .grid { grid-template-columns: 1fr 1fr; }
+  .app-footer { justify-content: flex-start; }
   .r-field-grid { grid-template-columns: 1fr; }
   .risk > summary { grid-template-columns: auto 1fr; }
   .r-right { grid-column: 2; justify-content: space-between; }
