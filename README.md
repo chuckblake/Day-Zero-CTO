@@ -113,7 +113,7 @@ Every active risk should carry a calendar date in its `Next Review` field. Exter
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: due or triggered decision reviews, priority risks, and cadence from core context.
-- `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it becomes a quieter reference link to `setup/index.html`.
+- `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it moves to the bottom of the page as a quieter reference link to `setup/index.html`.
 - `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.

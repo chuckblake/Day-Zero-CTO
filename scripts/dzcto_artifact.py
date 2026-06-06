@@ -3123,6 +3123,9 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         repos=repos,
     )
     setup_html = setup_dashboard_summary_html(setup_items)
+    setup_remaining = any(item["state"] != "done" for item in setup_items)
+    setup_top_html = setup_html if setup_remaining else ""
+    setup_bottom_html = "" if setup_remaining else setup_html
     write_setup_page(wiki_root, project_folder, company, setup_items)
     write_search_index(
         wiki_root,
@@ -3320,7 +3323,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </a>
   </div>
 
-  {setup_html}
+  {setup_top_html}
 
   <section class="today" aria-label="Today">
     <div class="today-head">
@@ -3418,6 +3421,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
   </details>
 
   {help_html}
+
+  {setup_bottom_html}
 """
     body = page_shell(
         content,
