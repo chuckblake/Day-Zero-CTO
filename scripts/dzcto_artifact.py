@@ -162,6 +162,8 @@ def company_description(strategy_path: Path, config: dict[str, Any] | None = Non
         or first_markdown_paragraph(markdown_section(strategy_path, "Company"))
         or first_markdown_paragraph(markdown_section(strategy_path, "Stage"))
     )
+    if paragraph and plain_markdown(paragraph).lower() in {"unknown", "tbd", "to be determined"}:
+        paragraph = None
     configured = str((config or {}).get("companyDescription") or "").strip()
     fallback = "Company context has not been captured yet. Add a Product Thesis section to the Strategy source file to enrich this summary."
     return plain_markdown(paragraph or configured or fallback)
@@ -477,7 +479,7 @@ def page_shell(
         f"""
           <button type="button" class="btn" data-dzcto-refresh>
             {refresh_icon()}
-            Refresh Cadence
+            Refresh Wiki
           </button>
           <span class="refresh-note" data-dzcto-refresh-status aria-live="polite"></span>
 """
@@ -1846,7 +1848,7 @@ def refresh_script() -> str:
   const status = $('[data-dzcto-refresh-status]');
   if (button && status) {
     button.addEventListener('click', async () => {
-      status.textContent = 'Refreshing...';
+      status.textContent = 'Refreshing wiki...';
       if (location.protocol === 'file:') {
         status.textContent = 'Open with dzcto serve "<project folder>" to refresh from the browser.';
         return;

@@ -14,9 +14,11 @@ Ask the user for these values before running Day Zero CTO work:
 
 Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
 
+Dashboard description note: edit the first real paragraph in `<project>/knowledge/wiki/core/STRATEGY.md` under `Product Thesis`, `Company`, or `Stage`. Do not edit generated `index.html` directly.
+
 Runtime note: helpers require Python 3.10+ and use only the Python standard library. Run `bin/dzcto doctor` from the repo before promising generated artifacts.
 
-Server note: for the best generated-page experience, open the wiki through `bin/dzcto serve "<project folder>"`. The local server enables dashboard refresh and lets browser search fetch the generated JSON index reliably.
+Server note: for the best generated-page experience, open the wiki through `bin/dzcto serve "<project folder>"`. The local server enables `Refresh Wiki` and lets browser search fetch the generated JSON index reliably.
 
 ## Codex Desktop
 

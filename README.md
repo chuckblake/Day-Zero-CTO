@@ -97,6 +97,8 @@ Generated wiki pages use a compact command-center interface:
 
 The helper writes `knowledge/wiki/search-index.json` whenever it refreshes the wiki. Search works best through `dzcto serve "<project folder>"`, because browsers may block `file://` pages from fetching the JSON index.
 
+The dashboard description under the title comes from the first real paragraph in `core/STRATEGY.md`, checked in this order: `Product Thesis`, `Company`, then `Stage`. If those sections are missing or only say `Unknown`, the helper falls back to `.dzcto/config.json` `companyDescription`, which is seeded by `dzcto init --company-description`. Edit the generated wiki description by changing `knowledge/wiki/core/STRATEGY.md`, not `index.html`, then refresh the wiki.
+
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: decisions, priority risks, and cadence from core context.
@@ -122,13 +124,13 @@ The hidden `.dzcto/` directory is the local metadata sidecar. It stores project 
 
 Supported cadences include `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, and `every N days/weeks/months`.
 
-The dashboard refresh button can update cadence alerts only when the wiki is served through the local helper:
+The dashboard `Refresh Wiki` button reruns `dzcto refresh` only when the wiki is served through the local helper. It regenerates core HTML pages, the dashboard, the search index, and cadence alerts:
 
 ```bash
 dzcto serve "<project folder>"
 ```
 
-Open the printed local URL and click `Refresh Cadence`. A plain `file://` page cannot run Python directly, and may not load the generated search index, so the button will tell the user to use `dzcto serve`.
+Open the printed local URL and click `Refresh Wiki`. A plain `file://` page cannot run Python directly, and may not load the generated search index, so the button will tell the user to use `dzcto serve`.
 
 The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
 
