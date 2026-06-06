@@ -3740,7 +3740,6 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     due_decisions = due_decision_entries(decisions, today)
     due_risks = due_risk_entries(risks, today)
     critical_risks = sum(1 for risk in risks if risk["severity"] == "Critical")
-    high_or_critical_risks = [risk for risk in risks if risk["severity"] in {"Critical", "High"}]
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
     write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
@@ -3772,6 +3771,10 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         report_status = f"{pluralize(report_count, 'artifact')} / All current"
     else:
         report_status = f"{pluralize(report_count, 'artifact')} / {pluralize(len(alerts), 'alert')}"
+    risk_tone_attr = ' data-tone="crit"' if critical_risks else ' data-tone="warn"' if due_risks else ""
+    risk_sub = f"{pluralize(len(due_risks), 'review')} due" if due_risks else "Open risk page"
+    decision_tone_attr = ' data-tone="warn"' if due_decisions else ""
+    decision_sub = f"{pluralize(len(due_decisions), 'review')} due" if due_decisions else "Recorded choices"
     learning_status = learning_summary(learning_items, today)
     learning_counts_value = learning_counts(learning_items, today)
     repos = [str(item).strip() for item in (config.get("codeRepos", []) or []) if str(item).strip()]
@@ -3930,17 +3933,17 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <div class="k-val">{esc(len(alerts))}<span class="unit">/ {esc(len(cadence_rules))}</span></div>
       <div class="k-sub">{esc(cadence_label)}</div>
     </a>
-    <a class="kpi" href="core/risks.html" data-tone="{'crit' if critical_risks else 'warn' if high_or_critical_risks else 'good'}">
+    <a class="kpi" href="core/risks.html"{risk_tone_attr}>
       <div class="k-label">Open risks</div>
       <div class="k-val">{esc(len(risks))}{f'<span class="unit">/ {critical_risks} crit</span>' if critical_risks else ''}</div>
-      <div class="k-sub">Open risk page</div>
+      <div class="k-sub">{esc(risk_sub)}</div>
     </a>
-    <a class="kpi" href="core/decisions.html" data-tone="{'warn' if decisions else 'good'}">
+    <a class="kpi" href="core/decisions.html"{decision_tone_attr}>
       <div class="k-label">Decisions</div>
       <div class="k-val">{esc(len(decisions))}</div>
-      <div class="k-sub">Recorded choices</div>
+      <div class="k-sub">{esc(decision_sub)}</div>
     </a>
-    <a class="kpi" href="#sec-reports" data-tone="info">
+    <a class="kpi" href="#sec-reports">
       <div class="k-label">Reports</div>
       <div class="k-val">{esc(report_count)}<span class="unit">/ {esc(len(REPORT_FOLDERS))}</span></div>
       <div class="k-sub">{esc(report_status)}</div>
@@ -3950,7 +3953,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <div class="k-val">{esc(learning_counts_value["due"])}<span class="unit">/ {esc(learning_counts_value["new"])} new</span></div>
       <div class="k-sub">Spaced repetition</div>
     </a>
-    <a class="kpi" href="{esc(tech_stack_href)}" data-tone="good">
+    <a class="kpi" href="{esc(tech_stack_href)}">
       <div class="k-label">Repos</div>
       <div class="k-val">{esc(repo_count)}</div>
       <div class="k-sub">Read-only sources</div>
