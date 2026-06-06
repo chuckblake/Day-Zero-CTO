@@ -30,7 +30,7 @@ Report progress in small steps:
 1. Clone the repo.
 2. `cd` into the repo.
 3. Run `bin/dzcto setup`.
-4. Confirm the setup output ends with `Day Zero CTO install is ready.`
+4. Confirm the setup output reaches the final `Next step`.
 5. Restart Codex Desktop or start a fresh session.
 
 The setup and doctor commands print numbered progress such as `[1/5]` and `[1/18]`; relay failures with the step number.
@@ -56,11 +56,28 @@ bin/dzcto setup --editable-skills --editable-skills-dir "$HOME/.codex/skills"
 
 Do not run editable skill install for Claude Code. It is Codex Desktop-only and writes to a Codex skills directory.
 
-After pulling updates:
+To update an existing local Codex install from a Git clone:
 
 ```bash
-git pull
-bin/dzcto setup
+bin/dzcto update
+```
+
+If editable Codex skill links were installed for development, refresh them too:
+
+```bash
+bin/dzcto update --editable-skills --editable-skills-dir "$HOME/.codex/skills"
+```
+
+`dzcto update` runs `git pull --ff-only`, refreshes the local plugin marketplace entry, optionally refreshes editable skill symlinks, and runs doctor. It refuses to pull over local edits by default. If the worktree is dirty, ask the user whether to commit/stash local edits, or run `bin/dzcto update --no-pull` only when the source folder was already updated another way.
+
+If the user installed with custom settings paths, pass the same paths:
+
+```bash
+bin/dzcto update \
+  --plugin-link "$HOME/plugins/day-zero-cto" \
+  --marketplace-file "$HOME/.agents/plugins/marketplace.json" \
+  --editable-skills \
+  --editable-skills-dir "$HOME/.codex/skills"
 ```
 
 For a complete local reinstall from an existing clone:
@@ -118,6 +135,13 @@ After published updates:
 claude plugin update day-zero-cto@day-zero-cto
 ```
 
+For local `--plugin-dir` development, update the clone:
+
+```bash
+cd Day-Zero-CTO
+git pull --ff-only
+```
+
 ## Claude Desktop
 
 Package an uploadable custom skill bundle:
@@ -130,6 +154,16 @@ bin/dzcto package-claude-desktop
 
 Upload `dist/day-zero-cto-claude-desktop.zip` as a custom skill where the user's Claude client and plan support custom skills.
 
+To update the Claude Desktop custom skill bundle:
+
+```bash
+cd Day-Zero-CTO
+git pull --ff-only
+bin/dzcto package-claude-desktop
+```
+
+Then upload the new `dist/day-zero-cto-claude-desktop.zip`.
+
 Claude Desktop can follow the skill procedures and produce downloadable artifacts in its workspace. Durable local filesystem wikis, stale checks, and browser refresh need a local helper with filesystem access, such as Codex Desktop, Claude Code, or a terminal running `dzcto`.
 
 ## Useful Commands
@@ -137,6 +171,7 @@ Claude Desktop can follow the skill procedures and produce downloadable artifact
 Run these from a session where the plugin `bin/` directory is on `PATH`, or from a local clone with `bin/dzcto`.
 
 ```bash
+dzcto update
 dzcto init "<project folder>" --company-name "<name>" --company-url "<url>" --repo "<repo path>"
 dzcto refresh "<project folder>"
 dzcto serve "<project folder>"
@@ -148,7 +183,7 @@ dzcto package-claude-desktop
 
 Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases.
 
-The generated wiki index has a Commands section with copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands.
+The generated wiki index has a Commands section with copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
 
 ## Verify
 

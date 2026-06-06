@@ -42,6 +42,18 @@ def run_script(name: str, args: list[str]) -> int:
     return subprocess.call([sys.executable, str(script_path(name)), *args])
 
 
+def run_git(args: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(REPO_ROOT), *args],
+            check=False,
+            capture_output=capture,
+            text=True,
+        )
+    except FileNotFoundError:
+        raise SystemExit("Missing git command. Install Git or update this source folder manually, then rerun setup.")
+
+
 def resolve_project(path: str) -> Path:
     return Path(path).expanduser().resolve()
 
@@ -223,6 +235,83 @@ def package_claude_desktop(output: Path | None) -> Path:
     return destination
 
 
+def update_local_install(args: argparse.Namespace) -> int:
+    total = 6 + (1 if args.editable_skills else 0)
+    progress = Progress(total)
+
+    progress.step("Verify update source", str(REPO_ROOT))
+    git_dir = REPO_ROOT / ".git"
+    if not git_dir.exists() and not args.no_pull:
+        progress.note("This source folder is not a Git clone, so dzcto cannot pull updates automatically.")
+        progress.note("Install from GitHub, or run dzcto update --no-pull to refresh local links only.")
+        return 1
+    if not git_dir.exists():
+        progress.note("No .git directory found; skipping Git checks and refreshing local links only.")
+
+    progress.step("Check local edits")
+    if git_dir.exists():
+        status = run_git(["status", "--porcelain"], capture=True)
+        if status.returncode:
+            if status.stderr:
+                progress.note(status.stderr.strip())
+            return status.returncode
+        dirty_lines = [line for line in status.stdout.splitlines() if line.strip()]
+        if dirty_lines and not args.allow_dirty and not args.no_pull:
+            progress.note("Local edits found; refusing to run git pull over a dirty worktree.")
+            for line in dirty_lines[:12]:
+                progress.note(line)
+            if len(dirty_lines) > 12:
+                progress.note(f"...and {len(dirty_lines) - 12} more")
+            progress.note("Commit or stash local edits, then rerun dzcto update.")
+            progress.note("To refresh install links without pulling, run dzcto update --no-pull.")
+            return 1
+        if dirty_lines and args.no_pull:
+            progress.note("Local edits found; continuing because --no-pull was provided.")
+        elif dirty_lines:
+            progress.note("Local edits found; continuing because --allow-dirty was provided.")
+        else:
+            progress.note("Working tree is clean.")
+
+    progress.step("Pull latest repo changes" if not args.no_pull else "Skip repo pull")
+    if args.no_pull:
+        progress.note("--no-pull provided")
+    else:
+        pull = run_git(["pull", "--ff-only"], capture=True)
+        for line in (pull.stdout + pull.stderr).strip().splitlines():
+            progress.note(line)
+        if pull.returncode:
+            progress.note("Pull failed. Resolve the Git issue, then rerun dzcto update.")
+            return pull.returncode
+
+    progress.step("Refresh Codex plugin marketplace entry")
+    setup_args = []
+    if args.plugin_link:
+        setup_args.extend(["--plugin-link", args.plugin_link])
+    if args.marketplace_file:
+        setup_args.extend(["--marketplace-file", args.marketplace_file])
+    code = run_script("install_local_marketplace.py", setup_args)
+    if code:
+        return code
+
+    if args.editable_skills:
+        progress.step("Refresh editable Codex skill links")
+        skill_args = []
+        if args.editable_skills_dir:
+            skill_args.extend(["--dest-dir", args.editable_skills_dir])
+        code = run_script("install_local_skills.py", skill_args)
+        if code:
+            return code
+
+    progress.step("Run install doctor")
+    doctor_args = ["--project", str(resolve_project(args.project))] if args.project else []
+    code = run_script("dzcto_doctor.py", doctor_args)
+    if code:
+        return code
+
+    progress.step("Next step", "restart Codex Desktop, reload Claude Code plugins, or start a fresh agent session")
+    return 0
+
+
 def serve_project(project: Path, host: str, port: int) -> int:
     wiki_root = wiki_root_for_project(project)
     if not (wiki_root / "index.html").exists():
@@ -300,6 +389,15 @@ def main(argv: list[str]) -> int:
     setup.add_argument("--company-description")
     setup.add_argument("--company-url")
     setup.add_argument("--repo", action="append", default=[], help="Read-only code repository path for the wiki; may be repeated")
+
+    update = sub.add_parser("update", help="Pull latest Day Zero CTO and refresh a local install")
+    update.add_argument("--no-pull", action="store_true", help="Refresh local install links without running git pull")
+    update.add_argument("--allow-dirty", action="store_true", help="Allow git pull even when local edits are present")
+    update.add_argument("--editable-skills", action="store_true", help="Also refresh editable Codex skill links")
+    update.add_argument("--plugin-link", help="Where the local plugin symlink should point")
+    update.add_argument("--marketplace-file", help="Codex plugin marketplace/settings JSON file")
+    update.add_argument("--editable-skills-dir", help="Destination directory for editable skill symlinks")
+    update.add_argument("--project", help="Optional project folder for doctor checks")
 
     doctor = sub.add_parser("doctor", help="Check install and optional project health")
     doctor.add_argument("--project", help="Optional project folder")
@@ -401,6 +499,9 @@ def main(argv: list[str]) -> int:
             return code
         progress.step("Next step", "restart Codex Desktop or start a fresh session")
         return 0
+
+    if args.command == "update":
+        return update_local_install(args)
 
     if args.command == "doctor":
         doctor_args = ["--project", args.project] if args.project else []

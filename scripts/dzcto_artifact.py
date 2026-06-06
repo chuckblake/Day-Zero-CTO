@@ -409,6 +409,7 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
         ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
         ("Serve Dashboard", f'dzcto serve "{project_folder}"'),
         ("Doctor", f'dzcto doctor --project "{project_folder}"'),
+        ("Update Day Zero CTO", f'dzcto update --project "{project_folder}"'),
         ("Issue Bundle", f'dzcto collect-issue-bundle "{project_folder}"'),
     ]
 

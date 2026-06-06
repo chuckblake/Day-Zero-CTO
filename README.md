@@ -113,7 +113,7 @@ dzcto serve "<project folder>"
 
 Open the printed local URL and click `Refresh Cadence`. A plain `file://` page cannot run Python directly, so the button will tell the user to use `dzcto serve`.
 
-The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, stale checks, serving, diagnostics, and issue bundles.
+The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
 
 ## Install
 
@@ -152,11 +152,28 @@ bin/dzcto setup \
 
 Use `--company-description` instead of `--company-url` when you want to provide the company summary yourself.
 
-To refresh an existing local Codex install after pulling changes:
+To update an existing local Codex install from a Git clone:
 
 ```bash
-git pull
-bin/dzcto setup
+bin/dzcto update
+```
+
+If you installed editable Codex skill links for development, refresh those links too:
+
+```bash
+bin/dzcto update --editable-skills
+```
+
+`dzcto update` runs `git pull --ff-only`, refreshes the local plugin marketplace entry, optionally refreshes editable skill symlinks, and runs doctor. It refuses to pull over local edits by default. Commit or stash local edits first, or use `bin/dzcto update --no-pull` when you only want to refresh local links after updating the folder another way.
+
+Pass the same custom install paths you used during setup when they differ from the defaults:
+
+```bash
+bin/dzcto update \
+  --plugin-link "$HOME/plugins/day-zero-cto" \
+  --marketplace-file "$HOME/.agents/plugins/marketplace.json" \
+  --editable-skills \
+  --editable-skills-dir "$HOME/.codex/skills"
 ```
 
 For a complete local reinstall from an existing clone:
@@ -200,6 +217,19 @@ git clone https://github.com/chuckblake/Day-Zero-CTO.git
 claude --plugin-dir ./Day-Zero-CTO
 ```
 
+To update a published Claude Code plugin install, use Claude Code's plugin update command:
+
+```bash
+claude plugin update day-zero-cto@day-zero-cto
+```
+
+For local `--plugin-dir` development, update the clone with Git:
+
+```bash
+cd Day-Zero-CTO
+git pull --ff-only
+```
+
 Claude Code plugin install does not require Ruby. The installed `dzcto` helper command requires Python 3.10+ wherever Claude Code executes shell commands.
 
 ### Claude Desktop
@@ -214,6 +244,16 @@ bin/dzcto package-claude-desktop
 
 Upload `dist/day-zero-cto-claude-desktop.zip` as a custom skill where your Claude plan/client supports custom skills.
 
+To update a Claude Desktop custom skill bundle:
+
+```bash
+cd Day-Zero-CTO
+git pull --ff-only
+bin/dzcto package-claude-desktop
+```
+
+Then upload the new `dist/day-zero-cto-claude-desktop.zip`.
+
 Claude Desktop chat can follow the Day Zero CTO procedures and create downloadable artifacts in its workspace. Durable local filesystem wikis, browser refresh, and stale checks still need a local helper with filesystem access, such as Codex Desktop, Claude Code, or a terminal running `dzcto init`, `dzcto artifact`, `dzcto refresh`, or `dzcto serve`.
 
 ## Helper Commands
@@ -222,6 +262,7 @@ Run these from a session where the plugin `bin/` directory is on `PATH`, or from
 
 ```bash
 dzcto setup
+dzcto update
 dzcto init "<project folder>" --company-name "<name>" --company-description "<summary>" --repo "<repo path>"
 dzcto refresh "<project folder>"
 dzcto serve "<project folder>"
@@ -287,7 +328,7 @@ day-zero-cto/
 └── README.md
 ```
 
-`scripts/dzcto.py` is the canonical local command surface. It exposes `setup`, `doctor`, `init`, `refresh`, `serve`, `artifact`, `learning`, `check-stale`, `collect-issue-bundle`, and `package-claude-desktop`.
+`scripts/dzcto.py` is the canonical local command surface. It exposes `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `artifact`, `learning`, `check-stale`, `collect-issue-bundle`, and `package-claude-desktop`.
 
 `scripts/dzcto_artifact.py` owns HTML generation, sidecar metadata, generated core HTML pages, report templates, learning index rendering, cadence alerts, and the command-center index.
 
