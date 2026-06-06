@@ -332,6 +332,7 @@ Read the matching reference file when needed:
 - `references/weekly-cto-review.md`: weekly CTO operating review.
 - `references/write-ceo-update.md`: CEO-facing update.
 - `references/work-through-problem.md`: decision and problem walkthroughs.
+- `references/review-decisions.md`: decision-log review and revisit workflow.
 - `references/cto-code-review.md`: startup CTO code review.
 - `references/learning.md`: spaced-repetition learning.
 

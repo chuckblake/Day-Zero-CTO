@@ -28,6 +28,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | `refine-core-context` | Interview the user after onboarding to review, correct, and approve updates to core context files before refreshing the generated wiki. |
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
 | `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
+| `review-decisions` | Walk the decision log one recorded decision at a time, using revisit triggers to reaffirm, supersede, punt, or mark evidence needed. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
 | `write-ceo-update` | Translate engineering work, risks, and asks into CEO-facing signal. |
 | `review-engineering-risk` | Find risks that threaten product, customers, delivery, trust, or runway. |
@@ -105,7 +106,7 @@ For substantive core context updates, ask an agent to use the `refine-core-conte
 
 The index shows company information under the title, then a dashboard workspace:
 
-- `What needs you today`: decisions, priority risks, and cadence from core context.
+- `What needs you today`: decision revisit triggers, priority risks, and cadence from core context.
 - `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.
@@ -361,6 +362,7 @@ day-zero-cto/
 │   ├── refine-core-context/
 │   ├── tech-stack/
 │   ├── work-through-problem/
+│   ├── review-decisions/
 │   ├── weekly-cto-review/
 │   ├── write-ceo-update/
 │   ├── review-engineering-risk/
@@ -402,6 +404,7 @@ Install or load this plugin, then ask for one of the workflows in natural langua
 
 - "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme CTO` as the project folder, company name `Acme`, company URL `https://acme.example`, and read-only repos `~/code/acme-app` and `~/code/acme-api`."
 - "Refine the Strategy core context for this startup. Interview me section by section and let me approve the Markdown before updating the wiki."
+- "Review the decision log for this startup. Walk me through each revisit trigger and let me reaffirm, supersede, punt, or mark evidence needed."
 - "Create a Tech Stack report from the connected codebases and write it into the project knowledge wiki."
 - "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
 - "Write a CEO update from this week's engineering work."

@@ -215,6 +215,8 @@ The generated wiki index has a Commands section with copy buttons. AI prompt car
 
 The Commands section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
 
+Use `day-zero-cto:review-decisions` when the user wants to review recorded decisions. Treat `DECISIONS.md` as a decision log, not a pending-decision queue; `Revisit Trigger` determines what needs another look.
+
 ## Verify
 
 Codex Desktop: ask for available Day Zero CTO skills or run:

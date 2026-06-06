@@ -417,6 +417,14 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> 
         ("Learning", exact_prompt(f"Run a Day Zero CTO learning prompt for {company}.", project_folder, repos)),
         ("Decision Help", exact_prompt(f"Help me work through a CTO decision for {company}: <decision or problem>.", project_folder, repos)),
         (
+            "Review Decisions",
+            exact_prompt(
+                f"Use the Day Zero CTO review-decisions workflow to walk the decision log for {company}. Treat DECISIONS.md as recorded decisions, use Revisit Trigger to choose what needs review, and let me reaffirm, supersede, punt, or mark evidence needed one item at a time.",
+                project_folder,
+                repos,
+            ),
+        ),
+        (
             "Refine Strategy",
             exact_prompt(
                 f"Use the Day Zero CTO refine-core-context workflow to refine core/STRATEGY.md for {company}. Interview me section by section, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
@@ -1276,7 +1284,7 @@ def read_decision_entries(core_dir: Path) -> list[dict[str, str]]:
                 {
                     "title": plain_markdown(title),
                     "owner": plain_markdown(value_from_row(row, "owner", "responsible")) or "Founder",
-                    "when": plain_markdown(value_from_row(row, "needed_by", "due", "date", "status", "revisit")) or "Review",
+                    "when": plain_markdown(value_from_row(row, "revisit_trigger", "revisit", "needed_by", "due", "status", "date")) or "Review trigger",
                     "context": plain_markdown(value_from_row(row, "context", "rationale", "why", "notes", "summary")),
                 }
             )
@@ -2466,7 +2474,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
             for index, decision in enumerate(decisions[:5], start=1)
         )
         if decisions
-        else '<p class="empty-item">No decisions awaiting review.</p>'
+        else '<p class="empty-item">No recorded decisions found.</p>'
     )
 
     top_risk_rows = (
@@ -2573,7 +2581,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     <a class="kpi" href="core/decisions.html" data-tone="{'warn' if decisions else 'good'}">
       <div class="k-label">Decisions</div>
       <div class="k-val">{esc(len(decisions))}</div>
-      <div class="k-sub">Awaiting review</div>
+      <div class="k-sub">Recorded choices</div>
     </a>
     <a class="kpi" href="#sec-reports" data-tone="info">
       <div class="k-label">Reports</div>
@@ -2599,7 +2607,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </div>
     <div class="today-grid">
       <div class="today-col">
-        <div class="col-h">Decisions awaiting you <span class="cnt">{esc(len(decisions))}</span></div>
+        <div class="col-h">Decision revisit triggers <span class="cnt">{esc(len(decisions))}</span></div>
         {decision_rows}
       </div>
       <div class="today-col">

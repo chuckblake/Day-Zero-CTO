@@ -31,7 +31,7 @@ Update the project wiki's core CTO context by interviewing the user, drafting co
 - `STRATEGY.md`: company stage, target customer and user, product thesis, current goals, constraints, non-goals, and the first real description paragraph used by the dashboard.
 - `TEAM.md`: people, roles, ownership, decision rights, communication preferences, working agreements, gaps, and open questions.
 - `OPERATING_CADENCE.md`: weekly review rhythm, CEO update rhythm, planning cycle, incident or reliability review rhythm, expected artifacts, and `## Index Cadence Rules` rows for dashboard due alerts.
-- `DECISIONS.md`: decision date, decision, context, options considered, rationale, owner, revisit trigger, and current status when useful.
+- `DECISIONS.md`: recorded decisions already taken, original or approximate decision date, context, options considered, past-tense rationale, owner, revisit trigger, and optional review history.
 - `RISKS.md`: risk, evidence, impact, likelihood or severity, owner, mitigation, next review date, and whether the risk should appear as high priority on the dashboard.
 
 ## Update Standards
