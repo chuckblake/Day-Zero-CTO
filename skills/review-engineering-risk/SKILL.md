@@ -17,7 +17,7 @@ Find the engineering risks that could realistically hurt the startup's current g
 6. Group risks by business impact rather than by technical subsystem.
 7. Recommend mitigations sized to the company's stage and runway.
 8. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/engineering-risk/` and regenerate `<project>/knowledge/wiki/index.html`.
-9. Update `core/RISKS.md` only when the user asks or when the workflow is explicitly maintaining the risk register.
+9. Update `core/RISKS.md` only when the user asks or when the workflow is explicitly maintaining the risk register. Otherwise, structured report risk rows remain candidate signals and will roll up to `core/risks.html#risk-signals` after refresh.
 10. Summarize the top risks in chat and link to the generated artifact.
 
 ## Risk Categories

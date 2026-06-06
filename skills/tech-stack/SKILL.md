@@ -32,7 +32,7 @@ Create a grounded technology inventory and system map from one or more codebases
 - `Integrations`: third-party APIs, auth, payments, messaging, AI, email, monitoring, and customer-facing dependencies.
 - `Infrastructure and operations`: hosting, deploy path, CI, background jobs, observability, secrets, and environments.
 - `Development tooling`: local setup, tests, linting, formatting, code generation, and developer workflow.
-- `Risks and watchpoints`: candidate stack risk signals that matter to delivery, reliability, trust, or onboarding. These are not the operating risk register until promoted into `core/RISKS.md`.
+- `Risks and watchpoints`: candidate stack risk signals that matter to delivery, reliability, trust, or onboarding. These are not the operating risk register until promoted into `core/RISKS.md`; after refresh they appear on `core/risks.html#risk-signals` with a link back to the Tech Stack report so they can be promoted, merged, or dismissed from the canonical risk page.
 - `Onboarding notes`: what a new technical leader or agent should read first.
 
 ## Durable Artifact

@@ -37,6 +37,22 @@ REPORT_FOLDERS = {
     "code-reviews": "Code Reviews",
 }
 
+RISK_SIGNAL_REPORT_FIELDS = {
+    "tech-stack": ("risks_watchpoints", "risks", "watchpoints"),
+    "engineering-risk": ("top_risks", "risks", "watchpoints"),
+    "weekly-reviews": ("risks",),
+    "ceo-updates": ("risks_blockers", "risks", "blockers"),
+}
+
+THEME_PATTERNS = [
+    ("AI accuracy", r"\b(ai|llm|model|claude|eval|accuracy|predicate|prompt)\b"),
+    ("security and privacy", r"\b(security|privacy|phi|hipaa|soc|compliance|csp|sentry|posthog|audit)\b"),
+    ("vendor dependency", r"\b(vendor|reducto|stripe|anthropic|s3|third[- ]party|outage|credit)\b"),
+    ("Rails infrastructure", r"\b(rails|solid|queue|cache|cable|postgres|redis|kamal|deploy|dependency)\b"),
+    ("product readiness", r"\b(beta|launch|customer|gtm|billing|user|channel|tpa|employer)\b"),
+    ("team and process", r"\b(team|owner|founder|hiring|bus factor|runbook|process|cadence)\b"),
+]
+
 CORE_DOCS = [
     "STRATEGY.md",
     "TEAM.md",
@@ -707,7 +723,7 @@ def setup_dashboard_summary_html(items: list[dict[str, str]]) -> str:
 """
 
 
-def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_command_items: list[str]) -> str:
+def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_command_items: list[str], *, section_number: str = "04") -> str:
     project = str(project_folder)
     copy_card_count = len(ai_prompt_items) + len(local_command_items)
     help_cards = [
@@ -718,7 +734,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         ),
         (
             "Edit",
-            "Update source Markdown under knowledge/wiki/core. Risk cards are generated from core/RISKS.md, not edited in HTML.",
+            "Update source Markdown under knowledge/wiki/core. The Risks page is generated from core/RISKS.md and report signals, not edited in HTML.",
             f'dzcto help editing --project "{project}"',
         ),
         (
@@ -766,7 +782,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
   <details class="section" id="sec-help" open>
     <summary>
       <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">05</span>
+      <span class="sec-num">{esc(section_number)}</span>
       <span class="sec-title">Help</span>
       <span class="sec-meta">Self-serve guide / {pluralize(copy_card_count, "copy card")}</span>
     </summary>
@@ -818,14 +834,14 @@ def search_control(prefix: str) -> str:
 """
 
 
-def breadcrumbs(prefix: str, items: list[tuple[str, str | None]]) -> str:
+def breadcrumbs(prefix: str, items: list[tuple[str, str | None]], *, class_name: str = "breadcrumbs") -> str:
     parts = [f'<a href="{esc(prefix)}index.html">Dashboard</a>']
     for label, href in items:
         if href:
             parts.append(f'<a href="{esc(prefix + href)}">{esc(label)}</a>')
         else:
             parts.append(f"<span>{esc(label)}</span>")
-    return f'<nav class="breadcrumbs" aria-label="Breadcrumb">{"<span>/</span>".join(parts)}</nav>'
+    return f'<nav class="{esc(class_name)}" aria-label="Breadcrumb">{"<span>/</span>".join(parts)}</nav>'
 
 
 def page_shell(
@@ -838,7 +854,18 @@ def page_shell(
     crumbs: list[tuple[str, str | None]] | None = None,
 ) -> str:
     breadcrumb_html = breadcrumbs(prefix, crumbs) if crumbs else ""
+    sticky_breadcrumb_html = breadcrumbs(prefix, crumbs or [], class_name="sticky-crumbs")
     return f"""
+<header class="sticky-nav">
+  <div class="sticky-main">
+    {sticky_breadcrumb_html}
+    <div class="sticky-title">{esc(title)}</div>
+  </div>
+  <div class="sticky-actions">
+    {search_control(prefix)}
+    <button type="button" class="theme-btn" data-theme-toggle aria-label="Toggle light or dark theme"><span data-theme-label>Dark</span></button>
+  </div>
+</header>
 <main class="app">
   <header class="masthead">
     <div>
@@ -849,10 +876,7 @@ def page_shell(
       </a>
       {f'<p class="lede">{esc(subtitle)}</p>' if subtitle else ''}
     </div>
-    <div class="masthead-side">
-      <div class="util">
-        <button type="button" class="theme-btn" data-theme-toggle aria-label="Toggle light or dark theme"><span data-theme-label>Dark</span></button>
-      </div>
+    <div class="masthead-side masthead-mobile-tools">
       {search_control(prefix)}
     </div>
   </header>
@@ -1063,7 +1087,7 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str) -> s
     return f"""
 <section class="artifact-section">
   <h2>{esc(title)}</h2>
-  <p class="artifact-note">Candidate signals from this report. Promote actionable items into <code>core/RISKS.md</code> with an owner, mitigation, review date, and source before they become part of the operating risk register.</p>
+  <p class="artifact-note">Candidate signals from this report. Manage the operating risk register on the <a href="../../core/risks.html#risk-signals">Risks page</a>; promote actionable items into <code>core/RISKS.md</code> with an owner, mitigation, review date, and source before relying on them in the command center.</p>
   <table>
     <thead><tr>{headers}</tr></thead>
     <tbody>{''.join(table_rows)}</tbody>
@@ -1553,6 +1577,12 @@ def write_search_index(
             continue
         source_path = core_dir / page["doc"]
         source_text = source_path.read_text(encoding="utf-8", errors="replace")
+        if page["doc"] == "RISKS.md":
+            signal_text = " ".join(
+                f"{signal['title']} {signal['severity']} {signal['source_label']} {signal['evidence']} {signal['impact']} {signal['mitigation']}"
+                for signal in read_report_risk_signals(wiki_root)
+            )
+            source_text = f"{source_text}\n\nRisk Signals From Reports\n{signal_text}"
         entries.append(
             search_entry(
                 title=page["title"],
@@ -1728,7 +1758,11 @@ def severity_rank(value: str) -> int:
     return {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}.get(value, 3)
 
 
-def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
+def limit_entries(items: list[dict[str, str]], limit: int | None) -> list[dict[str, str]]:
+    return items if limit is None else items[:limit]
+
+
+def read_risk_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, str]]:
     path = core_dir / "RISKS.md"
     risks: list[dict[str, str]] = []
     ignored_sections = {"closed_risks", "review_history", "risk_review_history"}
@@ -1760,7 +1794,7 @@ def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
                 }
             )
     if risks:
-        return sorted(risks, key=lambda item: (severity_rank(item["severity"]), item["title"].lower()))[:12]
+        return limit_entries(sorted(risks, key=lambda item: (severity_rank(item["severity"]), item["title"].lower())), limit)
 
     fallback = []
     for item in markdown_heading_items(path):
@@ -1778,10 +1812,10 @@ def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
                 "mitigation": "",
             }
         )
-    return sorted(fallback, key=lambda item: (severity_rank(item["severity"]), item["title"].lower()))[:12]
+    return limit_entries(sorted(fallback, key=lambda item: (severity_rank(item["severity"]), item["title"].lower())), limit)
 
 
-def read_decision_entries(core_dir: Path) -> list[dict[str, str]]:
+def read_decision_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, str]]:
     path = core_dir / "DECISIONS.md"
     decisions: list[dict[str, str]] = []
     for table in markdown_tables(path):
@@ -1789,26 +1823,36 @@ def read_decision_entries(core_dir: Path) -> list[dict[str, str]]:
             title = value_from_row(row, "decision", "title", "question", "ask", "name") or next(iter(row.values()), "")
             if not title:
                 continue
+            rationale = plain_markdown(value_from_row(row, "rationale", "why", "notes", "summary"))
+            context = plain_markdown(value_from_row(row, "context", "problem", "background")) or rationale
+            revisit = plain_markdown(value_from_row(row, "revisit_trigger", "revisit", "needed_by", "due", "status"))
             decisions.append(
                 {
                     "title": plain_markdown(title),
+                    "date": plain_markdown(value_from_row(row, "date", "decision_date", "decided", "when")) or "Unknown",
                     "owner": plain_markdown(value_from_row(row, "owner", "responsible")) or "Founder",
-                    "when": plain_markdown(value_from_row(row, "revisit_trigger", "revisit", "needed_by", "due", "status", "date")) or "Review trigger",
-                    "context": plain_markdown(value_from_row(row, "context", "rationale", "why", "notes", "summary")),
+                    "when": revisit or "Review trigger",
+                    "context": context,
+                    "options": plain_markdown(value_from_row(row, "options_considered", "options", "alternatives")),
+                    "rationale": rationale,
                 }
             )
     if decisions:
-        return decisions[:8]
+        return limit_entries(decisions, limit)
 
-    return [
+    fallback = [
         {
             "title": item["title"],
+            "date": "Unknown",
             "owner": "Founder",
             "when": "Review",
             "context": item.get("summary", ""),
+            "options": "",
+            "rationale": item.get("summary", ""),
         }
         for item in markdown_heading_items(path, limit=8)
     ]
+    return limit_entries(fallback, limit)
 
 
 def dates_in_text(value: str) -> list[dt.date]:
@@ -1867,6 +1911,320 @@ def risk_review_due(risk: dict[str, str], today: dt.date) -> bool:
 
 def due_risk_entries(risks: list[dict[str, str]], today: dt.date) -> list[dict[str, str]]:
     return [risk for risk in risks if risk_review_due(risk, today)]
+
+
+def sortable_date_key(value: str, fallback_index: int = 0) -> tuple[int, int, int, int]:
+    text = plain_markdown(value).lower()
+    if match := re.search(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", text):
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)), fallback_index)
+    if match := re.search(r"\b(\d{4})[-/](\d{1,2})\b", text):
+        return (int(match.group(1)), int(match.group(2)), 1, fallback_index)
+    if match := re.search(r"\bpre[- ]?(\d{4})\b", text):
+        return (int(match.group(1)) - 1, 12, 31, fallback_index)
+    if match := re.search(r"\b(\d{4})\b", text):
+        return (int(match.group(1)), 1, 1, fallback_index)
+    return (0, 0, 0, fallback_index)
+
+
+def phrase_list(values: list[str], *, fallback: str = "captured operating judgment") -> str:
+    clean = [value for value in values if value]
+    if not clean:
+        return fallback
+    if len(clean) == 1:
+        return clean[0]
+    if len(clean) == 2:
+        return f"{clean[0]} and {clean[1]}"
+    return f"{', '.join(clean[:-1])}, and {clean[-1]}"
+
+
+def top_themes(entries: list[dict[str, str]], fields: list[str]) -> list[str]:
+    scores = {label: 0 for label, _pattern in THEME_PATTERNS}
+    last_index = max(len(entries) - 1, 0)
+    for index, entry in enumerate(entries):
+        text = " ".join(entry.get(field, "") for field in fields).lower()
+        # Skew the generated read toward frequent themes and the newest third of the log.
+        weight = 2 if index >= max(last_index - max(len(entries) // 3, 1), 0) else 1
+        for label, pattern in THEME_PATTERNS:
+            if re.search(pattern, text):
+                scores[label] += weight
+    ranked = [label for label, score in sorted(scores.items(), key=lambda item: (-item[1], item[0])) if score]
+    return ranked[:3]
+
+
+def risk_match_text(value: str) -> str:
+    text = plain_markdown(value).lower()
+    text = re.sub(r"\bcsp\b", "content security policy", text)
+    text = re.sub(r"\bphi\b", "protected health information", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def risk_words(value: str) -> set[str]:
+    stop = {
+        "and",
+        "are",
+        "before",
+        "from",
+        "into",
+        "is",
+        "not",
+        "the",
+        "this",
+        "with",
+        "without",
+        "risk",
+        "risks",
+        "review",
+    }
+    return {word for word in risk_match_text(value).split() if len(word) > 2 and word not in stop}
+
+
+def risk_titles_by_status(core_dir: Path) -> tuple[list[str], list[str]]:
+    active: list[str] = []
+    closed: list[str] = []
+    path = core_dir / "RISKS.md"
+    for section, table in markdown_tables_with_sections(path):
+        is_closed = normalize_key(section) == "closed_risks" or any("closed_date" in row for row in table)
+        for row in table:
+            title = value_from_row(row, "risk", "title", "finding", "issue", "name") or next(iter(row.values()), "")
+            if not title:
+                continue
+            (closed if is_closed else active).append(plain_markdown(title))
+    return active, closed
+
+
+def risk_title_matches(title: str, candidates: list[str]) -> bool:
+    title_text = risk_match_text(title)
+    title_words = risk_words(title)
+    if not title_words:
+        return False
+    for candidate in candidates:
+        candidate_text = risk_match_text(candidate)
+        if title_text == candidate_text or title_text in candidate_text or candidate_text in title_text:
+            return True
+        candidate_words = risk_words(candidate)
+        if not candidate_words:
+            continue
+        if candidate_words <= title_words or title_words <= candidate_words:
+            return True
+        overlap = len(title_words & candidate_words)
+        if overlap >= 2 and overlap / max(len(title_words), 1) >= 0.5:
+            return True
+    return False
+
+
+def matching_report_html(json_path: Path) -> Path | None:
+    if json_path.name != "data.json":
+        html_path = json_path.with_suffix(".html")
+        if html_path.exists():
+            return html_path
+    html_links = sorted(json_path.parent.glob("*.html"), reverse=True)
+    return html_links[0] if html_links else None
+
+
+def report_risk_signal_json_paths(wiki_root: Path) -> list[Path]:
+    reports_dir = wiki_root / "reports"
+    paths: list[Path] = []
+    for kind in RISK_SIGNAL_REPORT_FIELDS:
+        json_paths = sorted((reports_dir / kind).glob("*.json"), reverse=True)
+        if len(json_paths) > 1:
+            json_paths = [path for path in json_paths if path.name != "data.json"]
+        paths.extend(json_paths)
+    return paths
+
+
+def report_risk_signal_items(kind: str, data: dict[str, Any]) -> list[Any]:
+    items: list[Any] = []
+    for field in RISK_SIGNAL_REPORT_FIELDS.get(kind, ()):
+        items.extend(array_value(value_at(data, field)))
+    return items
+
+
+def risk_signal_from_item(item: Any, *, kind: str, source_label: str, href: str, date: str) -> dict[str, str] | None:
+    if isinstance(item, dict):
+        title = item_headline(item)
+        if not title:
+            return None
+        severity_source = text_value(value_at(item, "severity", "priority", "status", "likelihood")) or title
+        evidence = text_value(value_at(item, "evidence", "detail", "details", "signal", "context"))
+        impact = text_value(value_at(item, "impact", "business_impact", "why"))
+        mitigation = text_value(value_at(item, "mitigation", "recommendation", "next_step", "action", "plan"))
+    else:
+        title = text_value(item)
+        if not title:
+            return None
+        severity_source = title
+        evidence = ""
+        impact = ""
+        mitigation = ""
+    return {
+        "title": plain_markdown(title),
+        "severity": normalize_severity(severity_source),
+        "evidence": plain_markdown(evidence),
+        "impact": plain_markdown(impact),
+        "mitigation": plain_markdown(mitigation),
+        "source_label": source_label,
+        "href": href,
+        "date": date,
+        "kind": kind,
+    }
+
+
+def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
+    signals: list[dict[str, str]] = []
+    for json_path in report_risk_signal_json_paths(wiki_root):
+        kind = json_path.parent.name
+        label = REPORT_FOLDERS.get(kind, kind)
+        data = read_json_file(json_path, {})
+        if not isinstance(data, dict):
+            continue
+        html_path = matching_report_html(json_path)
+        date = report_run_date(html_path) if html_path else "Unknown date"
+        href = html_path.relative_to(wiki_root).as_posix() if html_path else ""
+        source_label = f"{label} / {date}"
+        for item in report_risk_signal_items(kind, data):
+            signal = risk_signal_from_item(item, kind=kind, source_label=source_label, href=href, date=date)
+            if signal:
+                signals.append(signal)
+
+    by_key: dict[str, dict[str, str]] = {}
+    for signal in signals:
+        key = risk_match_text(signal["title"])
+        existing = by_key.get(key)
+        if not existing:
+            by_key[key] = signal
+            continue
+        if severity_rank(signal["severity"]) < severity_rank(existing["severity"]):
+            existing["severity"] = signal["severity"]
+        if signal["href"] and signal["href"] not in existing["href"].split(" | "):
+            existing["href"] = " | ".join(filter(None, [existing["href"], signal["href"]]))
+            existing["source_label"] = " | ".join(filter(None, [existing["source_label"], signal["source_label"]]))
+        for field in ("evidence", "impact", "mitigation"):
+            if signal[field] and signal[field] not in existing[field]:
+                existing[field] = " ".join(filter(None, [existing[field], signal[field]])).strip()
+
+    return sorted(
+        by_key.values(),
+        key=lambda item: (severity_rank(item["severity"]), sortable_date_key(item["date"], 0)),
+    )
+
+
+def risk_signal_status(signal: dict[str, str], active_titles: list[str], closed_titles: list[str]) -> str:
+    if risk_title_matches(signal["title"], active_titles):
+        return "In active register"
+    if risk_title_matches(signal["title"], closed_titles):
+        return "Closed or accepted"
+    return "Needs promotion"
+
+
+def core_current_read_html(title: str, summary: str) -> str:
+    return f"""
+  <section class="current-read" aria-label="Generated current read">
+    <div>
+      <h2>Current Read</h2>
+      <p>{esc(summary)}</p>
+    </div>
+  </section>
+"""
+
+
+def decisions_current_read(core_dir: Path) -> str:
+    decisions = read_decision_entries(core_dir, limit=None)
+    if not decisions:
+        return "No recorded decisions are captured yet. Add dated decision rows to DECISIONS.md so future reviews can distinguish durable choices from open questions."
+
+    ordered = sorted(enumerate(decisions), key=lambda item: sortable_date_key(item[1].get("date", ""), item[0]))
+    recent = [decision for _index, decision in ordered[-2:]]
+    themes = top_themes(decisions, ["title", "context", "options", "rationale", "when"])
+    trigger_values = [snippet(decision.get("when", ""), 72) for decision in decisions if has_real_value(decision.get("when"))]
+    trigger_counts: dict[str, int] = {}
+    for trigger in trigger_values:
+        trigger_counts[trigger] = trigger_counts.get(trigger, 0) + 1
+    trigger_examples = [trigger for trigger, _count in sorted(trigger_counts.items(), key=lambda item: (-item[1], item[0]))[:2]]
+
+    return " ".join(
+        [
+            f"The decision log has {len(decisions)} recorded choices, with recurring themes around {phrase_list(themes)}.",
+            f"The newest entries are {phrase_list([decision['title'] for decision in recent], fallback='the latest recorded choices')}.",
+            f"Revisit pressure is mostly tied to {phrase_list(trigger_examples, fallback='explicit trigger conditions')}, so rows should read as historical decisions unless a trigger is due or marked met.",
+            "Use the log below as the durable history; when a review reaffirms, supersedes, or punts a choice, update the source Markdown and regenerate this read.",
+        ]
+    )
+
+
+def risks_current_read(core_dir: Path, wiki_root: Path) -> str:
+    risks = read_risk_entries(core_dir, limit=None)
+    signals = read_report_risk_signals(wiki_root)
+    active_titles, closed_titles = risk_titles_by_status(core_dir)
+    unpromoted = [signal for signal in signals if risk_signal_status(signal, active_titles, closed_titles) == "Needs promotion"]
+
+    if not risks and not signals:
+        return "No active risks or report risk signals are captured yet. Add rows to RISKS.md or run a Tech Stack or Engineering Risk report so the register can become the operating source of truth."
+
+    high_count = sum(1 for risk in risks if risk["severity"] in {"Critical", "High"})
+    themes = top_themes(risks + signals, ["title", "source", "evidence", "impact", "mitigation"])
+    due_candidates = sorted(
+        [risk for risk in risks if dates_in_text(risk.get("review", ""))],
+        key=lambda risk: min(dates_in_text(risk.get("review", ""))),
+    )[:2]
+    due_text = phrase_list(
+        [f"{risk['title']} ({risk['review']})" for risk in due_candidates],
+        fallback="the dated next-review fields in the register",
+    )
+
+    return " ".join(
+        [
+            f"The active risk register has {len(risks)} risks, including {high_count} high or critical items, with themes around {phrase_list(themes)}.",
+            f"Near-term review attention is on {due_text}.",
+            f"Reports add {len(signals)} risk signals, with {len(unpromoted)} still needing promotion, merge, or dismissal from the canonical register.",
+            "The Markdown log below remains the source of truth; report signals keep source links so risks can be traced back to the review that surfaced them.",
+        ]
+    )
+
+
+def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "../") -> str:
+    signals = read_report_risk_signals(wiki_root)
+    if not signals:
+        return ""
+
+    active_titles, closed_titles = risk_titles_by_status(core_dir)
+    rows = []
+    for signal in signals[:24]:
+        status = risk_signal_status(signal, active_titles, closed_titles)
+        tone = "ready" if status == "In active register" else "low" if status == "Closed or accepted" else "medium"
+        source_links = []
+        hrefs = signal["href"].split(" | ") if signal["href"] else []
+        labels = signal["source_label"].split(" | ")
+        for index, label in enumerate(labels):
+            href = hrefs[index] if index < len(hrefs) else ""
+            if href:
+                source_links.append(f'<a href="{esc(prefix + href)}">{esc(label)}</a>')
+            else:
+                source_links.append(esc(label))
+        detail = signal["evidence"] or signal["impact"] or "No detail captured in the structured report data."
+        action = signal["mitigation"] or ("Promote into RISKS.md with owner, mitigation, source, and next review date." if status == "Needs promotion" else "Keep source link for traceability.")
+        rows.append(
+            f"""<tr>
+  <td><strong>{esc(signal["title"])}</strong><br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
+  <td><span class="tag {tone}">{esc(status)}</span></td>
+  <td>{' / '.join(source_links)}</td>
+  <td>{esc(detail)}</td>
+  <td>{esc(action)}</td>
+</tr>"""
+        )
+
+    return f"""
+  <section class="artifact-section risk-signals" id="risk-signals">
+    <h2>Risk Signals From Reports</h2>
+    <p class="artifact-note">Generated from structured Tech Stack, Engineering Risk, Weekly Review, and CEO Update report data. Use this as an intake queue; promote actionable signals into <code>RISKS.md</code> so they get an owner, mitigation, source, and dated next review.</p>
+    <div class="markdown-table">
+      <table>
+        <thead><tr><th>Signal</th><th>Status</th><th>Source</th><th>Evidence</th><th>Action</th></tr></thead>
+        <tbody>{''.join(rows)}</tbody>
+      </table>
+    </div>
+  </section>
+"""
 
 
 def relative_date(value: dt.date | None, today: dt.date) -> str:
@@ -1955,6 +2313,7 @@ def command_center_css() -> str:
   --shadow-sm: 0 1px 2px rgba(19,27,41,.05), 0 1px 1px rgba(19,27,41,.04);
   --shadow-md: 0 4px 16px rgba(19,27,41,.08), 0 1px 3px rgba(19,27,41,.05);
   --ring: 0 0 0 3px rgba(17,101,127,.28);
+  --nav-bg: rgba(244,246,249,.92);
   --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --maxw: 1220px;
@@ -1992,9 +2351,10 @@ html[data-theme="dark"] {
   --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
   --shadow-md: 0 8px 28px rgba(0,0,0,.5);
   --ring: 0 0 0 3px rgba(77,182,212,.32);
+  --nav-bg: rgba(12,18,27,.92);
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
 body {
   margin: 0;
   background: var(--bg);
@@ -2014,6 +2374,29 @@ button, input, select { font-family: inherit; }
 button { cursor: pointer; }
 [hidden] { display: none !important; }
 :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
+.sticky-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 54px;
+  padding: 8px max(18px, calc((100vw - var(--maxw)) / 2 + 26px));
+  border-bottom: 1px solid var(--line);
+  background: var(--nav-bg);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1px 2px rgba(19,27,41,.04);
+}
+.sticky-main { min-width: 0; display: grid; gap: 1px; }
+.sticky-title { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.sticky-crumbs { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; overflow: hidden; color: var(--muted); font-size: 11.5px; line-height: 1.25; white-space: nowrap; }
+.sticky-crumbs a, .sticky-crumbs span { flex: 0 0 auto; color: var(--muted); }
+.sticky-crumbs a:hover { color: var(--accent); text-decoration: none; }
+.sticky-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.sticky-actions .search { width: 240px; }
+.sticky-actions .theme-btn { min-height: 32px; }
 .app { max-width: var(--maxw); margin: 0 auto; padding: 38px 26px 90px; }
 .masthead { display: grid; grid-template-columns: 1fr auto; gap: 26px; align-items: start; margin-bottom: 26px; }
 .eyebrow {
@@ -2032,6 +2415,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .title .light { color: var(--muted); font-weight: 500; }
 .lede { max-width: 680px; margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
 .masthead-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: min(300px, 100%); }
+.masthead-mobile-tools { display: none; }
 .util { display: flex; gap: 8px; justify-content: flex-end; }
 .theme-btn, .icon-btn {
   min-height: 34px;
@@ -2322,7 +2706,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .b-crit, .high { color: var(--crit); background: var(--crit-soft); }
 .b-high { color: var(--high); background: var(--high-soft); }
 .b-med, .medium { color: var(--med); background: var(--med-soft); }
-.b-low, .ready { color: var(--low); background: var(--low-soft); }
+.b-low, .ready, .low { color: var(--low); background: var(--low-soft); }
 .reports, .reports-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
 .report, .report-card {
   display: flex;
@@ -2459,6 +2843,15 @@ h1.title { font-size: 38px; font-weight: 800; }
 .status-danger { background: var(--crit-soft); border-color: var(--crit-line); }
 .cadence-list { display: grid; gap: 10px; }
 .cadence-alert code { display: block; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
+.current-read {
+  margin: 8px 0 26px;
+  border-left: 4px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+}
+.current-read h2 { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.current-read p { margin-top: 5px; max-width: 980px; color: var(--ink-2); font-size: 14px; line-height: 1.55; }
 .artifact-section { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
 .artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
 .artifact-note { margin: 8px 0 14px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
@@ -2551,7 +2944,10 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .status-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 860px) {
+  .sticky-nav { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 16px; }
+  .sticky-actions .search { display: none; }
   .masthead { grid-template-columns: 1fr; }
+  .masthead-mobile-tools { display: flex; }
   .masthead-side { align-items: stretch; }
   .util { justify-content: flex-end; }
   .search { width: 100%; }
@@ -2583,7 +2979,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .learn-items { columns: 1; }
 }
 @media print {
-  .masthead-side, .toolbar { display: none !important; }
+  .sticky-nav, .masthead-side, .toolbar { display: none !important; }
   body { background: #fff; }
   .app { max-width: none; }
 }
@@ -2742,20 +3138,6 @@ def refresh_script() -> str:
 
   function applyDashboardFilters(query) {
     const q = query.trim().toLowerCase();
-    const selected = $('.chip[aria-pressed="true"]')?.dataset.sev || 'all';
-    let visibleRisks = 0;
-    $$('.risk[data-search-text]').forEach((item) => {
-      const matchesQuery = !q || item.dataset.searchText.includes(q);
-      const matchesSeverity = selected === 'all' || item.dataset.sev === selected;
-      const visible = matchesQuery && matchesSeverity;
-      item.hidden = !visible;
-      if (visible) visibleRisks += 1;
-    });
-    const riskCount = $('[data-risk-count]');
-    if (riskCount) {
-      const total = Number(riskCount.dataset.total || visibleRisks);
-      riskCount.textContent = `${visibleRisks} of ${total} shown`;
-    }
     let visibleReports = 0;
     $$('.report[data-search-text], .report-card[data-search-text]').forEach((item) => {
       const visible = !q || item.dataset.searchText.includes(q);
@@ -2765,21 +3147,10 @@ def refresh_script() -> str:
     const reportCount = $('[data-report-count]');
     if (reportCount && q) reportCount.textContent = `${visibleReports} matching`;
     if (q) {
-      const riskSection = $('#sec-risks');
       const reportSection = $('#sec-reports');
-      if (riskSection) riskSection.open = true;
       if (reportSection) reportSection.open = true;
     }
   }
-
-  $$('[data-sev]').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const group = chip.closest('.chipset');
-      if (group) $$('[data-sev]', group).forEach((item) => item.setAttribute('aria-pressed', String(item === chip)));
-      const input = $('[data-dzcto-search]');
-      applyDashboardFilters(input ? input.value : '');
-    });
-  });
 
   document.querySelectorAll('[data-dzcto-search]').forEach((input) => {
     const search = input.closest('.search');
@@ -3071,12 +3442,23 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         if source_path.exists():
             source_text = source_path.read_text(encoding="utf-8")
             content_html = markdown_to_html(source_text, table_anchor_prefix="risk" if doc == "RISKS.md" else None)
-            source_hash = collect_source_hashes([source_path])
+            source_paths = [source_path]
+            if doc == "RISKS.md":
+                source_paths.extend(report_risk_signal_json_paths(wiki_root))
+            source_hash = collect_source_hashes(source_paths)
             status = "Ready"
         else:
             content_html = f'<p class="empty-item">{esc(doc)} has not been created yet.</p>'
             source_hash = {}
             status = "Missing source"
+
+        current_read_html = ""
+        extra_core_html = ""
+        if source_path.exists() and doc == "DECISIONS.md":
+            current_read_html = core_current_read_html(title, decisions_current_read(core_dir))
+        elif source_path.exists() and doc == "RISKS.md":
+            current_read_html = core_current_read_html(title, risks_current_read(core_dir, wiki_root))
+            extra_core_html = report_risk_signals_html(wiki_root, core_dir, prefix="../")
 
         provenance = provenance_payload(
             wiki_root,
@@ -3094,6 +3476,8 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
     <div class="status-card"><span>Updated</span><strong>{esc(dt.date.today().isoformat())}</strong></div>
     <div class="status-card"><span>Page</span><strong>HTML</strong></div>
   </div>
+  {current_read_html}
+  {extra_core_html}
   <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
   <section class="artifact-section prose" data-toc-scope>
     {content_html}
@@ -3329,41 +3713,6 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         )
     )
 
-    risk_cards = (
-        "\n".join(
-            f"""<details class="risk" data-sev="{esc(risk["severity"])}" data-rank="{severity_rank(risk["severity"])}" data-search-text="{search_text_attr(*risk.values())}">
-  <summary>
-    <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
-    <div class="r-main">
-      <div class="r-title">{esc(risk["title"])}</div>
-      <div class="r-sub">
-        <span class="sev-badge b-{severity_token(risk["severity"])}">{esc(risk["severity"])}</span>
-        {f'<span>{esc(risk["category"])}</span><span>/</span>' if risk["category"] else ''}
-        <span>{esc(risk["owner"])}</span>
-      </div>
-    </div>
-    <div class="r-right">
-      <span class="count-pill">review {esc(risk["review"])}</span>
-      <span class="r-chev" aria-hidden="true"></span>
-    </div>
-  </summary>
-  <div class="r-detail">
-    <div class="r-field"><div class="rf-k">Evidence</div><div class="rf-v">{esc(risk["evidence"] or "No evidence captured yet.")}</div></div>
-    <div class="r-field"><div class="rf-k">Business impact</div><div class="rf-v">{esc(risk["impact"] or "Impact not captured yet.")}</div></div>
-    <div class="r-field"><div class="rf-k">Mitigation</div><div class="rf-v">{esc(risk["mitigation"] or "Mitigation not captured yet.")}</div></div>
-    <div class="r-field-grid">
-      <div class="r-field"><div class="rf-k">Owner</div><div class="rf-v">{esc(risk["owner"])}</div></div>
-      <div class="r-field"><div class="rf-k">Source</div><div class="rf-v">{esc(risk["source"])}</div></div>
-      <div class="r-field"><div class="rf-k">Review</div><div class="rf-v">{esc(risk["review"])}</div></div>
-    </div>
-  </div>
-</details>"""
-            for risk in risks
-        )
-        if risks
-        else '<div class="no-results">No risk rows found. Add a table or headings to core/RISKS.md.</div>'
-    )
-
     learning_percent = 0
     if learning_counts_value["active"]:
         learning_percent = round(((learning_counts_value["active"] - learning_counts_value["new"]) / learning_counts_value["active"]) * 100)
@@ -3396,10 +3745,10 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <div class="k-val">{esc(len(alerts))}<span class="unit">/ {esc(len(cadence_rules))}</span></div>
       <div class="k-sub">{esc(cadence_label)}</div>
     </a>
-    <a class="kpi" href="#sec-risks" data-tone="{'crit' if critical_risks else 'warn' if high_or_critical_risks else 'good'}">
+    <a class="kpi" href="core/risks.html" data-tone="{'crit' if critical_risks else 'warn' if high_or_critical_risks else 'good'}">
       <div class="k-label">Open risks</div>
       <div class="k-val">{esc(len(risks))}{f'<span class="unit">/ {critical_risks} crit</span>' if critical_risks else ''}</div>
-      <div class="k-sub">Register tracked</div>
+      <div class="k-sub">Open risk page</div>
     </a>
     <a class="kpi" href="core/decisions.html" data-tone="{'warn' if decisions else 'good'}">
       <div class="k-label">Decisions</div>
@@ -3446,33 +3795,10 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </div>
   </section>
 
-  <details class="section" id="sec-risks" open>
-    <summary>
-      <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">01</span>
-      <span class="sec-title">Risk Register</span>
-      <span class="sec-meta"><span data-risk-count data-total="{esc(len(risks))}">{esc(len(risks))} of {esc(len(risks))} shown</span></span>
-    </summary>
-    <div class="sec-body">
-      <div class="toolbar">
-        <span class="tb-label">Severity</span>
-        <div class="chipset">
-          <button type="button" class="chip" data-sev="all" aria-pressed="true">All</button>
-          <button type="button" class="chip" data-sev="Critical" aria-pressed="false"><span class="swatch dot-crit"></span>Critical</button>
-          <button type="button" class="chip" data-sev="High" aria-pressed="false"><span class="swatch dot-high"></span>High</button>
-          <button type="button" class="chip" data-sev="Medium" aria-pressed="false"><span class="swatch dot-med"></span>Medium</button>
-        </div>
-        <span class="tb-spacer"></span>
-        <span class="count-pill">{esc(critical_risks)} critical</span>
-      </div>
-      <div class="risk-list">{risk_cards}</div>
-    </div>
-  </details>
-
   <details class="section" id="sec-reports" open>
     <summary>
       <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">02</span>
+      <span class="sec-num">01</span>
       <span class="sec-title">Reports</span>
       <span class="sec-meta" data-report-count>{esc(report_status)}</span>
     </summary>
@@ -3484,7 +3810,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
   <details class="section" id="sec-core" open>
     <summary>
       <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">03</span>
+      <span class="sec-num">02</span>
       <span class="sec-title">Core Context</span>
       <span class="sec-meta">{core_ready}/{len(CORE_DOCS)} ready</span>
     </summary>
@@ -3496,7 +3822,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
   <details class="section" id="sec-learning">
     <summary>
       <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">04</span>
+      <span class="sec-num">03</span>
       <span class="sec-title">Learning</span>
       <span class="sec-meta">{esc(learning_status)}</span>
     </summary>
@@ -3583,12 +3909,14 @@ def main(argv: list[str]) -> int:
             parser.error("--title is required unless --init is used")
 
         report_sources: list[Path] = []
+        structured_data: dict[str, Any] | None = None
         if args.data_file:
             data_path = Path(args.data_file).expanduser()
             report_sources.append(data_path)
             data = json.loads(data_path.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise SystemExit("--data-file must contain a JSON object")
+            structured_data = data
             body = render_structured_report(args.kind, data)
         elif args.body_file:
             body_path = Path(args.body_file).expanduser()
@@ -3611,6 +3939,9 @@ def main(argv: list[str]) -> int:
             extra={"reportDate": args.date},
         )
         report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance), encoding="utf-8")
+        if structured_data is not None:
+            write_json(report_path.with_suffix(".json"), structured_data)
+            write_json(reports_dir / args.kind / "data.json", structured_data)
         update_manifest(wiki_root, provenance)
         written_report = report_path
 

@@ -91,10 +91,12 @@ All user-facing wiki pages are HTML. Core context starts as editable Markdown so
 
 Generated wiki pages use a compact command-center interface:
 
-- Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
+- Sticky top navigation with the current page title, breadcrumbs back to the dashboard, search, and theme toggle.
+- Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos. The risk KPI opens the canonical Risks page rather than duplicating the register on the dashboard.
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
 - A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
-- Risk register cards parsed from `core/RISKS.md` tables or headings, with source, review dates, and severity filtering.
+- Generated "Current Read" summaries on the Decisions and Risks core pages. These are regenerated from source rows on every refresh and stay short: one paragraph that emphasizes frequent and newer themes.
+- A canonical Risks page with the active `core/RISKS.md` log plus a generated `Risk Signals From Reports` intake queue with source links back to Tech Stack, Engineering Risk, Weekly Review, and CEO Update artifacts.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
 - Breadcrumbs, automatic page tables of contents, and a light/dark theme on generated pages.
@@ -106,9 +108,9 @@ The dashboard description under the title comes from the first real paragraph in
 
 For substantive core context updates, ask an agent to use the `refine-core-context` skill. It runs a short interview, drafts section-level Markdown updates, asks for approval or edits, writes only the source Markdown under `knowledge/wiki/core/`, and refreshes the generated HTML. Direct file edits are still fine for small typo, formatting, or copy fixes; the source files are `STRATEGY.md`, `TEAM.md`, `OPERATING_CADENCE.md`, `DECISIONS.md`, and `RISKS.md`.
 
-Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk cards and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited. Use a `Source` column when possible so promoted risks can point back to a tech-stack report, engineering-risk review, audit, code evidence, customer signal, or founder judgment.
+Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk KPI, today-panel risk links, and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited. Use a `Source` column when possible so promoted risks can point back to a tech-stack report, engineering-risk review, audit, code evidence, customer signal, or founder judgment.
 
-Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. Promote actionable items into `core/RISKS.md` with owner, mitigation, source, and review date before relying on them in the command center.
+Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. The generated Risks page rolls structured report signals into `Risk Signals From Reports` so the user can promote, merge, or dismiss them from one place. Promote actionable items into `core/RISKS.md` with owner, mitigation, source, and review date before relying on them in the command center.
 
 Risk reviews can create decisions. If handling a risk leads to a formal choice, such as accepting the risk, choosing a mitigation path, changing architecture or process, closing the risk because of a strategic direction, or deferring based on an explicit threshold, record that choice in `knowledge/wiki/core/DECISIONS.md`. Keep the risk row focused on exposure and follow-through; keep the decision row focused on the choice, rationale, owner, and revisit trigger.
 
@@ -118,7 +120,6 @@ The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: only items requiring action today: due or triggered decision reviews, risk reviews due today or overdue, and cadence items due today or overdue.
 - `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it moves to the bottom of the page as a quieter reference link to `setup/index.html`.
-- `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.
 - `Learning`: spaced-repetition state and mastery progress.
@@ -421,7 +422,7 @@ The supported report kinds have fixed section templates:
 
 Optional `metrics` are rendered as summary cards when present.
 
-For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
+For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. The helper stores structured report JSON next to generated report HTML, and `core/risks.html` reads that data into `Risk Signals From Reports` with links back to the source report. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
 
 ## Repo Structure
 
@@ -509,6 +510,8 @@ Day Zero CTO is released under the MIT License. See `LICENSE`.
 ## Acknowledgements
 
 The learning workflow borrows broad teaching-process ideas such as one-question-at-a-time practice, visible progress, and mastery confirmation from the open-source `teach` skill in [`alexknowshtml/claude-skills`](https://github.com/alexknowshtml/claude-skills/blob/main/teach/SKILL.md). Day Zero CTO implements those ideas independently in its own spaced-repetition workflow.
+
+The Decisions and Risks "Current Read" pattern is inspired by the broad product idea in [`garrytan/gbrain`](https://github.com/garrytan/gbrain): keep durable source material and present a short synthesized read above it. GBrain is MIT licensed, and Day Zero CTO does not include GBrain code; this repo independently implements the idea for local CTO decision and risk logs.
 
 ## Roadmap Ideas
 

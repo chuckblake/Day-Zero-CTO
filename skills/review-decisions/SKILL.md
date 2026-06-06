@@ -40,11 +40,12 @@ Run a decision-review ritual over the project decision log. `DECISIONS.md` is a 
    dzcto refresh "<project folder>"
    ```
 
-10. Summarize decided, reaffirmed, punted, and evidence-needed items, plus the next review date or trigger for each punt.
+10. After refresh, the generated Decisions page should show an updated Current Read summary above the source log. Summarize decided, reaffirmed, punted, and evidence-needed items, plus the next review date or trigger for each punt.
 
 ## Standards
 
 - Be explicit about "recorded decision" versus "decision needing review."
+- Do not hand-edit the generated Current Read summary; it regenerates from `DECISIONS.md` on refresh.
 - Favor a clear punt over fake certainty: punt only with a date, event, owner, or evidence trigger.
 - For architectural decisions already taken, make rationale read as historical explanation, not future justification.
 - If the user makes a new decision in chat, capture the decision, rationale, owner, and revisit trigger before moving to the next item.

@@ -152,6 +152,7 @@ def command_reference_text(project: Path | None = None) -> str:
               Create or refresh <project>/knowledge/wiki, sidecar metadata, generated core pages, search index, and dashboard.
           dzcto refresh {project_arg}
               Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance.
+              Decisions and Risks pages also regenerate short Current Read summaries from source rows and report risk signals.
           dzcto serve {project_arg} [--host 127.0.0.1] [--port 8765]
               Serve the wiki locally so search JSON loads reliably and local refresh works.
           dzcto status {project_arg} [--json]
@@ -232,6 +233,8 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             For recorded decision reviews, use day-zero-cto:review-decisions.
             For active risk-register reviews, use day-zero-cto:review-risks.
             Risk cards and core/risks.html are generated from RISKS.md; edit RISKS.md as the source of truth.
+            Report risk sections are candidate signals; core/risks.html rolls them up under Risk Signals From Reports
+            so they can be promoted, merged, or dismissed from one place.
             Every active risk needs a calendar Next Review date. External triggers can be included, but should not replace the date.
             For report prompt steering, add reportPromptContext to .dzcto/config.json or add a Prompt Context
             column to the Index Cadence Rules table in OPERATING_CADENCE.md.
@@ -246,7 +249,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             CEO Update: progress, risks/blockers, asks/decisions, next.
             Engineering Risk: top risks, mitigations, watchpoints.
             Review Risks: walk the risk register one item at a time and update RISKS.md.
-            Tech Stack: architecture shape, stack components, risks, onboarding notes.
+            Tech Stack: architecture shape, stack components, candidate risks, onboarding notes.
             CTO Code Review: blocking findings, FYI findings, questions, startup risk note.
 
             Reports are written under:

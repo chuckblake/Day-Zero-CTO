@@ -55,11 +55,13 @@ Run a risk-register review ritual over `RISKS.md`. This is different from `revie
    dzcto refresh "<project folder>"
    ```
 
-12. Summarize active, updated, closed, punted, and evidence-needed risks, decisions logged or updated, plus next review dates and any external triggers.
+12. After refresh, the generated Risks page should show the updated Current Read summary, the active source log, and any report-derived `Risk Signals From Reports`. Summarize active, updated, closed, punted, and evidence-needed risks, decisions logged or updated, plus next review dates and any external triggers.
 
 ## Standards
 
 - Treat risks as operating objects, not prose. Every active risk needs an owner, source, mitigation, and a calendar next review date.
+- Use `core/risks.html#risk-signals` as an intake view for report-derived risk candidates, but manage real operating risks in `RISKS.md`.
+- Do not hand-edit generated Current Read summaries; they regenerate from `RISKS.md` and structured report risk signals on refresh.
 - External triggers are useful context, but they do not replace a calendar review date because Day Zero CTO cannot observe most external events by itself.
 - Favor a clear punt over fake certainty: punt only with a date, and optionally an event, owner, or evidence trigger.
 - Use evidence labels when a risk is based on code, docs, reports, incidents, customer feedback, compliance requirements, or user judgment.
