@@ -962,8 +962,9 @@ def render_list_section(title: str, items: Any) -> str:
     list_items = []
     for item in rows:
         if isinstance(item, dict):
-            title_text = text_value(value_at(item, "title", "name", "priority", "ask", "decision", "risk", "finding", "question", "prompt"))
-            body = text_value(value_at(item, "body", "detail", "details", "summary", "why", "impact", "rationale", "note", "notes"))
+            title_text = text_value(value_at(item, "title", "item", "name", "priority", "ask", "decision", "risk", "finding", "question", "prompt"))
+            body = text_value(value_at(item, "body", "detail", "details", "summary", "context", "business_impact", "why", "impact", "rationale", "note", "notes"))
+            status = text_value(value_at(item, "status"))
             owner = text_value(value_at(item, "owner", "owner_horizon", "needed_by", "done_when"))
             evidence = [text_value(entry) for entry in array_value(value_at(item, "evidence", "sources", "source"))]
             list_items.append(
@@ -971,13 +972,14 @@ def render_list_section(title: str, items: Any) -> str:
 <li>
   {f'<strong>{esc(title_text)}</strong>' if title_text else ''}
   {f'<span>{esc(body)}</span>' if body else ''}
+  {f'<span>{esc(status)}</span>' if status and status != body else ''}
   {f'<em>{esc(owner)}</em>' if owner else ''}
   {f'<small>Evidence: {esc("; ".join(filter(None, evidence)))}</small>' if any(evidence) else ''}
 </li>
 """
             )
         else:
-            list_items.append(f"<li>{esc(text_value(item))}</li>")
+            list_items.append(f"<li><strong>{esc(text_value(item))}</strong></li>")
     return f"""
 <section class="artifact-section">
   <h2>{esc(title)}</h2>
@@ -2460,10 +2462,11 @@ h1.title { font-size: 38px; font-weight: 800; }
 .artifact-section { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
 .artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
 .artifact-note { margin: 8px 0 14px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
-.artifact-list { display: grid; gap: 10px; margin: 16px 0 24px; padding: 0; list-style: none; }
-.artifact-list li { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 12px; }
-.artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small { display: block; }
-.artifact-list span, .artifact-list em, .artifact-list small { margin-top: 4px; color: var(--muted); }
+.artifact-list { display: grid; gap: 11px; margin: 16px 0 24px; padding-left: 22px; list-style: disc; }
+.artifact-list li { padding: 0 0 0 2px; color: var(--ink-2); font-size: 14px; line-height: 1.55; }
+.artifact-list li::marker { color: var(--accent); }
+.artifact-list strong { color: var(--ink); font-weight: 800; }
+.artifact-list span, .artifact-list em, .artifact-list small { display: block; margin-top: 3px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
 .action-summary { margin-top: 0; border-top: 0; padding-top: 0; }
 .action-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); margin-top: 14px; }
