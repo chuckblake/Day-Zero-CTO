@@ -16,6 +16,8 @@ Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata
 
 Dashboard description note: edit the first real paragraph in `<project>/knowledge/wiki/core/STRATEGY.md` under `Product Thesis`, `Company`, or `Stage`. Do not edit generated `index.html` directly.
 
+Core context update note: for substantive updates to Strategy, Team, Operating Cadence, Decisions, or Risks, prefer the `day-zero-cto:refine-core-context` skill. Interview the user in small passes, draft proposed Markdown updates, ask for approval or edits, write the approved source Markdown under `<project>/knowledge/wiki/core/`, then run `dzcto refresh "<project folder>"`. Direct source Markdown edits are fine for small typo, formatting, or copy fixes.
+
 Runtime note: helpers require Python 3.10+ and use only the Python standard library. Run `bin/dzcto doctor` from the repo before promising generated artifacts.
 
 Server note: for the best generated-page experience, open the wiki through `bin/dzcto serve "<project folder>"`. The local server enables `Refresh Wiki` and lets browser search fetch the generated JSON index reliably.
@@ -189,6 +191,8 @@ dzcto package-claude-desktop
 Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases.
 
 The generated wiki index has a Commands section with copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
+
+The Commands section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
 
 ## Verify
 

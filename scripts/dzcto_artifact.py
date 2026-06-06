@@ -416,6 +416,46 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> 
         ("Learning", exact_prompt(f"Run a Day Zero CTO learning prompt for {company}.", project_folder, repos)),
         ("Decision Help", exact_prompt(f"Help me work through a CTO decision for {company}: <decision or problem>.", project_folder, repos)),
         (
+            "Refine Strategy",
+            exact_prompt(
+                f"Use the Day Zero CTO refine-core-context workflow to refine core/STRATEGY.md for {company}. Interview me section by section, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
+                project_folder,
+                repos,
+            ),
+        ),
+        (
+            "Refine Team",
+            exact_prompt(
+                f"Use the Day Zero CTO refine-core-context workflow to refine core/TEAM.md for {company}. Interview me section by section, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
+                project_folder,
+                repos,
+            ),
+        ),
+        (
+            "Refine Operating Cadence",
+            exact_prompt(
+                f"Use the Day Zero CTO refine-core-context workflow to refine core/OPERATING_CADENCE.md for {company}, including Index Cadence Rules if useful. Interview me section by section, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
+                project_folder,
+                repos,
+            ),
+        ),
+        (
+            "Refine Decisions",
+            exact_prompt(
+                f"Use the Day Zero CTO refine-core-context workflow to refine core/DECISIONS.md for {company}. Interview me about missing or stale decisions, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
+                project_folder,
+                repos,
+            ),
+        ),
+        (
+            "Refine Risks",
+            exact_prompt(
+                f"Use the Day Zero CTO refine-core-context workflow to refine core/RISKS.md for {company}. Interview me about current risks, draft risk register updates for approval, write the approved Markdown source, and refresh the wiki.",
+                project_folder,
+                repos,
+            ),
+        ),
+        (
             "CTO Code Review",
             exact_prompt(
                 f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo(s) as read-only unless I explicitly ask for code changes.",

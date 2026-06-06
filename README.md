@@ -25,6 +25,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | Skill | Purpose |
 | --- | --- |
 | `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, capture company context, connect read-only codebases, create core context, and offer initial reports and learning setup. |
+| `refine-core-context` | Interview the user after onboarding to review, correct, and approve updates to core context files before refreshing the generated wiki. |
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
 | `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
@@ -99,6 +100,8 @@ The helper writes `knowledge/wiki/search-index.json` whenever it refreshes the w
 
 The dashboard description under the title comes from the first real paragraph in `core/STRATEGY.md`, checked in this order: `Product Thesis`, `Company`, then `Stage`. If those sections are missing or only say `Unknown`, the helper falls back to `.dzcto/config.json` `companyDescription`, which is seeded by `dzcto init --company-description`. Edit the generated wiki description by changing `knowledge/wiki/core/STRATEGY.md`, not `index.html`, then refresh the wiki.
 
+For substantive core context updates, ask an agent to use the `refine-core-context` skill. It runs a short interview, drafts section-level Markdown updates, asks for approval or edits, writes only the source Markdown under `knowledge/wiki/core/`, and refreshes the generated HTML. Direct file edits are still fine for small typo, formatting, or copy fixes; the source files are `STRATEGY.md`, `TEAM.md`, `OPERATING_CADENCE.md`, `DECISIONS.md`, and `RISKS.md`.
+
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: decisions, priority risks, and cadence from core context.
@@ -133,6 +136,8 @@ dzcto serve "<project folder>"
 Open the printed local URL and click `Refresh Wiki`. A plain `file://` page cannot run Python directly, and may not load the generated search index, so the button will tell the user to use `dzcto serve`.
 
 The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
+
+Generated command centers include refinement prompts for Strategy, Team, Operating Cadence, Decisions, and Risks. These prompts are meant for the conversational edit path: interview, draft, approve, write source Markdown, refresh.
 
 ## Install
 
@@ -326,6 +331,7 @@ day-zero-cto/
 │   └── dzcto-learning
 ├── skills/
 │   ├── bootstrap-cto-context/
+│   ├── refine-core-context/
 │   ├── tech-stack/
 │   ├── work-through-problem/
 │   ├── weekly-cto-review/
@@ -368,6 +374,7 @@ https://raw.githubusercontent.com/chuckblake/Day-Zero-CTO/main/INSTALL_FOR_AGENT
 Install or load this plugin, then ask for one of the workflows in natural language:
 
 - "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme CTO` as the project folder, company name `Acme`, company URL `https://acme.example`, and read-only repos `~/code/acme-app` and `~/code/acme-api`."
+- "Refine the Strategy core context for this startup. Interview me section by section and let me approve the Markdown before updating the wiki."
 - "Create a Tech Stack report from the connected codebases and write it into the project knowledge wiki."
 - "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
 - "Write a CEO update from this week's engineering work."

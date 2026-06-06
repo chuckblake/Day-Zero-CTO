@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refine Core Context"
+  short_description: "Interview and update core wiki docs."
+  default_prompt: "Refine a Day Zero CTO core context document."
