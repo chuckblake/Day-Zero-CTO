@@ -6,8 +6,9 @@ Use this when another Codex Desktop, Claude Code, Claude Desktop, or terminal-ba
 
 Ask the user for these values before running Day Zero CTO work:
 
-- Project folder: where durable artifacts should live, usually `~/Documents/<Company>/`. This controls the wiki directory name and location.
 - Company name.
+- Project or engagement name. If one name covers both, confirm that and use it for both.
+- Project folder: generate options from the company/project names before asking the user to choose. Good defaults are `~/Documents/<Company>/`, `~/Documents/<Company>/<Project>/`, `~/Documents/Day Zero CTO/<Company>/`, and `~/Documents/<Project>/`. This controls the wiki directory name and location.
 - Company description or company website URL.
 - Optional read-only codebase paths. Multiple codebases are allowed.
 

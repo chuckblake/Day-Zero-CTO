@@ -35,10 +35,15 @@ It is intentionally small. The first version should earn trust by observing the 
 
 ## Project Wiki
 
-Each startup or engagement gets a project folder outside the code repo, for example:
+Each startup or engagement gets a project folder outside the code repo. During onboarding, Day Zero CTO should ask for the company name and project/engagement name first, then generate project folder options from those names before asking the user to choose.
+
+Common defaults:
 
 ```text
 ~/Documents/<Company>/
+~/Documents/<Company>/<Project>/
+~/Documents/Day Zero CTO/<Company>/
+~/Documents/<Project>/
 ```
 
 Day Zero CTO creates and owns `knowledge/wiki/` inside that project folder. The `--wiki-project` or `dzcto init <project>` path controls both the directory name and where the wiki lands. Code repos are read-only evidence sources by default, and `--repo` can be repeated for products that span multiple repos.

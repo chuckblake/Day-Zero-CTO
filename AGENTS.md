@@ -16,6 +16,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, a
 ## Editing Rules
 
 - Keep Day Zero CTO artifacts in the user's project `knowledge/wiki`, not in a code repo.
+- Onboarding should ask for company name and project/engagement name before asking for the project folder, then generate sensible default folder options from those names.
 - Treat user code repos as read-only evidence unless the user explicitly asks for code changes.
 - Support multiple read-only codebase paths when the user provides them.
 - Keep skill bodies concise and procedural. Do not add per-skill README files.
