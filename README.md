@@ -52,6 +52,12 @@ Recommended folder shape:
   knowledge/
     wiki/
       index.html
+      .dzcto/
+        config.json
+        manifest.json
+        diagnostics.json
+        logs/
+          latest.log
       core/
         STRATEGY.md
         TEAM.md
@@ -70,6 +76,8 @@ Recommended folder shape:
 ```
 
 The `knowledge/wiki/index.html` file is the bookmarkable front door for the workspace. It identifies the company and shows company context from `core/STRATEGY.md` under the title. The page organizes the workspace into collapsible sections: Core Context, Reports, Learning, Help, and Misc. Reports show run dates next to links and include cadence status from `core/OPERATING_CADENCE.md`; Help contains commands the user can run in their agent; Misc contains handoffs and other non-report artifacts.
+
+The hidden `knowledge/wiki/.dzcto/` directory is the local metadata sidecar for generated artifacts. It stores the project config, artifact manifest, diagnostics, and latest helper log. Generated HTML pages also embed a small provenance JSON block with the Day Zero CTO version, generation time, config hash, source hashes when available, and artifact ID. Use `dzcto check-stale "<project folder>"` to compare the sidecar, manifest, and cadence rules against the current wiki state.
 
 Core files:
 
@@ -102,7 +110,10 @@ day-zero-cto/
 ├── .claude-plugin/
 │   ├── plugin.json
 │   └── marketplace.json
+├── .github/
+│   └── ISSUE_TEMPLATE/
 ├── bin/
+│   ├── dzcto
 │   ├── dzcto-artifact
 │   ├── dzcto-doctor
 │   └── dzcto-learning
@@ -116,7 +127,9 @@ day-zero-cto/
 │   ├── cto-code-review/
 │   └── learning/
 ├── scripts/
+│   ├── dzcto.py
 │   ├── dzcto_artifact.py
+│   ├── dzcto_common.py
 │   ├── dzcto_doctor.py
 │   ├── dzcto_learning.py
 │   ├── install_local_marketplace.py
@@ -133,22 +146,24 @@ day-zero-cto/
 
 Each skill is a normal skill folder with a `SKILL.md` file. `agents/openai.yaml` files are Codex UI metadata. Claude Code reads the shared `SKILL.md` files through the plugin.
 
-`scripts/dzcto_artifact.py` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Learning, Help, and Misc sections.
+`scripts/dzcto.py` is the canonical local command surface used by the skills and public install docs. It exposes `setup`, `doctor`, `init`, `artifact`, `learning`, `check-stale`, and `collect-issue-bundle`.
+
+`scripts/dzcto_artifact.py` is the shared report helper. It ensures the project `knowledge/wiki` shape exists, writes `.dzcto` sidecar metadata, writes HTML reports under `knowledge/wiki/reports/<kind>/`, keeps handoffs under `knowledge/wiki/handoffs/`, derives company context from `core/STRATEGY.md`, evaluates cadence alerts from `core/OPERATING_CADENCE.md`, renders `knowledge/wiki/learning/index.html`, and regenerates `knowledge/wiki/index.html` with collapsible Core Context, Reports, Learning, Help, and Misc sections.
 
 Report bodies are template-rendered from structured JSON via `--data-file`. The agent supplies judgment and report facts; the helper owns the HTML structure, styling, ordering, escaping, and repeated section layout. Raw `--body-file` HTML remains as a legacy fallback.
 
 `scripts/dzcto_learning.py` manages spaced-repetition learning items under `knowledge/wiki/learning/`. It selects due or new items, records `Needs Work`, `Familiar`, and `Confident` ratings, writes a mastery checklist under `knowledge/wiki/learning/checklists/`, and refreshes the wiki index after learning state changes.
 
-`bin/dzcto-artifact`, `bin/dzcto-learning`, and `bin/dzcto-doctor` are convenience wrappers. Claude Code adds plugin `bin/` executables to the Bash tool `PATH`; Codex users can run the Python scripts directly or run the wrappers from the repo.
+`bin/dzcto` is the convenience wrapper for the canonical command. `bin/dzcto-artifact`, `bin/dzcto-learning`, and `bin/dzcto-doctor` remain as compatibility wrappers for existing installs. Claude Code adds plugin `bin/` executables to the Bash tool `PATH`; Codex users can run `bin/dzcto` from the repo or call `python3 scripts/dzcto.py`.
 
-Current runtime requirement: Python 3.10+. The helpers use only the Python standard library. The older Ruby helpers remain as a legacy fallback for existing local installs, but new public install instructions and wrappers are Python-first. Run `bin/dzcto-doctor` to check the runtime, manifests, wrappers, helper syntax, and optional project folder before promising generated artifacts.
+Current runtime requirement: Python 3.10+. The helpers use only the Python standard library. The older Ruby helpers remain as a legacy fallback for existing local installs, but new public install instructions and wrappers are Python-first. Run `bin/dzcto doctor` to check the runtime, manifests, wrappers, helper syntax, and optional project folder before promising generated artifacts.
 
 ## Report Payloads
 
-Agents should write structured JSON and let `dzcto-artifact` render HTML:
+Agents should write structured JSON and let `dzcto artifact` render HTML:
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind weekly-reviews --title "Weekly CTO Review" --data-file "<json report data file>"
+dzcto artifact --project "<project folder>" --kind weekly-reviews --title "Weekly CTO Review" --data-file "<json report data file>"
 ```
 
 The supported report kinds have fixed section templates:
@@ -173,8 +188,7 @@ Use this path when you want Day Zero CTO available as a Codex Desktop plugin. Th
 ```bash
 git clone https://github.com/chuckblake/Day-Zero-CTO.git
 cd Day-Zero-CTO
-python3 scripts/install_local_marketplace.py
-bin/dzcto-doctor
+bin/dzcto setup
 ```
 
 The installer requires Python 3.10+ and uses only the Python standard library.
@@ -183,8 +197,8 @@ Steps:
 
 1. Clone the repo.
 2. `cd` into the repo.
-3. Run `python3 scripts/install_local_marketplace.py`.
-4. Run `bin/dzcto-doctor`.
+3. Run `bin/dzcto setup`.
+4. Confirm the setup output ends with `Day Zero CTO install is ready.`
 5. Restart Codex Desktop or start a fresh session.
 
 The installer points `~/plugins/day-zero-cto` at your clone and creates or updates `~/.agents/plugins/marketplace.json` with this plugin entry:
@@ -220,16 +234,14 @@ To refresh an existing local Codex install after pulling changes:
 
 ```bash
 git pull
-python3 scripts/install_local_marketplace.py
-bin/dzcto-doctor
+bin/dzcto setup
 ```
 
 For a complete local reinstall from an existing clone:
 
 ```bash
 python3 scripts/uninstall_local.py
-python3 scripts/install_local_marketplace.py
-bin/dzcto-doctor
+bin/dzcto setup
 ```
 
 `uninstall_local.py` only removes the Day Zero CTO Codex marketplace entry plus plugin and editable-skill symlinks that point at the current clone. It skips unrelated files and non-symlink directories.
@@ -237,8 +249,7 @@ bin/dzcto-doctor
 For a complete reinstall from a fresh clone, remove the old clone after running the uninstall helper from it, clone again, then run:
 
 ```bash
-python3 scripts/install_local_marketplace.py
-bin/dzcto-doctor
+bin/dzcto setup
 ```
 
 ### Claude Code
@@ -258,7 +269,7 @@ Steps:
 2. Run `claude plugin install day-zero-cto@day-zero-cto`.
 3. Start a fresh Claude Code session.
 4. Run `/help` and confirm the Day Zero CTO skills appear.
-5. Run `dzcto-doctor` from a session where the plugin `bin/` is on `PATH`, or run `python3 scripts/dzcto_doctor.py` from a local clone.
+5. Run `dzcto doctor` from a session where the plugin `bin/` is on `PATH`, or run `python3 scripts/dzcto.py doctor` from a local clone.
 
 Inside interactive Claude Code, use the slash-command equivalents:
 

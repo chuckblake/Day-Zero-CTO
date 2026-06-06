@@ -23,40 +23,40 @@ Accept aliases such as `not`, `neutral`, `know`, `0`, `1`, and `2`, but display 
 2. If the user is rating the current learning item, run:
 
    ```bash
-   dzcto-learning --project "<project folder>" --record "<rating>"
+   dzcto learning --project "<project folder>" --record "<rating>"
 
-   # Fallback when dzcto-learning is not on PATH:
-   python3 scripts/dzcto_learning.py --project "<project folder>" --record "<rating>"
+   # Fallback when dzcto is not on PATH:
+   python3 scripts/dzcto.py learning --project "<project folder>" --record "<rating>"
    ```
 
    Then summarize the next due date, mastery checklist progress, and link to `knowledge/wiki/learning/index.html`. If the recorded rating is `Confident`, ask exactly: `Do you want to continue?` Do not immediately present another item unless the user says yes.
 3. If the user asks for a learning prompt, run:
 
    ```bash
-   dzcto-learning --project "<project folder>" --select
+   dzcto learning --project "<project folder>" --select
 
-   # Fallback when dzcto-learning is not on PATH:
-   python3 scripts/dzcto_learning.py --project "<project folder>" --select
+   # Fallback when dzcto is not on PATH:
+   python3 scripts/dzcto.py learning --project "<project folder>" --select
    ```
 
 4. If the script returns an existing item, present that item clearly with one short active-recall check. Ask for the rating in the same response; do not record anything until the user gives a rating.
 5. If the script returns `new_needed`, create one focused learning item from local context, then add it:
 
    ```bash
-   dzcto-learning --project "<project folder>" --add --title "<title>" --summary "<summary>" --details-file "<html-or-text-details-file>" --source "<source>" --tags "<tag1,tag2>"
+   dzcto learning --project "<project folder>" --add --title "<title>" --summary "<summary>" --details-file "<html-or-text-details-file>" --source "<source>" --tags "<tag1,tag2>"
 
-   # Fallback when dzcto-learning is not on PATH:
-   python3 scripts/dzcto_learning.py --project "<project folder>" --add --title "<title>" --summary "<summary>" --details-file "<html-or-text-details-file>" --source "<source>" --tags "<tag1,tag2>"
+   # Fallback when dzcto is not on PATH:
+   python3 scripts/dzcto.py learning --project "<project folder>" --add --title "<title>" --summary "<summary>" --details-file "<html-or-text-details-file>" --source "<source>" --tags "<tag1,tag2>"
    ```
 
    Use context from `core/STRATEGY.md`, `core/DECISIONS.md`, `core/RISKS.md`, recent reports, and read-only repo docs if a repo pointer is known. Do not invent facts.
 6. If the user asks to seed initial learning, create a JSON array of evidence-backed items, usually 25 for onboarding when enough evidence exists, then run:
 
    ```bash
-   dzcto-learning --project "<project folder>" --seed-file "<json learning seed file>"
+   dzcto learning --project "<project folder>" --seed-file "<json learning seed file>"
 
-   # Fallback when dzcto-learning is not on PATH:
-   python3 scripts/dzcto_learning.py --project "<project folder>" --seed-file "<json learning seed file>"
+   # Fallback when dzcto is not on PATH:
+   python3 scripts/dzcto.py learning --project "<project folder>" --seed-file "<json learning seed file>"
    ```
 
 7. Present exactly one learning item per prompt.

@@ -40,10 +40,10 @@ Create a grounded technology inventory and system map from the codebase without 
 Required JSON fields: `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, and `sources`.
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
+dzcto artifact --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
 
-# Fallback when dzcto-artifact is not on PATH:
-python3 scripts/dzcto_artifact.py --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
+# Fallback when dzcto is not on PATH:
+python3 scripts/dzcto.py artifact --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
 ```
 
 The helper owns the HTML template; the agent owns the evidence and structured content.

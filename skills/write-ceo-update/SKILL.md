@@ -29,15 +29,15 @@ Translate engineering reality into concise business signal for the CEO or foundi
 
 ## Durable Artifact
 
-Write structured JSON report data, then use the helper from this plugin. Prefer the wrapper when it is on `PATH`; otherwise run the Python script from the plugin repo:
+Write structured JSON report data, then use the helper from this plugin. Prefer the `dzcto` wrapper when it is on `PATH`; otherwise run the Python command from the plugin repo:
 
 Required JSON fields: `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, and `sources`. Optional: `metrics`.
 
 ```bash
-dzcto-artifact --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --data-file "<json report data file>"
+dzcto artifact --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --data-file "<json report data file>"
 
-# Fallback when dzcto-artifact is not on PATH:
-python3 scripts/dzcto_artifact.py --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --data-file "<json report data file>"
+# Fallback when dzcto is not on PATH:
+python3 scripts/dzcto.py artifact --project "<project folder>" --kind ceo-updates --title "CEO Engineering Update" --data-file "<json report data file>"
 ```
 
 The helper owns the HTML template; the agent owns the judgment and structured content. Keep the chat response brief; the HTML file is the durable record.

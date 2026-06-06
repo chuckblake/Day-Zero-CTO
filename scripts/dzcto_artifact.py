@@ -16,6 +16,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from dzcto_common import (
+    ensure_sidecar,
+    provenance_block,
+    provenance_payload,
+    source_hashes as collect_source_hashes,
+    update_manifest,
+    utc_now,
+)
+
 
 REPORT_FOLDERS = {
     "tech-stack": "Tech Stack",
@@ -246,6 +255,9 @@ def default_help_commands(company: str) -> list[tuple[str, str]]:
         ("Tech Stack", f"Review the codebase and create a Tech Stack report for {company}."),
         ("Engineering Risk Review", f"Run the engineering risk review for {company}."),
         ("Learning", f"Run a Day Zero CTO learning prompt for {company}."),
+        ("Check Stale", 'dzcto check-stale "<project folder>"'),
+        ("Doctor", 'dzcto doctor --project "<project folder>"'),
+        ("Issue Bundle", 'dzcto collect-issue-bundle "<project folder>"'),
         ("Decision Help", f"Help me work through a CTO decision for {company}: <decision or problem>."),
         (
             "CTO Code Review",
@@ -620,9 +632,10 @@ def read_learning_checklist_progress(learning_dir: Path) -> dict[str, Any]:
     return {"path": path, "confirmed": confirmed, "total": total, "percent": percent}
 
 
-def write_learning_index(wiki_root: Path, company: str, items: list[dict[str, Any]], reviews: list[dict[str, Any]], today: dt.date) -> None:
+def write_learning_index(wiki_root: Path, project_folder: Path, company: str, items: list[dict[str, Any]], reviews: list[dict[str, Any]], today: dt.date) -> None:
     learning_dir = wiki_root / "learning"
     learning_dir.mkdir(parents=True, exist_ok=True)
+    ensure_sidecar(wiki_root, project_folder, "render-learning-index")
     active = sorted(
         active_learning_items(items),
         key=lambda item: (
@@ -665,6 +678,15 @@ def write_learning_index(wiki_root: Path, company: str, items: list[dict[str, An
         f'<p><a href="{esc(checklist_path.relative_to(learning_dir).as_posix())}">Mastery checklist</a>: {esc(checklist["confirmed"])} of {esc(checklist["total"])} confirmed ({esc(checklist["percent"])}%).</p>'
         if checklist_path
         else '<p class="empty-item">No mastery checklist yet. Seed or run learning to create one.</p>'
+    )
+    generated_at = utc_now()
+    provenance = provenance_payload(
+        wiki_root,
+        artifact_id="learning-index",
+        artifact_kind="learning-index",
+        relative_path="learning/index.html",
+        title=f"{company} Learning",
+        generated_at=generated_at,
     )
     learning_dir.joinpath("index.html").write_text(
         f"""<!doctype html>
@@ -719,14 +741,16 @@ def write_learning_index(wiki_root: Path, company: str, items: list[dict[str, An
       <h2>Recent Reviews</h2>
       <ul>{review_rows}</ul>
     </main>
+    {provenance_block(provenance)}
   </body>
 </html>
 """,
         encoding="utf-8",
     )
+    update_manifest(wiki_root, provenance)
 
 
-def render_report_page(title: str, date: str, kind: str, body: str) -> str:
+def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any]) -> str:
     safe_title = esc(title)
     safe_date = esc(date)
     return f"""<!doctype html>
@@ -779,6 +803,7 @@ def render_report_page(title: str, date: str, kind: str, body: str) -> str:
       <p class="meta">{safe_date} · {esc(REPORT_FOLDERS[kind])}</p>
       {body}
     </main>
+    {provenance_block(provenance)}
   </body>
 </html>
 """
@@ -789,6 +814,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     reports_dir = wiki_root / "reports"
     learning_dir = wiki_root / "learning"
     today = dt.date.today()
+    ensure_sidecar(wiki_root, project_folder, "render-index")
 
     report_entries = [(folder, label, sorted((reports_dir / folder).glob("*.html"), reverse=True)) for folder, label in REPORT_FOLDERS.items()]
     report_count = sum(len(links) for _folder, _label, links in report_entries)
@@ -826,7 +852,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     description = company_description(strategy_path)
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
-    write_learning_index(wiki_root, company, learning_items, learning_reviews, today)
+    write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
 
     if not cadence_rules:
         cadence_status_html = ""
@@ -858,6 +884,15 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         seen.add(normalized)
         help_items.append(f'<div class="help-command"><strong>{esc(label)}</strong><code>{esc(command)}</code></div>')
 
+    generated_at = utc_now()
+    provenance = provenance_payload(
+        wiki_root,
+        artifact_id="wiki-index",
+        artifact_kind="wiki-index",
+        relative_path="index.html",
+        title=f"{company} Day Zero CTO Knowledge Wiki",
+        generated_at=generated_at,
+    )
     wiki_root.joinpath("index.html").write_text(
         f"""<!doctype html>
 <html lang="en">
@@ -936,18 +971,20 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       </details>
       <details class="wiki-details help-section">
         <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Help</span><span class="wiki-meta">{pluralize(len(help_items), "command")}</span></summary>
-        <div class="wiki-body"><p>Ask your agent with one of these commands. The command can be pasted as-is, then refined with the current decision, branch, or review target.</p><div class="help-grid">{''.join(help_items)}</div></div>
+        <div class="wiki-body"><p>Ask your agent with one of these commands. Natural-language prompts can be pasted as-is; shell commands use <code>&lt;project folder&gt;</code> as a placeholder for this Day Zero CTO project folder.</p><div class="help-grid">{''.join(help_items)}</div></div>
       </details>
       <details class="wiki-details">
         <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Misc</span><span class="wiki-meta">{esc(misc_status)}</span></summary>
         <div class="wiki-body"><section class="misc-section"><h2>Handoffs</h2><ul>{handoff_links}</ul></section></div>
       </details>
     </main>
+    {provenance_block(provenance)}
   </body>
 </html>
 """,
         encoding="utf-8",
     )
+    update_manifest(wiki_root, provenance)
 
 
 def main(argv: list[str]) -> int:
@@ -976,6 +1013,7 @@ def main(argv: list[str]) -> int:
         (reports_dir / folder).mkdir(parents=True, exist_ok=True)
     (wiki_root / "handoffs").mkdir(parents=True, exist_ok=True)
     learning_dir.mkdir(parents=True, exist_ok=True)
+    ensure_sidecar(wiki_root, project_folder, "init" if args.init else "generate-artifact")
 
     written_report: Path | None = None
     if not args.init:
@@ -984,19 +1022,36 @@ def main(argv: list[str]) -> int:
         if not args.title:
             parser.error("--title is required unless --init is used")
 
+        report_sources: list[Path] = []
         if args.data_file:
-            data = json.loads(Path(args.data_file).expanduser().read_text(encoding="utf-8"))
+            data_path = Path(args.data_file).expanduser()
+            report_sources.append(data_path)
+            data = json.loads(data_path.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise SystemExit("--data-file must contain a JSON object")
             body = render_structured_report(args.kind, data)
         elif args.body_file:
-            body = Path(args.body_file).expanduser().read_text(encoding="utf-8")
+            body_path = Path(args.body_file).expanduser()
+            report_sources.append(body_path)
+            body = body_path.read_text(encoding="utf-8")
         else:
             body = sys.stdin.read()
 
         slug = slugify(f"{args.date} {args.title}")
         report_path = reports_dir / args.kind / f"{slug}.html"
-        report_path.write_text(render_report_page(args.title, args.date, args.kind, body), encoding="utf-8")
+        relative_path = report_path.relative_to(wiki_root).as_posix()
+        provenance = provenance_payload(
+            wiki_root,
+            artifact_id=f"{args.kind}:{slug}",
+            artifact_kind=args.kind,
+            relative_path=relative_path,
+            title=args.title,
+            generated_at=utc_now(),
+            source_hashes=collect_source_hashes(report_sources),
+            extra={"reportDate": args.date},
+        )
+        report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance), encoding="utf-8")
+        update_manifest(wiki_root, provenance)
         written_report = report_path
 
     render_index(wiki_root, project_folder)

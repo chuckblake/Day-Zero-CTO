@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from dzcto_common import sidecar_dir
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PYTHON = (3, 10)
@@ -70,6 +72,8 @@ def run_checks(project: Path | None) -> list[dict[str, Any]]:
 
     for relative in [
         "scripts/dzcto_artifact.py",
+        "scripts/dzcto.py",
+        "scripts/dzcto_common.py",
         "scripts/dzcto_learning.py",
         "scripts/dzcto_doctor.py",
         "scripts/dzcto_progress.py",
@@ -84,7 +88,7 @@ def run_checks(project: Path | None) -> list[dict[str, Any]]:
         ok, detail = compile_script(path)
         check(results, "pass" if ok else "fail", relative, "Syntax OK" if ok else detail)
 
-    for relative in ["bin/dzcto-artifact", "bin/dzcto-learning", "bin/dzcto-doctor"]:
+    for relative in ["bin/dzcto", "bin/dzcto-artifact", "bin/dzcto-learning", "bin/dzcto-doctor"]:
         path = REPO_ROOT / relative
         check(results, "pass" if executable(path) else "fail", relative, "Executable" if executable(path) else "Missing or not executable")
 
@@ -100,8 +104,12 @@ def run_checks(project: Path | None) -> list[dict[str, Any]]:
         wiki = project / "knowledge" / "wiki"
         if wiki.exists():
             check(results, "pass", "Knowledge wiki", str(wiki))
+            sidecar = sidecar_dir(wiki)
+            for name in ["config.json", "manifest.json", "diagnostics.json", "logs/latest.log"]:
+                path = sidecar / name
+                check(results, "pass" if path.exists() else "warn", f"Sidecar {name}", "Present" if path.exists() else "Missing; run dzcto init")
         else:
-            check(results, "warn", "Knowledge wiki", f"Not created yet; run dzcto-artifact --project {project} --init")
+            check(results, "warn", "Knowledge wiki", f"Not created yet; run dzcto init {project}")
 
     return results
 
