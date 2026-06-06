@@ -1025,6 +1025,51 @@ def render_table_section(title: str, rows: Any, columns: list[tuple[str, str]]) 
 """
 
 
+def render_candidate_risk_section(title: str, rows: Any, source_label: str) -> str:
+    values = []
+    for row in array_value(rows):
+        if isinstance(row, dict):
+            enriched = dict(row)
+            source = text_value(value_at(enriched, "source", "sources", "origin", "report"))
+            enriched["source"] = source or source_label
+            values.append(enriched)
+        elif present(row):
+            values.append({"risk": text_value(row), "source": source_label})
+    if not values:
+        return ""
+
+    headers = "".join(f"<th>{esc(label)}</th>" for label in ["Risk", "Evidence", "Impact", "Severity", "Mitigation", "Source"])
+    table_rows = []
+    for row in values:
+        cells = []
+        for key in ["risk", "evidence", "impact", "severity", "mitigation", "source"]:
+            if key == "evidence":
+                value = value_at(row, "evidence", "detail", "details", "signal")
+            elif key == "impact":
+                value = value_at(row, "impact", "business_impact", "why")
+            elif key == "mitigation":
+                value = value_at(row, "mitigation", "recommendation", "next_step", "action", "plan")
+            else:
+                value = value_at(row, key)
+            if key == "severity" and present(value):
+                cell = f'<span class="tag {severity_class(value)}">{esc(text_value(value))}</span>'
+            else:
+                cell = esc(text_value(value))
+            cells.append(f"<td>{cell}</td>")
+        table_rows.append(f"<tr>{''.join(cells)}</tr>")
+
+    return f"""
+<section class="artifact-section">
+  <h2>{esc(title)}</h2>
+  <p class="artifact-note">Candidate signals from this report. Promote actionable items into <code>core/RISKS.md</code> with an owner, mitigation, review date, and source before they become part of the operating risk register.</p>
+  <table>
+    <thead><tr>{headers}</tr></thead>
+    <tbody>{''.join(table_rows)}</tbody>
+  </table>
+</section>
+"""
+
+
 def render_sources(data: dict[str, Any]) -> str:
     return render_list_section("Sources", value_at(data, "sources", "source_list", "evidence_sources"))
 
@@ -1075,7 +1120,7 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
             action_group("Watchpoints", value_at(data, "watchpoints")),
         ],
         "tech-stack": [
-            action_group("Stack Risks", value_at(data, "risks_watchpoints", "risks", "watchpoints")),
+            action_group("Candidate Risks", value_at(data, "risks_watchpoints", "risks", "watchpoints")),
             action_group("Onboarding", value_at(data, "onboarding_notes", "notes")),
             action_group("Integrations", value_at(data, "integrations")),
         ],
@@ -1166,7 +1211,7 @@ def render_tech_stack(data: dict[str, Any]) -> str:
             render_list_section("Integrations", value_at(data, "integrations")),
             render_list_section("Infrastructure and Operations", value_at(data, "infrastructure_operations", "infrastructure", "operations")),
             render_list_section("Development Tooling", value_at(data, "development_tooling", "dev_tooling")),
-            render_table_section("Risks and Watchpoints", value_at(data, "risks_watchpoints", "risks", "watchpoints"), [("Risk", "risk"), ("Evidence", "evidence"), ("Impact", "impact"), ("Severity", "severity"), ("Mitigation", "mitigation")]),
+            render_candidate_risk_section("Candidate Risks and Watchpoints", value_at(data, "risks_watchpoints", "risks", "watchpoints"), "Tech Stack report"),
             render_list_section("Onboarding Notes", value_at(data, "onboarding_notes", "notes")),
             render_sources(data),
         ]
@@ -1679,6 +1724,10 @@ def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
             if not title:
                 continue
             severity_source = value_from_row(row, "severity", "priority", "status", "likelihood") or title
+            source = plain_markdown(value_from_row(row, "source", "sources", "origin", "report", "reported_from"))
+            evidence = value_from_row(row, "evidence", "signal")
+            if not evidence and not source:
+                evidence = value_from_row(row, "source", "sources")
             risks.append(
                 {
                     "title": plain_markdown(title),
@@ -1686,7 +1735,8 @@ def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
                     "category": plain_markdown(value_from_row(row, "category", "area", "type")),
                     "owner": plain_markdown(value_from_row(row, "owner", "responsible", "owner_horizon")) or "Unassigned",
                     "review": plain_markdown(value_from_row(row, "review", "review_date", "next_review", "due", "horizon", "needed_by")) or "Unscheduled",
-                    "evidence": plain_markdown(value_from_row(row, "evidence", "source", "sources", "signal")),
+                    "source": source or "Risk register",
+                    "evidence": plain_markdown(evidence),
                     "impact": plain_markdown(value_from_row(row, "impact", "business_impact", "why")),
                     "mitigation": plain_markdown(value_from_row(row, "mitigation", "next_step", "action", "plan")),
                 }
@@ -1704,6 +1754,7 @@ def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
                 "category": "Core context",
                 "owner": "Unassigned",
                 "review": "Unscheduled",
+                "source": "Risk register",
                 "evidence": item.get("summary", ""),
                 "impact": "",
                 "mitigation": "",
@@ -1774,6 +1825,30 @@ def decision_review_due(decision: dict[str, str], today: dt.date) -> bool:
 
 def due_decision_entries(decisions: list[dict[str, str]], today: dt.date) -> list[dict[str, str]]:
     return [decision for decision in decisions if decision_review_due(decision, today)]
+
+
+def risk_review_due(risk: dict[str, str], today: dt.date) -> bool:
+    review = plain_markdown(risk.get("review") or "").strip()
+    if not has_real_value(review):
+        return False
+    normalized = review.lower()
+    if re.search(r"\b(no review|not due|none|n/a|unscheduled|no revisit)\b", normalized):
+        return False
+
+    dates = dates_in_text(normalized)
+    if dates:
+        return min(dates) <= today
+
+    return bool(
+        re.search(
+            r"\b(overdue|due today|due now|review now|needs review|review needed|triggered|condition met|asap|blocked)\b",
+            normalized,
+        )
+    )
+
+
+def due_risk_entries(risks: list[dict[str, str]], today: dt.date) -> list[dict[str, str]]:
+    return [risk for risk in risks if risk_review_due(risk, today)]
 
 
 def relative_date(value: dt.date | None, today: dt.date) -> str:
@@ -2224,7 +2299,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .r-detail { display: grid; gap: 12px; margin-top: -1px; padding: 14px 15px 16px 39px; border-top: 1px solid var(--line); }
 .rf-k { margin-bottom: 3px; color: var(--faint); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .rf-v { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
-.r-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.r-field-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .sev-badge, .tag { display: inline-block; border-radius: var(--r-pill); padding: 3px 9px; font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
 .b-crit, .high { color: var(--crit); background: var(--crit-soft); }
 .b-high { color: var(--high); background: var(--high-soft); }
@@ -2368,6 +2443,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .cadence-alert code { display: block; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
 .artifact-section { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
 .artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+.artifact-note { margin: 8px 0 14px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 .artifact-list { display: grid; gap: 10px; margin: 16px 0 24px; padding: 0; list-style: none; }
 .artifact-list li { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 12px; }
 .artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small { display: block; }
@@ -3078,9 +3154,9 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     risks = read_risk_entries(core_dir)
     decisions = read_decision_entries(core_dir)
     due_decisions = due_decision_entries(decisions, today)
+    due_risks = due_risk_entries(risks, today)
     critical_risks = sum(1 for risk in risks if risk["severity"] == "Critical")
     high_or_critical_risks = [risk for risk in risks if risk["severity"] in {"Critical", "High"}]
-    cadence_preview_rows = cadence_rows(cadence_rules, reports_dir, today)
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
     write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
@@ -3200,34 +3276,38 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         else '<p class="empty-item">No decision revisit triggers are due or marked triggered.</p>'
     )
 
-    top_risk_rows = (
+    due_risk_rows = (
         "\n".join(
             f"""<a class="mini-risk" href="core/risks.html#{esc(risk_anchor(risk["title"]))}">
   <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
   <div class="mr-body">
     <div class="mr-title">{esc(risk["title"])}</div>
-    <div class="mr-meta">{esc(risk["severity"])} / {esc(risk["owner"])}</div>
+    <div class="mr-meta">{esc(risk["severity"])} / {esc(risk["owner"])} / {esc(risk["source"])} / review {esc(risk["review"])}</div>
   </div>
 </a>"""
-            for risk in high_or_critical_risks[:5]
+            for risk in due_risks[:5]
         )
-        if high_or_critical_risks
-        else '<p class="empty-item">No high-priority risks found in core context.</p>'
+        if due_risks
+        else '<p class="empty-item">No risk reviews are due today.</p>'
     )
 
-    cadence_preview_html = (
+    cadence_today_html = (
         "\n".join(
             f"""<a class="cad-mini" href="core/operating-cadence.html">
   <div>
-    <div class="cm-name">{esc(row["name"])}</div>
-    <div class="cm-sub">{esc(row["cadence"])}{f' / {esc(row["day"])}' if row["day"] else ''} / last {esc(row["last"])}</div>
+    <div class="cm-name">{esc(alert["label"])}</div>
+    <div class="cm-sub">{esc(alert["reason"])}</div>
   </div>
-  <span class="cm-when">{esc(row["next"])}</span>
+  <span class="cm-when">{esc(relative_date(alert["due_date"], today))}</span>
 </a>"""
-            for row in cadence_preview_rows[:5]
+            for alert in alerts[:5]
         )
-        if cadence_preview_rows
-        else '<p class="empty-item">No cadence rules yet.</p>'
+        if alerts
+        else (
+            '<p class="empty-item">No cadence items are due today.</p>'
+            if cadence_rules
+            else '<p class="empty-item">No cadence rules yet.</p>'
+        )
     )
 
     risk_cards = (
@@ -3254,6 +3334,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     <div class="r-field"><div class="rf-k">Mitigation</div><div class="rf-v">{esc(risk["mitigation"] or "Mitigation not captured yet.")}</div></div>
     <div class="r-field-grid">
       <div class="r-field"><div class="rf-k">Owner</div><div class="rf-v">{esc(risk["owner"])}</div></div>
+      <div class="r-field"><div class="rf-k">Source</div><div class="rf-v">{esc(risk["source"])}</div></div>
       <div class="r-field"><div class="rf-k">Review</div><div class="rf-v">{esc(risk["review"])}</div></div>
     </div>
   </div>
@@ -3336,12 +3417,12 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         {decision_rows}
       </div>
       <div class="today-col">
-        <div class="col-h">Open risks by priority <span class="cnt">{esc(len(high_or_critical_risks))}</span></div>
-        {top_risk_rows}
+        <div class="col-h">Risk reviews due <span class="cnt">{esc(len(due_risks))}</span></div>
+        {due_risk_rows}
       </div>
       <div class="today-col">
-        <div class="col-h">Operating cadence</div>
-        {cadence_preview_html}
+        <div class="col-h">Operating cadence due <span class="cnt">{esc(len(alerts))}</span></div>
+        {cadence_today_html}
       </div>
     </div>
   </section>

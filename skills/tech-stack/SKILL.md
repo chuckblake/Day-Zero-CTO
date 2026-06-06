@@ -32,12 +32,12 @@ Create a grounded technology inventory and system map from one or more codebases
 - `Integrations`: third-party APIs, auth, payments, messaging, AI, email, monitoring, and customer-facing dependencies.
 - `Infrastructure and operations`: hosting, deploy path, CI, background jobs, observability, secrets, and environments.
 - `Development tooling`: local setup, tests, linting, formatting, code generation, and developer workflow.
-- `Risks and watchpoints`: stack risks that matter to delivery, reliability, trust, or onboarding.
+- `Risks and watchpoints`: candidate stack risk signals that matter to delivery, reliability, trust, or onboarding. These are not the operating risk register until promoted into `core/RISKS.md`.
 - `Onboarding notes`: what a new technical leader or agent should read first.
 
 ## Durable Artifact
 
-Required JSON fields: `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, and `sources`.
+Required JSON fields: `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, and `sources`. For each `risks_watchpoints` row, include concrete `evidence`, `severity`, `mitigation`, and `source` when known; use a source such as `Tech Stack report <date>` or the specific file/report that produced the signal.
 
 ```bash
 dzcto artifact --project "<project folder>" --kind tech-stack --title "Tech Stack" --data-file "<json report data file>"
@@ -54,4 +54,5 @@ The helper owns the HTML template; the agent owns the evidence and structured co
 - Cite concrete files or directories as evidence.
 - Do not expose secrets; mention only the existence or pattern of secret management.
 - Prioritize technologies that affect onboarding, product delivery, reliability, security, cost, or vendor risk.
+- Treat Tech Stack risks as candidate signals. If the user wants them tracked operationally, promote them into `<project>/knowledge/wiki/core/RISKS.md` with owner, mitigation, source, and calendar next review date.
 - Treat generated report content as a map for future agents, not a comprehensive API reference.

@@ -17,6 +17,7 @@ Run a risk-register review ritual over `RISKS.md`. This is different from `revie
    - Business impact.
    - Owner.
    - Current mitigation.
+   - Source.
    - Next review date, plus any external trigger.
 4. Ask the user for one outcome at a time:
    - `Keep active`: risk still stands; update next review if needed.
@@ -28,7 +29,7 @@ Run a risk-register review ritual over `RISKS.md`. This is different from `revie
 6. Preserve risk history. Do not erase useful evidence or mitigation notes just because the risk changes state.
 7. Update `<project>/knowledge/wiki/core/RISKS.md`:
    - Keep the main table as the active risk register when possible.
-   - Update severity, owner, mitigation, and next review from the approved outcome.
+   - Update severity, owner, source, mitigation, and next review from the approved outcome.
    - Ensure every active risk has a calendar date in `Next Review`. External triggers are allowed, but only as an addition, such as `2026-07-06 or on receipt of legal opinion`.
    - Move closed risks to a `## Closed Risks` table when useful, with `Closed Date`, `Risk`, `Reason`, and `Prior Mitigation`.
    - Add or update a `## Review History` table when useful, with `Review Date`, `Risk`, `Outcome`, `Notes`, and `Next Review`.
@@ -48,7 +49,7 @@ Run a risk-register review ritual over `RISKS.md`. This is different from `revie
 
 ## Standards
 
-- Treat risks as operating objects, not prose. Every active risk needs an owner, mitigation, and a calendar next review date.
+- Treat risks as operating objects, not prose. Every active risk needs an owner, source, mitigation, and a calendar next review date.
 - External triggers are useful context, but they do not replace a calendar review date because Day Zero CTO cannot observe most external events by itself.
 - Favor a clear punt over fake certainty: punt only with a date, and optionally an event, owner, or evidence trigger.
 - Use evidence labels when a risk is based on code, docs, reports, incidents, customer feedback, compliance requirements, or user judgment.

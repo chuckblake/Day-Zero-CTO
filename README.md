@@ -93,8 +93,8 @@ Generated wiki pages use a compact command-center interface:
 
 - Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
-- A linked `What needs you today` panel with due decision reviews, high-priority risks, and operating cadence.
-- Risk register cards parsed from `core/RISKS.md` tables or headings, with severity filtering.
+- A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
+- Risk register cards parsed from `core/RISKS.md` tables or headings, with source, review dates, and severity filtering.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
 - Breadcrumbs, automatic page tables of contents, and a light/dark theme on generated pages.
@@ -106,13 +106,15 @@ The dashboard description under the title comes from the first real paragraph in
 
 For substantive core context updates, ask an agent to use the `refine-core-context` skill. It runs a short interview, drafts section-level Markdown updates, asks for approval or edits, writes only the source Markdown under `knowledge/wiki/core/`, and refreshes the generated HTML. Direct file edits are still fine for small typo, formatting, or copy fixes; the source files are `STRATEGY.md`, `TEAM.md`, `OPERATING_CADENCE.md`, `DECISIONS.md`, and `RISKS.md`.
 
-Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk cards and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited.
+Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk cards and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited. Use a `Source` column when possible so promoted risks can point back to a tech-stack report, engineering-risk review, audit, code evidence, customer signal, or founder judgment.
+
+Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. Promote actionable items into `core/RISKS.md` with owner, mitigation, source, and review date before relying on them in the command center.
 
 Every active risk should carry a calendar date in its `Next Review` field. External triggers are welcome, but they should be additive, for example `2026-07-06 or on receipt of legal opinion`, because the local dashboard cannot detect most external events by itself. `dzcto status` and `dzcto check-stale` warn when parsed risks lack a calendar review date.
 
 The index shows company information under the title, then a dashboard workspace:
 
-- `What needs you today`: due or triggered decision reviews, priority risks, and cadence from core context.
+- `What needs you today`: only items requiring action today: due or triggered decision reviews, risk reviews due today or overdue, and cadence items due today or overdue.
 - `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it moves to the bottom of the page as a quieter reference link to `setup/index.html`.
 - `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
@@ -416,6 +418,8 @@ The supported report kinds have fixed section templates:
 | `code-reviews` | `merge_recommendation`, `blocking`, `fyi`, `questions`, `tests_verification`, `startup_risk_note`, `sources` |
 
 Optional `metrics` are rendered as summary cards when present.
+
+For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
 
 ## Repo Structure
 

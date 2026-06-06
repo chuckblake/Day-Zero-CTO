@@ -32,7 +32,7 @@ Update the project wiki's core CTO context by interviewing the user, drafting co
 - `TEAM.md`: people, roles, ownership, decision rights, communication preferences, working agreements, gaps, and open questions.
 - `OPERATING_CADENCE.md`: weekly review rhythm, CEO update rhythm, planning cycle, incident or reliability review rhythm, expected artifacts, and `## Index Cadence Rules` rows for dashboard due alerts, including weekday intent where a ritual has a normal day and optional `Prompt Context` for report-specific prompt steering.
 - `DECISIONS.md`: recorded decisions already taken, original or approximate decision date, context, options considered, past-tense rationale, owner, revisit trigger, and optional review history.
-- `RISKS.md`: risk, evidence, impact, likelihood or severity, owner, mitigation, calendar next review date, optional external trigger, and whether the risk should appear as high priority on the dashboard. External triggers do not replace calendar review dates.
+- `RISKS.md`: risk, source, evidence, impact, likelihood or severity, owner, mitigation, calendar next review date, optional external trigger, and whether the risk should appear as high priority on the dashboard. External triggers do not replace calendar review dates. Report-specific risks are candidate signals until promoted into this file.
 
 ## Update Standards
 
