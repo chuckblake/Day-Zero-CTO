@@ -226,7 +226,7 @@ The full setup checklist lives at `<project>/knowledge/wiki/setup/index.html`. T
 
 Use `day-zero-cto:review-decisions` when the user wants to review recorded decisions. Treat `DECISIONS.md` as a decision log, not a pending-decision queue; `Revisit Trigger` determines what needs another look.
 
-Use `day-zero-cto:review-risks` when the user wants to review the risk register one risk at a time. Treat `RISKS.md` as the active register; next review date, severity, mitigation state, and evidence gaps determine what needs another look. Every active risk needs a calendar review date even when it also has an external trigger.
+Use `day-zero-cto:review-risks` when the user wants to review the risk register one risk at a time. Treat `RISKS.md` as the active register; next review date, severity, mitigation state, and evidence gaps determine what needs another look. Every active risk needs a calendar review date even when it also has an external trigger. If handling a risk produces a formal choice, log that choice in `DECISIONS.md`.
 
 ## Verify
 

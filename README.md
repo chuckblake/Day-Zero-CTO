@@ -29,7 +29,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
 | `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
 | `review-decisions` | Walk the decision log one recorded decision at a time, using revisit triggers to reaffirm, supersede, punt, or mark evidence needed. |
-| `review-risks` | Walk the risk register one active risk at a time, using review dates, severity, mitigation state, and evidence gaps to keep, update, close, punt, or mark evidence needed. |
+| `review-risks` | Walk the risk register one active risk at a time, using review dates, severity, mitigation state, and evidence gaps to keep, update, close, punt, mark evidence needed, and log formal choices to `DECISIONS.md`. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
 | `write-ceo-update` | Translate engineering work, risks, and asks into CEO-facing signal. |
 | `review-engineering-risk` | Find risks that threaten product, customers, delivery, trust, or runway. |
@@ -109,6 +109,8 @@ For substantive core context updates, ask an agent to use the `refine-core-conte
 Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk cards and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited. Use a `Source` column when possible so promoted risks can point back to a tech-stack report, engineering-risk review, audit, code evidence, customer signal, or founder judgment.
 
 Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. Promote actionable items into `core/RISKS.md` with owner, mitigation, source, and review date before relying on them in the command center.
+
+Risk reviews can create decisions. If handling a risk leads to a formal choice, such as accepting the risk, choosing a mitigation path, changing architecture or process, closing the risk because of a strategic direction, or deferring based on an explicit threshold, record that choice in `knowledge/wiki/core/DECISIONS.md`. Keep the risk row focused on exposure and follow-through; keep the decision row focused on the choice, rationale, owner, and revisit trigger.
 
 Every active risk should carry a calendar date in its `Next Review` field. External triggers are welcome, but they should be additive, for example `2026-07-06 or on receipt of legal opinion`, because the local dashboard cannot detect most external events by itself. `dzcto status` and `dzcto check-stale` warn when parsed risks lack a calendar review date.
 
@@ -393,7 +395,7 @@ dzcto <command> -h
 | --- | --- |
 | `day-zero-cto:refine-core-context` | Interview, draft, approve, write source Markdown, and refresh core context. |
 | `day-zero-cto:review-decisions` | Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed. |
-| `day-zero-cto:review-risks` | Walk active risks one at a time and keep, update, close, punt, or mark evidence needed. |
+| `day-zero-cto:review-risks` | Walk active risks one at a time and keep, update, close, punt, mark evidence needed, or log decisions made while addressing the risk. |
 | `day-zero-cto:review-engineering-risk` | Create a fresh engineering-risk report artifact. |
 
 Generated dashboard pages also include a `Help` section with a project-specific command reference and copyable command cards.

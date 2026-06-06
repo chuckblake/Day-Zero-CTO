@@ -483,7 +483,7 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
         (
             "Review Risks",
             exact_prompt(
-                f"Use the Day Zero CTO review-risks workflow to walk the risk register for {company}. Prioritize risks whose next review is due, severity is high, or mitigation is unclear, and let me keep active, update, close, punt, or mark evidence needed one item at a time.",
+                f"Use the Day Zero CTO review-risks workflow to walk the risk register for {company}. Prioritize risks whose next review is due, severity is high, or mitigation is unclear, and let me keep active, update, close, punt, or mark evidence needed one item at a time. If we make a formal choice while addressing a risk, log that choice in core/DECISIONS.md.",
                 project_folder,
                 repos,
                 report_prompt_context,
@@ -1631,14 +1631,21 @@ def normalize_key(value: str) -> str:
     return re.sub(r"(^_+|_+$)", "", re.sub(r"[^a-z0-9]+", "_", value.lower()))
 
 
-def markdown_tables(path: Path) -> list[list[dict[str, str]]]:
+def markdown_tables_with_sections(path: Path) -> list[tuple[str, list[dict[str, str]]]]:
     if not path.exists():
         return []
 
-    tables: list[list[dict[str, str]]] = []
+    tables: list[tuple[str, list[dict[str, str]]]] = []
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     index = 0
+    section = ""
     while index < len(lines):
+        heading = re.match(r"^#{1,6}\s+(.+?)\s*$", lines[index].strip())
+        if heading:
+            section = plain_markdown(heading.group(1))
+            index += 1
+            continue
+
         if not lines[index].strip().startswith("|"):
             index += 1
             continue
@@ -1659,8 +1666,12 @@ def markdown_tables(path: Path) -> list[list[dict[str, str]]]:
             if any(values.values()):
                 table.append(values)
         if table:
-            tables.append(table)
+            tables.append((section, table))
     return tables
+
+
+def markdown_tables(path: Path) -> list[list[dict[str, str]]]:
+    return [table for _section, table in markdown_tables_with_sections(path)]
 
 
 def value_from_row(row: dict[str, str], *keys: str) -> str:
@@ -1718,8 +1729,13 @@ def severity_rank(value: str) -> int:
 def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
     path = core_dir / "RISKS.md"
     risks: list[dict[str, str]] = []
-    for table in markdown_tables(path):
+    ignored_sections = {"closed_risks", "review_history", "risk_review_history"}
+    for section, table in markdown_tables_with_sections(path):
+        if normalize_key(section) in ignored_sections:
+            continue
         for row in table:
+            if "closed_date" in row or "prior_mitigation" in row:
+                continue
             title = value_from_row(row, "risk", "title", "finding", "issue", "name") or next(iter(row.values()), "")
             if not title:
                 continue
