@@ -792,7 +792,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         for name, example, purpose in command_rows
     )
     return f"""
-  <details class="section" id="sec-help" open>
+  <details class="section" id="sec-help">
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">{esc(section_number)}</span>
@@ -2738,7 +2738,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .today-head h2 { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; }
 .stamp { color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 4px var(--good-soft); }
-.today-grid { display: grid; grid-template-columns: 1.35fr 1fr 1fr; }
+.today-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .today-col { min-width: 0; padding: 18px 20px; border-right: 1px solid var(--line); }
 .today-col:last-child { border-right: 0; }
 .col-h { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; color: var(--muted); font-size: 11.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
@@ -3389,6 +3389,17 @@ def refresh_script() -> str:
     });
     applyTableFilters();
   });
+
+  function openSectionFromHash() {
+    const id = decodeURIComponent(String(window.location.hash || '').replace(/^#/, ''));
+    if (!id) return;
+    const target = document.getElementById(id);
+    const section = target?.matches('details.section') ? target : target?.closest('details.section');
+    if (section) section.open = true;
+  }
+
+  window.addEventListener('hashchange', openSectionFromHash);
+  openSectionFromHash();
 
   document.addEventListener('keydown', (event) => {
     const active = document.activeElement;
@@ -4062,7 +4073,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </div>
   </section>
 
-  <details class="section" id="sec-reports" open>
+  <details class="section" id="sec-reports">
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">01</span>
@@ -4074,7 +4085,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </div>
   </details>
 
-  <details class="section" id="sec-core" open>
+  <details class="section" id="sec-core">
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">02</span>
