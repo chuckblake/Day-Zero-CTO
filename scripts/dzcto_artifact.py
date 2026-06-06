@@ -1188,6 +1188,9 @@ def action_group(label: str, value: Any) -> tuple[str, list[str]]:
 
 
 def render_action_summary(kind: str, data: dict[str, Any]) -> str:
+    if kind == "tech-stack":
+        return ""
+
     groups_by_kind = {
         "weekly-reviews": [
             action_group("Decisions", value_at(data, "decisions_needed", "decisions")),
@@ -1203,11 +1206,6 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
             action_group("Top Risks", value_at(data, "top_risks", "risks")),
             action_group("Mitigations", value_at(data, "mitigations")),
             action_group("Watchpoints", value_at(data, "watchpoints")),
-        ],
-        "tech-stack": [
-            action_group("Candidate Risks", value_at(data, "risks_watchpoints", "risks", "watchpoints")),
-            action_group("Onboarding", value_at(data, "onboarding_notes", "notes")),
-            action_group("Integrations", value_at(data, "integrations")),
         ],
     }
     groups = [(label, items) for label, items in groups_by_kind.get(kind, []) if items]
@@ -1367,6 +1365,9 @@ def table_filter_controls(table_id: str, rows: list[list[str]], columns: list[di
     if not columns:
         return ""
 
+    def filter_values(value: str) -> list[str]:
+        return [part.strip() for part in plain_markdown(value).split("|") if has_real_value(part)]
+
     controls = [
         f"""<label class="filter-field filter-search-field">
   <span>Filter</span>
@@ -1376,9 +1377,10 @@ def table_filter_controls(table_id: str, rows: list[list[str]], columns: list[di
     for column in columns:
         values = sorted(
             {
-                plain_markdown(row[column["index"]]).strip()
+                value
                 for row in rows
-                if column["index"] < len(row) and has_real_value(plain_markdown(row[column["index"]]))
+                if column["index"] < len(row)
+                for value in filter_values(row[column["index"]])
             },
             key=str.lower,
         )
@@ -2129,7 +2131,7 @@ def report_risk_signal_items(kind: str, data: dict[str, Any]) -> list[Any]:
     return items
 
 
-def risk_signal_from_item(item: Any, *, kind: str, source_label: str, href: str, date: str) -> dict[str, str] | None:
+def risk_signal_from_item(item: Any, *, kind: str, source_label: str, source_kind: str, href: str, date: str) -> dict[str, str] | None:
     if isinstance(item, dict):
         title = item_headline(item)
         if not title:
@@ -2153,6 +2155,7 @@ def risk_signal_from_item(item: Any, *, kind: str, source_label: str, href: str,
         "impact": plain_markdown(impact),
         "mitigation": plain_markdown(mitigation),
         "source_label": source_label,
+        "source_kind": source_kind,
         "href": href,
         "date": date,
         "kind": kind,
@@ -2172,7 +2175,7 @@ def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
         href = html_path.relative_to(wiki_root).as_posix() if html_path else ""
         source_label = f"{label} / {date}"
         for item in report_risk_signal_items(kind, data):
-            signal = risk_signal_from_item(item, kind=kind, source_label=source_label, href=href, date=date)
+            signal = risk_signal_from_item(item, kind=kind, source_label=source_label, source_kind=label, href=href, date=date)
             if signal:
                 signals.append(signal)
 
@@ -2188,6 +2191,8 @@ def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
         if signal["href"] and signal["href"] not in existing["href"].split(" | "):
             existing["href"] = " | ".join(filter(None, [existing["href"], signal["href"]]))
             existing["source_label"] = " | ".join(filter(None, [existing["source_label"], signal["source_label"]]))
+        if signal["source_kind"] and signal["source_kind"] not in existing["source_kind"].split(" | "):
+            existing["source_kind"] = " | ".join(filter(None, [existing["source_kind"], signal["source_kind"]]))
         for field in ("evidence", "impact", "mitigation"):
             if signal[field] and signal[field] not in existing[field]:
                 existing[field] = " ".join(filter(None, [existing[field], signal[field]])).strip()
@@ -2282,7 +2287,7 @@ def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "
     for signal in signals[:24]:
         status = risk_signal_status(signal, active_titles, closed_titles)
         tone = "ready" if status == "In active register" else "low" if status == "Closed or accepted" else "medium"
-        filter_rows.append([signal["severity"], status, signal["source_label"]])
+        filter_rows.append([signal["severity"], status, signal["source_kind"]])
         source_links = []
         hrefs = signal["href"].split(" | ") if signal["href"] else []
         labels = signal["source_label"].split(" | ")
@@ -2295,7 +2300,7 @@ def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "
         detail = signal["evidence"] or signal["impact"] or "No detail captured in the structured report data."
         action = signal["mitigation"] or ("Promote into RISKS.md with owner, mitigation, source, and next review date." if status == "Needs promotion" else "Keep source link for traceability.")
         rows.append(
-            f"""<tr data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], detail, action)}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(signal["source_label"])}">
+            f"""<tr data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], signal["source_kind"], detail, action)}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(signal["source_kind"])}">
   <td><strong>{esc(signal["title"])}</strong><br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
   <td><span class="tag {tone}">{esc(status)}</span></td>
   <td>{' / '.join(source_links)}</td>
@@ -2936,11 +2941,6 @@ h1.title { font-size: 38px; font-weight: 800; }
 .copy-status { display: block; min-height: 18px; margin-top: 7px; color: var(--good); font-size: 13px; }
 .breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; color: var(--muted); font-size: 13px; }
 .breadcrumbs span { color: var(--muted); }
-.toc { margin: 18px 0 24px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); padding: 12px; }
-.toc strong { display: block; margin-bottom: 8px; }
-.toc-links { display: flex; flex-wrap: wrap; gap: 8px; }
-.toc-links a { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 800; padding: 5px 9px; }
-.toc-links a:hover { background: var(--accent-soft); text-decoration: none; }
 .table-filter {
   display: flex;
   align-items: flex-end;
@@ -3371,7 +3371,9 @@ def refresh_script() -> str:
         let show = !query || text.includes(query);
         selects.forEach((select) => {
           if (!show || !select.value) return;
-          show = String(row.dataset[filterDatasetKey(select.dataset.tableFilterSelect)] || '') === select.value;
+          const rowValue = String(row.dataset[filterDatasetKey(select.dataset.tableFilterSelect)] || '');
+          const rowValues = rowValue.split('|').map((value) => value.trim()).filter(Boolean);
+          show = rowValues.includes(select.value);
         });
         row.hidden = !show;
         if (show) visible += 1;
@@ -3436,23 +3438,6 @@ def refresh_script() -> str:
     }
   });
 
-  document.querySelectorAll('[data-dzcto-toc]').forEach((toc) => {
-    const scope = document.querySelector('[data-toc-scope]') || document.querySelector('main');
-    const headings = Array.from(scope.querySelectorAll('h2, h3')).filter((heading) => heading.textContent.trim());
-    if (headings.length < 2) {
-      toc.hidden = true;
-      return;
-    }
-    headings.forEach((heading) => {
-      if (!heading.id) {
-        heading.id = heading.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
-      }
-    });
-    toc.hidden = false;
-    toc.innerHTML = `<strong>On this page</strong><div class="toc-links">${
-      headings.map((heading) => `<a href="#${escapeHtml(heading.id)}">${escapeHtml(heading.textContent.trim())}</a>`).join('')
-    }</div>`;
-  });
 })();
 </script>
 """
@@ -3536,8 +3521,6 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
         generated_at=generated_at,
     )
     content = f"""
-  <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
-  <div data-toc-scope>
   <div class="summary">
     <div class="metric"><span>Active</span><strong>{counts["active"]}</strong></div>
     <div class="metric"><span>Due</span><strong>{counts["due"]}</strong></div>
@@ -3566,7 +3549,7 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
   </section>
 """
     body = page_shell(
-        f"{content}\n  </div>",
+        content,
         prefix="../",
         eyebrow="Learning - Day Zero CTO",
         title=f"{company} Learning",
@@ -3719,8 +3702,7 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         content = f"""
   {current_read_html}
   {extra_core_html}
-  <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
-  <section class="artifact-section prose" data-toc-scope>
+  <section class="artifact-section prose">
     {content_html}
   </section>
   <div class="source-footnote">

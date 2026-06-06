@@ -96,7 +96,7 @@ Generated wiki pages use a compact command-center interface:
 - Report cards show factual artifact counts and, when a report folder has multiple artifacts, a compact previous-run list under the latest report.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
-- Breadcrumbs, automatic page tables of contents, and a light/dark theme on generated pages.
+- Breadcrumbs, sticky navigation, search, and a light/dark theme on generated pages.
 - A visible footer showing the Day Zero CTO skills version used to generate the page.
 
 The helper writes `knowledge/wiki/search-index.json` whenever it refreshes the wiki. Search works best through `dzcto serve "<project folder>"`, because browsers may block `file://` pages from fetching the JSON index.
