@@ -88,7 +88,7 @@ Generated wiki pages use a compact command-center interface:
 
 - Sticky top navigation with the current page title, breadcrumbs back to the dashboard, search, and theme toggle.
 - Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos. The risk KPI opens the canonical Risks page rather than duplicating the register on the dashboard.
-- A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
+- A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages. Incomplete setup appears as a top dashboard alert; complete setup moves into a collapsed Setup reference section.
 - A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
 - Generated "Current Read" summaries on the Decisions and Risks core pages. These are regenerated from source rows on every refresh and stay short: one paragraph that emphasizes frequent and newer themes.
 - Filterable Decisions and Risks pages for narrowing the source logs by owner, date/review timing, source, severity, likelihood, options, or revisit fields when those columns exist.

@@ -707,14 +707,15 @@ def setup_checklist_html(items: list[dict[str, str]], prefix: str = "") -> str:
 """
 
 
-def setup_dashboard_summary_html(items: list[dict[str, str]]) -> str:
+def setup_dashboard_summary_html(items: list[dict[str, str]], *, section_id: str | None = "sec-setup") -> str:
     complete = sum(1 for item in items if item["state"] == "done")
     remaining = len(items) - complete
+    id_attr = f' id="{esc(section_id)}"' if section_id else ""
     if remaining:
         next_items = [item for item in items if item["state"] != "done"][:3]
         preview = "".join(f"<li>{esc(item['label'])}: {esc(item['action'])}</li>" for item in next_items)
         return f"""
-  <section class="setup-summary setup-alert" id="sec-setup" aria-label="Setup needs attention">
+  <section class="setup-summary setup-alert"{id_attr} aria-label="Setup needs attention">
     <div>
       <span class="setup-kicker">Setup needs attention</span>
       <h2>{esc(remaining)} of {esc(len(items))} setup items remain</h2>
@@ -725,7 +726,7 @@ def setup_dashboard_summary_html(items: list[dict[str, str]]) -> str:
   </section>
 """
     return f"""
-  <section class="setup-summary setup-reference" id="sec-setup" aria-label="Setup reference">
+  <section class="setup-summary setup-reference"{id_attr} aria-label="Setup reference">
     <div>
       <span class="setup-kicker">Setup complete</span>
       <h2>Setup checklist is complete</h2>
@@ -733,6 +734,23 @@ def setup_dashboard_summary_html(items: list[dict[str, str]]) -> str:
     </div>
     <a class="setup-primary" href="setup/index.html">View reference</a>
   </section>
+"""
+
+
+def dashboard_setup_section_html(items: list[dict[str, str]], *, section_number: str = "05") -> str:
+    complete = sum(1 for item in items if item["state"] == "done")
+    return f"""
+  <details class="section" id="sec-setup">
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">{esc(section_number)}</span>
+      <span class="sec-title">Setup</span>
+      <span class="sec-meta">Reference / {esc(complete)} of {esc(len(items))} complete</span>
+    </summary>
+    <div class="sec-body">
+      {setup_dashboard_summary_html(items, section_id=None)}
+    </div>
+  </details>
 """
 
 
@@ -2723,6 +2741,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .setup-reference { opacity: .86; }
 .setup-reference:hover { opacity: 1; }
 .setup-reference .setup-primary { color: var(--good); border-color: var(--good-line); background: var(--good-soft); }
+.sec-body > .setup-summary { margin: 0; }
 .today {
   margin-bottom: 34px;
   overflow: hidden;
@@ -3861,10 +3880,9 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         learning_items=learning_items,
         repos=repos,
     )
-    setup_html = setup_dashboard_summary_html(setup_items)
     setup_remaining = any(item["state"] != "done" for item in setup_items)
-    setup_top_html = setup_html if setup_remaining else ""
-    setup_bottom_html = "" if setup_remaining else setup_html
+    setup_top_html = setup_dashboard_summary_html(setup_items) if setup_remaining else ""
+    setup_bottom_html = "" if setup_remaining else dashboard_setup_section_html(setup_items)
     write_setup_page(wiki_root, project_folder, company, setup_items)
     write_search_index(
         wiki_root,
