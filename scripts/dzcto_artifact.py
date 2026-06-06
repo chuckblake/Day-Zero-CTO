@@ -207,6 +207,10 @@ def company_description(strategy_path: Path, config: dict[str, Any] | None = Non
     return plain_markdown(paragraph or configured or fallback)
 
 
+def dashboard_title(company: str) -> str:
+    return f"{company} Day Zero CTO"
+
+
 def has_real_value(value: Any) -> bool:
     if value is None:
         return False
@@ -861,14 +865,15 @@ def page_shell(
     title: str = "Knowledge Wiki",
     subtitle: str = "",
     crumbs: list[tuple[str, str | None]] | None = None,
+    sticky_title: str | None = None,
 ) -> str:
     breadcrumb_html = breadcrumbs(prefix, crumbs) if crumbs else ""
-    sticky_breadcrumb_html = breadcrumbs(prefix, crumbs or [], class_name="sticky-crumbs")
+    stable_title = sticky_title or title
     return f"""
 <header class="sticky-nav">
   <div class="sticky-main">
-    {sticky_breadcrumb_html}
-    <div class="sticky-title">{esc(title)}</div>
+    <a class="sticky-home" href="{esc(prefix)}index.html">Dashboard</a>
+    <a class="sticky-title" href="{esc(prefix)}index.html">{esc(stable_title)}</a>
   </div>
   <div class="sticky-actions">
     {search_control(prefix)}
@@ -2442,8 +2447,11 @@ button { cursor: pointer; }
   backdrop-filter: blur(14px);
   box-shadow: 0 1px 2px rgba(19,27,41,.04);
 }
-.sticky-main { min-width: 0; display: grid; gap: 1px; }
-.sticky-title { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 800; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.sticky-main { min-width: 0; display: grid; gap: 2px; }
+.sticky-home { overflow: hidden; color: var(--muted); font-size: 12.5px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.sticky-home:hover { color: var(--accent); text-decoration: none; }
+.sticky-title { display: block; overflow: hidden; color: var(--ink); font-size: 14px; font-weight: 800; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.sticky-title:hover { color: var(--accent-ink); text-decoration: none; }
 .sticky-crumbs { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; overflow: hidden; color: var(--muted); font-size: 11.5px; line-height: 1.25; white-space: nowrap; }
 .sticky-crumbs a, .sticky-crumbs span { flex: 0 0 auto; color: var(--muted); }
 .sticky-crumbs a:hover { color: var(--accent); text-decoration: none; }
@@ -3506,12 +3514,13 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
         title=f"{company} Learning",
         subtitle="Spaced repetition for system knowledge. Each prompt teaches one concept, records a self-rating, updates the mastery checklist, and schedules the next review.",
         crumbs=[("Learning", None)],
+        sticky_title=dashboard_title(company),
     )
     write_html_page(learning_dir / "index.html", f"{company} Learning", body, provenance)
     update_manifest(wiki_root, provenance)
 
 
-def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any]) -> str:
+def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any], sticky_title: str) -> str:
     safe_title = esc(title)
     safe_date = esc(date)
     content = f"""
@@ -3529,7 +3538,7 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     <style>{base_css()}</style>
   </head>
   <body>
-    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=date, crumbs=[("Reports", "index.html#sec-reports"), (REPORT_FOLDERS[kind], None)])}
+    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=date, crumbs=[("Reports", "index.html#sec-reports"), (REPORT_FOLDERS[kind], None)], sticky_title=sticky_title)}
     {provenance_block(provenance)}
     {refresh_script()}
   </body>
@@ -3575,6 +3584,7 @@ def write_setup_page(wiki_root: Path, project_folder: Path, company: str, setup_
         title=f"{company} Setup Checklist",
         subtitle="Onboarding readiness, setup health, and what must be complete before relying on the command center.",
         crumbs=[("Setup", None)],
+        sticky_title=dashboard_title(company),
     )
     write_html_page(setup_dir / "index.html", f"{company} Setup Checklist", body, provenance)
     update_manifest(wiki_root, provenance)
@@ -3583,6 +3593,7 @@ def write_setup_page(wiki_root: Path, project_folder: Path, company: str, setup_
 def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, Any]]:
     core_dir = wiki_root / "core"
     core_dir.mkdir(parents=True, exist_ok=True)
+    stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
     pages: list[dict[str, Any]] = []
     for doc in CORE_DOCS:
         title, description = CORE_DOC_META.get(doc, (doc, "Core CTO context."))
@@ -3629,7 +3640,7 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
     <span>Updated {esc(dt.date.today().isoformat())}</span>
   </div>
 """
-        body = page_shell(content, prefix="../", eyebrow="Core Context - Day Zero CTO", title=title, subtitle=description, crumbs=[("Core", "index.html#sec-core"), (title, None)])
+        body = page_shell(content, prefix="../", eyebrow="Core Context - Day Zero CTO", title=title, subtitle=description, crumbs=[("Core", "index.html#sec-core"), (title, None)], sticky_title=stable_title)
         write_html_page(wiki_root / relative_path, title, body, provenance)
         update_manifest(wiki_root, provenance)
         pages.append(
@@ -3738,10 +3749,12 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         cadence_status_html = '<div class="cadence-alert"><strong>No cadence rules</strong><p>Add an Index Cadence Rules table to Operating Cadence when this project has recurring DZCTO reports.</p></div>'
         cadence_label = "No rules"
         cadence_class = "status-warn"
+        cadence_tone_attr = ' data-tone="warn"'
     elif not alerts:
         cadence_status_html = '<div class="cadence-ok"><strong>Cadence current</strong><p>All scheduled Day Zero CTO report cadences are current.</p></div>'
         cadence_label = "Current"
-        cadence_class = "status-good"
+        cadence_class = ""
+        cadence_tone_attr = ""
     else:
         alert_cards = "\n".join(
             f'<div class="cadence-alert"><strong>{esc(alert["label"])}</strong><p>{esc(alert["reason"])}</p><code>{esc(display_command(alert["command"]))}</code></div>'
@@ -3750,6 +3763,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         cadence_status_html = f'<div class="cadence-list">{alert_cards}</div>'
         cadence_label = f"{len(alerts)} due"
         cadence_class = "status-danger"
+        cadence_tone_attr = ' data-tone="crit"'
+    cadence_class_attr = f" {cadence_class}" if cadence_class else ""
 
     if not cadence_rules:
         report_status = pluralize(report_count, "artifact")
@@ -3910,7 +3925,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     )
     content = f"""
   <div class="kpis">
-    <a class="kpi {cadence_class}" href="core/operating-cadence.html" data-tone="{'crit' if alerts else 'good' if cadence_rules else 'warn'}">
+    <a class="kpi{cadence_class_attr}" href="core/operating-cadence.html"{cadence_tone_attr}>
       <div class="k-label">Cadence due</div>
       <div class="k-val">{esc(len(alerts))}<span class="unit">/ {esc(len(cadence_rules))}</span></div>
       <div class="k-sub">{esc(cadence_label)}</div>
@@ -4023,10 +4038,11 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     body = page_shell(
         content,
         eyebrow="Command Center - Day Zero CTO",
-        title=f"{company} Day Zero CTO",
+        title=dashboard_title(company),
         subtitle=description,
+        sticky_title=dashboard_title(company),
     )
-    write_html_page(wiki_root / "index.html", f"{company} Day Zero CTO", body, provenance)
+    write_html_page(wiki_root / "index.html", dashboard_title(company), body, provenance)
     update_manifest(wiki_root, provenance)
 
 
@@ -4070,6 +4086,7 @@ def main(argv: list[str]) -> int:
         report_prompt_context=args.report_prompt_context,
         repos=args.repo,
     )
+    stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
 
     written_report: Path | None = None
     if not args.init:
@@ -4108,7 +4125,7 @@ def main(argv: list[str]) -> int:
             source_hashes=collect_source_hashes(report_sources),
             extra={"reportDate": args.date},
         )
-        report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance), encoding="utf-8")
+        report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance, stable_title), encoding="utf-8")
         if structured_data is not None:
             write_json(report_path.with_suffix(".json"), structured_data)
             write_json(reports_dir / args.kind / "data.json", structured_data)
