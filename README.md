@@ -159,6 +159,7 @@ Default install locations:
 - Plugin symlink: `~/plugins/day-zero-cto`
 - Codex plugin marketplace/settings file: `~/.agents/plugins/marketplace.json`
 - Optional editable skill symlinks: `~/.codex/skills`
+- Optional stable command shim: `~/.local/bin/dzcto`
 
 You can choose the wiki project folder, plugin link, marketplace/settings file, and editable skill directory during install:
 
@@ -176,6 +177,18 @@ bin/dzcto setup \
 ```
 
 Use `--company-description` instead of `--company-url` when you want to provide the company summary yourself.
+
+To install a stable `dzcto` command for your shell:
+
+```bash
+bin/dzcto install-command
+```
+
+This writes `~/.local/bin/dzcto` by default. Make sure `~/.local/bin` is on your `PATH`, then use the same command every time:
+
+```bash
+dzcto serve "$HOME/Documents/Acme CTO"
+```
 
 To update an existing local Codex install from a Git clone:
 
@@ -226,6 +239,18 @@ Claude Code can install Day Zero CTO as a plugin marketplace:
 ```bash
 claude plugin marketplace add chuckblake/Day-Zero-CTO
 claude plugin install day-zero-cto@day-zero-cto
+```
+
+Claude Code stores installed plugins under versioned cache folders. To avoid typing paths such as `~/.claude/plugins/cache/day-zero-cto/day-zero-cto/<version>/bin/dzcto`, run the installed helper once to create a stable shell command:
+
+```bash
+~/.claude/plugins/cache/day-zero-cto/day-zero-cto/<version>/bin/dzcto install-command
+```
+
+After that, use:
+
+```bash
+dzcto serve "$HOME/Documents/Acme CTO"
 ```
 
 Inside interactive Claude Code:
@@ -286,6 +311,7 @@ Claude Desktop chat can follow the Day Zero CTO procedures and create downloadab
 Run these from a session where the plugin `bin/` directory is on `PATH`, or from a local clone with `bin/dzcto`.
 
 ```bash
+dzcto install-command
 dzcto setup
 dzcto update
 dzcto init "<project folder>" --company-name "<name>" --company-description "<summary>" --repo "<repo path>"

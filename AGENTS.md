@@ -22,6 +22,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, a
 - Keep skill bodies concise and procedural. Do not add per-skill README files.
 - Prefer shared helper behavior in `scripts/` and expose stable wrappers in `bin/` when useful.
 - Installer and doctor scripts should print small numbered progress steps such as `[1/6]`, because users often watch these through an agent transcript.
+- `dzcto install-command` should remain the stable way to create `~/.local/bin/dzcto` so users do not need versioned Claude or Codex cache paths.
 - Local install updates should go through `dzcto update`, which uses `git pull --ff-only`, refreshes local plugin/skill links, and runs doctor. Do not tell users to remember a manual `git pull` plus `setup` sequence for Codex Desktop local installs.
 - Keep the skill route primary for users. Add deterministic local helper behavior under `dzcto` before introducing provider-specific complexity.
 - Generated wiki HTML should be template-rendered by helpers, include embedded `dzcto-provenance` JSON, and update `knowledge/wiki/.dzcto/` sidecar metadata.

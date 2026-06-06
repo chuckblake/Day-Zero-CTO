@@ -69,6 +69,18 @@ To update an existing local Codex install from a Git clone:
 bin/dzcto update
 ```
 
+To install a stable shell command so users do not need versioned plugin cache paths:
+
+```bash
+bin/dzcto install-command
+```
+
+This writes `~/.local/bin/dzcto` by default. If that directory is not on `PATH`, tell the user to add:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 If editable Codex skill links were installed for development, refresh them too:
 
 ```bash
@@ -113,6 +125,14 @@ Claude Code can install Day Zero CTO as a plugin marketplace:
 claude plugin marketplace add chuckblake/Day-Zero-CTO
 claude plugin install day-zero-cto@day-zero-cto
 ```
+
+Claude Code stores plugin helpers in versioned cache folders. To create a stable command, run the installed helper once:
+
+```bash
+~/.claude/plugins/cache/day-zero-cto/day-zero-cto/<version>/bin/dzcto install-command
+```
+
+After that, use `dzcto serve "<project folder>"`, `dzcto refresh "<project folder>"`, and the other helper commands without the cache path.
 
 Report progress in small steps:
 
@@ -178,6 +198,7 @@ Claude Desktop can follow the skill procedures and produce downloadable artifact
 Run these from a session where the plugin `bin/` directory is on `PATH`, or from a local clone with `bin/dzcto`.
 
 ```bash
+dzcto install-command
 dzcto update
 dzcto init "<project folder>" --company-name "<name>" --company-url "<url>" --repo "<repo path>"
 dzcto refresh "<project folder>"
