@@ -20,7 +20,7 @@ Core context update note: for substantive updates to Strategy, Team, Operating C
 
 Runtime note: helpers require Python 3.10+ and use only the Python standard library. Run `bin/dzcto doctor` from the repo before promising generated artifacts.
 
-Server note: for the best generated-page experience, open the wiki through `bin/dzcto serve "<project folder>"`. The local server enables `Refresh Wiki` and lets browser search fetch the generated JSON index reliably.
+Server note: for the best generated-page experience, open the wiki through `bin/dzcto serve "<project folder>"`. The local server lets browser search fetch the generated JSON index reliably.
 
 ## Codex Desktop
 

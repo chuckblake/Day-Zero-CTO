@@ -483,10 +483,6 @@ def search_icon() -> str:
     return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>'
 
 
-def refresh_icon() -> str:
-    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>'
-
-
 def search_control(prefix: str) -> str:
     return f"""
 <div class="search">
@@ -515,25 +511,18 @@ def page_shell(
     eyebrow: str = "Command Center - Day Zero CTO",
     title: str = "Knowledge Wiki",
     subtitle: str = "",
-    refresh: bool = False,
+    crumbs: list[tuple[str, str | None]] | None = None,
 ) -> str:
-    refresh_button = (
-        f"""
-          <button type="button" class="btn" data-dzcto-refresh>
-            {refresh_icon()}
-            Refresh Wiki
-          </button>
-          <span class="refresh-note" data-dzcto-refresh-status aria-live="polite"></span>
-"""
-        if refresh
-        else ""
-    )
+    breadcrumb_html = breadcrumbs(prefix, crumbs) if crumbs else ""
     return f"""
 <main class="app">
   <header class="masthead">
     <div>
-      <span class="eyebrow">{esc(eyebrow)}</span>
-      <h1 class="title">{esc(title)}</h1>
+      {breadcrumb_html}
+      <a class="masthead-title-link" href="{esc(prefix)}index.html">
+        <span class="eyebrow">{esc(eyebrow)}</span>
+        <h1 class="title">{esc(title)}</h1>
+      </a>
       {f'<p class="lede">{esc(subtitle)}</p>' if subtitle else ''}
     </div>
     <div class="masthead-side">
@@ -541,7 +530,6 @@ def page_shell(
         <button type="button" class="theme-btn" data-theme-toggle aria-label="Toggle light or dark theme"><span data-theme-label>Dark</span></button>
       </div>
       {search_control(prefix)}
-      {refresh_button}
     </div>
   </header>
     {content}
@@ -1482,6 +1470,9 @@ h1.title { font-size: 38px; font-weight: 800; }
 .theme-btn { display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; }
 .icon-btn { width: 34px; display: grid; place-items: center; }
 .theme-btn:hover, .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.masthead-title-link { display: inline-block; color: inherit; text-decoration: none; }
+.masthead-title-link:hover { text-decoration: none; }
+.masthead-title-link:hover .title { color: var(--accent-ink); }
 .search { position: relative; width: 280px; max-width: 100%; }
 .search input {
   width: 100%;
@@ -1528,24 +1519,9 @@ h1.title { font-size: 38px; font-weight: 800; }
 .search-result span, .search-result strong, .search-result p { display: block; }
 .search-result span { color: var(--muted); font-size: 11px; font-weight: 800; margin-bottom: 2px; text-transform: uppercase; }
 .search-result p { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--accent-2);
-  background: var(--accent);
-  color: #fff;
-  border-radius: var(--r-md);
-  padding: 9px 14px;
-  font-size: 13.5px;
-  font-weight: 800;
-  box-shadow: var(--shadow-sm);
-  transition: .15s;
-}
-.btn:hover { background: var(--accent-2); }
-.refresh-note { min-height: 14px; max-width: 280px; color: var(--muted); font-size: 12px; text-align: right; }
 .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap); margin: 6px 0 30px; }
 .kpi {
+  display: block;
   position: relative;
   overflow: hidden;
   background: var(--surface);
@@ -1553,7 +1529,11 @@ h1.title { font-size: 38px; font-weight: 800; }
   border-radius: var(--r-md);
   padding: 14px 15px;
   box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  text-decoration: none;
+  transition: .15s;
 }
+.kpi:hover { border-color: var(--accent); box-shadow: var(--shadow-md); text-decoration: none; transform: translateY(-1px); }
 .k-label { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .k-val { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; font-size: 26px; font-weight: 800; }
 .k-val .unit { color: var(--faint); font-size: 13px; font-weight: 700; }
@@ -1590,9 +1570,11 @@ h1.title { font-size: 38px; font-weight: 800; }
 .today-col:last-child { border-right: 0; }
 .col-h { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; color: var(--muted); font-size: 11.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .cnt { background: var(--surface-3); color: var(--ink-2); border-radius: var(--r-pill); padding: 1px 8px; font-size: 11px; }
-.dec, .mini-risk, .cad-mini { border-top: 1px solid var(--line); padding: 9px 0; }
+.dec, .mini-risk, .cad-mini { border-top: 1px solid var(--line); padding: 9px 0; color: inherit; text-decoration: none; }
 .dec:first-of-type, .mini-risk:first-of-type, .cad-mini:first-of-type { border-top: 0; padding-top: 2px; }
 .dec { display: flex; gap: 11px; }
+.dec:hover, .mini-risk:hover, .cad-mini:hover { color: inherit; text-decoration: none; }
+.dec:hover .d-title, .mini-risk:hover .mr-title, .cad-mini:hover .cm-name { color: var(--accent); }
 .idx { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; margin-top: 1px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 800; }
 .d-title, .mr-title, .cm-name { color: var(--ink); font-size: 13.5px; font-weight: 700; }
 .d-meta, .mr-meta, .cm-sub { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; color: var(--muted); font-size: 11.5px; }
@@ -1772,7 +1754,7 @@ h1.title { font-size: 38px; font-weight: 800; }
   line-height: 1.5;
 }
 .copy-status { display: block; min-height: 18px; margin-top: 7px; color: var(--good); font-size: 13px; }
-.breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 22px; color: var(--muted); font-size: 14px; }
+.breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; color: var(--muted); font-size: 13px; }
 .breadcrumbs span { color: var(--muted); }
 .toc { margin: 18px 0 24px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); padding: 12px; }
 .toc strong { display: block; margin-bottom: 8px; }
@@ -1830,7 +1812,6 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .masthead-side { align-items: stretch; }
   .util { justify-content: flex-end; }
   .search { width: 100%; }
-  .refresh-note { text-align: left; max-width: none; }
   .today-grid { grid-template-columns: 1fr; }
   .today-col { border-right: 0; border-bottom: 1px solid var(--line); }
   .today-col:last-child { border-bottom: 0; }
@@ -1899,26 +1880,6 @@ def refresh_script() -> str:
       setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
   });
-
-  const button = $('[data-dzcto-refresh]');
-  const status = $('[data-dzcto-refresh-status]');
-  if (button && status) {
-    button.addEventListener('click', async () => {
-      status.textContent = 'Refreshing wiki...';
-      if (location.protocol === 'file:') {
-        status.textContent = 'Open with dzcto serve "<project folder>" to refresh from the browser.';
-        return;
-      }
-      try {
-        const response = await fetch('/__dzcto/refresh', { method: 'POST' });
-        if (!response.ok) throw new Error(await response.text());
-        status.textContent = 'Refreshed. Reloading...';
-        location.reload();
-      } catch (error) {
-        status.textContent = 'Refresh failed. Run dzcto refresh "<project folder>" in a terminal.';
-      }
-    });
-  }
 
   async function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
@@ -2235,7 +2196,6 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
         generated_at=generated_at,
     )
     content = f"""
-  {breadcrumbs("../", [("Learning", None)])}
   <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
   <div data-toc-scope>
   <div class="summary">
@@ -2271,6 +2231,7 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
         eyebrow="Learning - Day Zero CTO",
         title=f"{company} Learning",
         subtitle="Spaced repetition for system knowledge. Each prompt teaches one concept, records a self-rating, updates the mastery checklist, and schedules the next review.",
+        crumbs=[("Learning", None)],
     )
     write_html_page(learning_dir / "index.html", f"{company} Learning", body, provenance)
     update_manifest(wiki_root, provenance)
@@ -2280,7 +2241,6 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     safe_title = esc(title)
     safe_date = esc(date)
     content = f"""
-    {breadcrumbs("../../", [("Reports", "index.html#reports"), (REPORT_FOLDERS[kind], None)])}
     <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
     <div data-toc-scope>
       {body}
@@ -2295,7 +2255,7 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     <style>{base_css()}</style>
   </head>
   <body>
-    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=date)}
+    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=date, crumbs=[("Reports", "index.html#sec-reports"), (REPORT_FOLDERS[kind], None)])}
     {provenance_block(provenance)}
     {refresh_script()}
   </body>
@@ -2331,7 +2291,6 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
             source_hashes=source_hash,
         )
         content = f"""
-  {breadcrumbs("../", [("Core", "index.html#core"), (title, None)])}
   <div class="status-grid">
     <div class="status-card {'status-good' if source_path.exists() else 'status-warn'}"><span>Status</span><strong>{esc(status)}</strong></div>
     <div class="status-card"><span>Source</span><strong>{esc(doc)}</strong></div>
@@ -2343,7 +2302,7 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
     {content_html}
   </section>
 """
-        body = page_shell(content, prefix="../", eyebrow="Core Context - Day Zero CTO", title=title, subtitle=description)
+        body = page_shell(content, prefix="../", eyebrow="Core Context - Day Zero CTO", title=title, subtitle=description, crumbs=[("Core", "index.html#sec-core"), (title, None)])
         write_html_page(wiki_root / relative_path, title, body, provenance)
         update_manifest(wiki_root, provenance)
         pages.append(
@@ -2374,6 +2333,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     report_entries = [(folder, label, sorted((reports_dir / folder).glob("*.html"), reverse=True)) for folder, label in REPORT_FOLDERS.items()]
     report_count = sum(len(links) for _folder, _label, links in report_entries)
+    tech_stack_links = next((links for folder, _label, links in report_entries if folder == "tech-stack"), [])
+    tech_stack_href = tech_stack_links[0].relative_to(wiki_root).as_posix() if tech_stack_links else "#sec-reports"
     report_sections = []
     for folder, label, links in report_entries:
         cadence_label = "Scheduled"
@@ -2495,13 +2456,13 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     decision_rows = (
         "\n".join(
-            f"""<div class="dec" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
+            f"""<a class="dec" href="core/decisions.html" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
   <span class="idx">{index}</span>
   <div class="d-body">
     <div class="d-title">{esc(decision["title"])}</div>
     <div class="d-meta"><span class="owner-tag">{esc(decision["owner"])}</span><span>/</span><span>{esc(decision["when"])}</span></div>
   </div>
-</div>"""
+</a>"""
             for index, decision in enumerate(decisions[:5], start=1)
         )
         if decisions
@@ -2510,13 +2471,13 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     top_risk_rows = (
         "\n".join(
-            f"""<div class="mini-risk">
+            f"""<a class="mini-risk" href="core/risks.html">
   <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
   <div class="mr-body">
     <div class="mr-title">{esc(risk["title"])}</div>
     <div class="mr-meta">{esc(risk["severity"])} / {esc(risk["owner"])}</div>
   </div>
-</div>"""
+</a>"""
             for risk in high_or_critical_risks[:5]
         )
         if high_or_critical_risks
@@ -2525,13 +2486,13 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     cadence_preview_html = (
         "\n".join(
-            f"""<div class="cad-mini">
+            f"""<a class="cad-mini" href="core/operating-cadence.html">
   <div>
     <div class="cm-name">{esc(row["name"])}</div>
     <div class="cm-sub">{esc(row["cadence"])} / last {esc(row["last"])}</div>
   </div>
   <span class="cm-when">{esc(row["next"])}</span>
-</div>"""
+</a>"""
             for row in cadence_preview_rows[:5]
         )
         if cadence_preview_rows
@@ -2599,36 +2560,36 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     )
     content = f"""
   <div class="kpis">
-    <div class="kpi {cadence_class}" data-tone="{'crit' if alerts else 'good' if cadence_rules else 'warn'}">
+    <a class="kpi {cadence_class}" href="core/operating-cadence.html" data-tone="{'crit' if alerts else 'good' if cadence_rules else 'warn'}">
       <div class="k-label">Cadence due</div>
       <div class="k-val">{esc(len(alerts))}<span class="unit">/ {esc(len(cadence_rules))}</span></div>
       <div class="k-sub">{esc(cadence_label)}</div>
-    </div>
-    <div class="kpi" data-tone="{'crit' if critical_risks else 'warn' if high_or_critical_risks else 'good'}">
+    </a>
+    <a class="kpi" href="#sec-risks" data-tone="{'crit' if critical_risks else 'warn' if high_or_critical_risks else 'good'}">
       <div class="k-label">Open risks</div>
       <div class="k-val">{esc(len(risks))}{f'<span class="unit">/ {critical_risks} crit</span>' if critical_risks else ''}</div>
       <div class="k-sub">Register tracked</div>
-    </div>
-    <div class="kpi" data-tone="{'warn' if decisions else 'good'}">
+    </a>
+    <a class="kpi" href="core/decisions.html" data-tone="{'warn' if decisions else 'good'}">
       <div class="k-label">Decisions</div>
       <div class="k-val">{esc(len(decisions))}</div>
       <div class="k-sub">Awaiting review</div>
-    </div>
-    <div class="kpi" data-tone="info">
+    </a>
+    <a class="kpi" href="#sec-reports" data-tone="info">
       <div class="k-label">Reports</div>
       <div class="k-val">{esc(report_count)}<span class="unit">/ {esc(len(REPORT_FOLDERS))}</span></div>
       <div class="k-sub">{esc(report_status)}</div>
-    </div>
-    <div class="kpi">
+    </a>
+    <a class="kpi" href="learning/index.html">
       <div class="k-label">Learning due</div>
       <div class="k-val">{esc(learning_counts_value["due"])}<span class="unit">/ {esc(learning_counts_value["new"])} new</span></div>
       <div class="k-sub">Spaced repetition</div>
-    </div>
-    <div class="kpi" data-tone="good">
+    </a>
+    <a class="kpi" href="{esc(tech_stack_href)}" data-tone="good">
       <div class="k-label">Repos</div>
       <div class="k-val">{esc(repo_count)}</div>
       <div class="k-sub">Read-only sources</div>
-    </div>
+    </a>
   </div>
 
   <section class="today" aria-label="Today">
@@ -2752,7 +2713,6 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         eyebrow="Command Center - Day Zero CTO",
         title=f"{company} Day Zero CTO",
         subtitle=description,
-        refresh=True,
     )
     write_html_page(wiki_root / "index.html", f"{company} Day Zero CTO", body, provenance)
     update_manifest(wiki_root, provenance)

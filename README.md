@@ -89,8 +89,8 @@ All user-facing wiki pages are HTML. Core context starts as editable Markdown so
 
 Generated wiki pages use a compact command-center interface:
 
-- KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
-- A `What needs you today` panel with decisions, high-priority risks, and operating cadence.
+- Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
+- A linked `What needs you today` panel with decisions, high-priority risks, and operating cadence.
 - Risk register cards parsed from `core/RISKS.md` tables or headings, with severity filtering.
 - Report, core context, learning, and command sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
@@ -128,13 +128,13 @@ The hidden `.dzcto/` directory is the local metadata sidecar. It stores project 
 
 Supported cadences include `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, and `every N days/weeks/months`.
 
-The dashboard `Refresh Wiki` button reruns `dzcto refresh` only when the wiki is served through the local helper. It regenerates core HTML pages, the dashboard, the search index, and cadence alerts:
+Use the `Refresh Wiki` local command card, or run `dzcto refresh`, when source Markdown or reports change. It regenerates core HTML pages, the dashboard, the search index, and cadence alerts:
 
 ```bash
 dzcto serve "<project folder>"
 ```
 
-Open the printed local URL and click `Refresh Wiki`. A plain `file://` page cannot run Python directly, and may not load the generated search index, so the button will tell the user to use `dzcto serve`.
+Open the printed local URL for the best search experience. A plain `file://` page may not load the generated search index because browsers often block local JSON fetches.
 
 The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
 
