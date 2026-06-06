@@ -718,7 +718,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         ),
         (
             "Edit",
-            "Update source Markdown under knowledge/wiki/core, or ask an agent to run refine-core-context for guided edits.",
+            "Update source Markdown under knowledge/wiki/core. Risk cards are generated from core/RISKS.md, not edited in HTML.",
             f'dzcto help editing --project "{project}"',
         ),
         (
@@ -750,12 +750,12 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         ("collect-issue-bundle", f'dzcto collect-issue-bundle "{project}"', "Create a redacted troubleshooting bundle."),
         ("package-claude-desktop", "dzcto package-claude-desktop", "Build an uploadable Claude Desktop custom skill zip."),
     ]
-    card_html = "\n".join(
-        f"""<article class="help-card">
+    guide_html = "\n".join(
+        f"""<div class="help-guide-row">
   <h3>{esc(title)}</h3>
   <p>{esc(detail)}</p>
   <code>{esc(command)}</code>
-</article>"""
+</div>"""
         for title, detail, command in help_cards
     )
     rows_html = "\n".join(
@@ -771,27 +771,33 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
       <span class="sec-meta">Self-serve guide / {pluralize(copy_card_count, "copy card")}</span>
     </summary>
     <div class="sec-body">
-      <div class="help-grid">{card_html}</div>
-      <section class="artifact-section command-reference">
-        <h2>Command Reference</h2>
-        <table>
-          <thead><tr><th>Command</th><th>Example</th><th>Use when</th></tr></thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-      </section>
-      <section class="artifact-section help-copy-cards">
-        <h2>Copy Cards</h2>
-        <div class="cmd-groups">
-          <section>
-            <div class="cmd-group-h">AI Prompts</div>
+      <div class="help-accordion">
+        <details class="help-panel" open>
+          <summary><span>Guide</span><small>Start, edit, operate, and check this project</small></summary>
+          <div class="help-panel-body help-guide">{guide_html}</div>
+        </details>
+        <details class="help-panel">
+          <summary><span>Command Reference</span><small>{esc(len(command_rows))} local helper commands</small></summary>
+          <div class="help-panel-body command-reference">
+            <table>
+              <thead><tr><th>Command</th><th>Example</th><th>Use when</th></tr></thead>
+              <tbody>{rows_html}</tbody>
+            </table>
+          </div>
+        </details>
+        <details class="help-panel">
+          <summary><span>AI Prompts</span><small>{pluralize(len(ai_prompt_items), "copy card")}</small></summary>
+          <div class="help-panel-body">
             <div class="cmd-grid">{''.join(ai_prompt_items)}</div>
-          </section>
-          <section>
-            <div class="cmd-group-h">Local Commands</div>
+          </div>
+        </details>
+        <details class="help-panel">
+          <summary><span>Local Commands</span><small>{pluralize(len(local_command_items), "copy card")}</small></summary>
+          <div class="help-panel-body">
             <div class="cmd-grid">{''.join(local_command_items)}</div>
-          </section>
-        </div>
-      </section>
+          </div>
+        </details>
+      </div>
     </div>
   </details>
 """
@@ -1227,6 +1233,26 @@ def core_doc_html_name(doc: str) -> str:
     return CORE_DOC_HTML.get(doc, f"{slugify(Path(doc).stem)}.html")
 
 
+def stable_anchor_id(prefix: str, value: str) -> str:
+    slug = slugify(plain_markdown(value))
+    return f"{prefix}-{slug or 'item'}"
+
+
+def unique_anchor_id(prefix: str, value: str, used_ids: set[str]) -> str:
+    base = stable_anchor_id(prefix, value)
+    anchor = base
+    suffix = 2
+    while anchor in used_ids:
+        anchor = f"{base}-{suffix}"
+        suffix += 1
+    used_ids.add(anchor)
+    return anchor
+
+
+def risk_anchor(value: str) -> str:
+    return stable_anchor_id("risk", value)
+
+
 def inline_markdown(value: str) -> str:
     text = esc(value)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
@@ -1235,18 +1261,22 @@ def inline_markdown(value: str) -> str:
     return text
 
 
-def render_markdown_table(lines: list[str]) -> str:
+def render_markdown_table(lines: list[str], row_anchor_prefix: str | None = None, used_anchor_ids: set[str] | None = None) -> str:
     rows = [split_markdown_row(line) for line in lines]
     if len(rows) < 2:
         return ""
     headers = "".join(f"<th>{inline_markdown(cell)}</th>" for cell in rows[0])
     body_rows = []
+    used_anchor_ids = used_anchor_ids if used_anchor_ids is not None else set()
     for row in rows[2:]:
-        body_rows.append("<tr>" + "".join(f"<td>{inline_markdown(cell)}</td>" for cell in row) + "</tr>")
+        anchor_attr = ""
+        if row_anchor_prefix and row:
+            anchor_attr = f' id="{esc(unique_anchor_id(row_anchor_prefix, row[0], used_anchor_ids))}"'
+        body_rows.append(f"<tr{anchor_attr}>" + "".join(f"<td>{inline_markdown(cell)}</td>" for cell in row) + "</tr>")
     return f'<div class="markdown-table"><table><thead><tr>{headers}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>'
 
 
-def markdown_to_html(markdown: str) -> str:
+def markdown_to_html(markdown: str, table_anchor_prefix: str | None = None) -> str:
     lines = markdown.splitlines()
     blocks: list[str] = []
     paragraph: list[str] = []
@@ -1254,6 +1284,7 @@ def markdown_to_html(markdown: str) -> str:
     table_lines: list[str] = []
     in_code = False
     code_lines: list[str] = []
+    used_anchor_ids: set[str] = set()
 
     def flush_paragraph() -> None:
         nonlocal paragraph
@@ -1270,7 +1301,7 @@ def markdown_to_html(markdown: str) -> str:
     def flush_table() -> None:
         nonlocal table_lines
         if table_lines:
-            rendered = render_markdown_table(table_lines)
+            rendered = render_markdown_table(table_lines, row_anchor_prefix=table_anchor_prefix, used_anchor_ids=used_anchor_ids)
             if rendered:
                 blocks.append(rendered)
             table_lines = []
@@ -2356,17 +2387,42 @@ h1.title { font-size: 38px; font-weight: 800; }
 .action-top strong { color: var(--ink); font-size: 22px; line-height: 1; }
 .action-card ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .action-card li { color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
-.help-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
-.help-card {
+.help-accordion { display: grid; gap: 10px; }
+.help-panel {
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
-  padding: 15px;
 }
-.help-card h3 { color: var(--ink); font-size: 14px; font-weight: 800; }
-.help-card p { margin-top: 6px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
-.help-card code { display: block; margin-top: 10px; white-space: normal; overflow-wrap: anywhere; }
+.help-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+  background: var(--surface);
+}
+.help-panel > summary::-webkit-details-marker { display: none; }
+.help-panel > summary span { color: var(--ink); font-size: 14px; font-weight: 800; }
+.help-panel > summary small { color: var(--muted); font-size: 12px; font-weight: 700; text-align: right; }
+.help-panel[open] > summary { border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.help-panel-body { padding: 16px; }
+.help-guide { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 18px; }
+.help-guide-row {
+  display: grid;
+  grid-template-columns: minmax(90px, .2fr) minmax(0, 1fr) minmax(180px, .45fr);
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.help-guide-row:first-child { border-top: 0; padding-top: 0; }
+.help-guide-row h3 { color: var(--ink); font-size: 14px; font-weight: 800; }
+.help-guide-row p { color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.help-guide-row code { display: block; white-space: normal; overflow-wrap: anywhere; }
 .command-reference table code { white-space: normal; overflow-wrap: anywhere; }
 .prose { max-width: none; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
@@ -2375,6 +2431,9 @@ h1.title { font-size: 38px; font-weight: 800; }
 .no-results { border: 1px dashed var(--line-2); border-radius: var(--r-md); padding: 22px; text-align: center; }
 .markdown-table { width: 100%; overflow-x: auto; }
 .markdown-table table { min-width: 100%; }
+.markdown-table tr[id] { scroll-margin-top: 24px; }
+.markdown-table tr:target { outline: 3px solid var(--accent); outline-offset: -3px; box-shadow: inset 4px 0 0 var(--accent); }
+.markdown-table tr:target td { background: var(--accent-soft); }
 table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
 th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
 th { background: var(--surface-3); color: var(--ink); }
@@ -2408,7 +2467,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .setup-summary { align-items: flex-start; flex-direction: column; }
   .setup-primary { width: 100%; text-align: center; }
   .action-grid { grid-template-columns: 1fr; }
-  .help-grid { grid-template-columns: 1fr 1fr; }
+  .help-guide { grid-template-columns: 1fr; }
+  .help-guide-row { grid-template-columns: 1fr; gap: 6px; }
   h1.title { font-size: 30px; }
 }
 @media (max-width: 560px) {
@@ -2418,7 +2478,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .setup-page-list .setup-item { grid-template-columns: auto minmax(0, 1fr); }
   .setup-page-list .setup-action { grid-column: 2; margin-top: 4px; }
-  .help-grid { grid-template-columns: 1fr; }
+  .help-panel > summary { align-items: flex-start; flex-direction: column; }
+  .help-panel > summary small { text-align: left; }
   .app-footer { justify-content: flex-start; }
   .r-field-grid { grid-template-columns: 1fr; }
   .risk > summary { grid-template-columns: auto 1fr; }
@@ -2914,7 +2975,7 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         relative_path = f"core/{core_doc_html_name(doc)}"
         if source_path.exists():
             source_text = source_path.read_text(encoding="utf-8")
-            content_html = markdown_to_html(source_text)
+            content_html = markdown_to_html(source_text, table_anchor_prefix="risk" if doc == "RISKS.md" else None)
             source_hash = collect_source_hashes([source_path])
             status = "Ready"
         else:
@@ -3138,7 +3199,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     top_risk_rows = (
         "\n".join(
-            f"""<a class="mini-risk" href="core/risks.html">
+            f"""<a class="mini-risk" href="core/risks.html#{esc(risk_anchor(risk["title"]))}">
   <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
   <div class="mr-body">
     <div class="mr-title">{esc(risk["title"])}</div>

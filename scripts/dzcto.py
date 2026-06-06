@@ -17,7 +17,15 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from dzcto_artifact import CORE_DOCS, REPORT_FOLDERS, cadence_alerts, core_doc_html_name, parse_cadence_rules
+from dzcto_artifact import (
+    CORE_DOCS,
+    REPORT_FOLDERS,
+    cadence_alerts,
+    core_doc_html_name,
+    dates_in_text,
+    parse_cadence_rules,
+    read_risk_entries,
+)
 from dzcto_common import (
     TOOL_NAME,
     TOOL_VERSION,
@@ -223,6 +231,8 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             For substantive changes, ask an agent to use day-zero-cto:refine-core-context.
             For recorded decision reviews, use day-zero-cto:review-decisions.
             For active risk-register reviews, use day-zero-cto:review-risks.
+            Risk cards and core/risks.html are generated from RISKS.md; edit RISKS.md as the source of truth.
+            Every active risk needs a calendar Next Review date. External triggers can be included, but should not replace the date.
             For report prompt steering, add reportPromptContext to .dzcto/config.json or add a Prompt Context
             column to the Index Cadence Rules table in OPERATING_CADENCE.md.
 
@@ -314,6 +324,11 @@ def has_real_value(value: Any) -> bool:
     return text not in UNKNOWN_VALUES
 
 
+def risks_missing_review_dates(core_dir: Path) -> list[str]:
+    risks = read_risk_entries(core_dir)
+    return [risk["title"] for risk in risks if not dates_in_text(risk.get("review", ""))]
+
+
 def project_status_checks(project: Path) -> list[dict[str, str]]:
     wiki_root = wiki_root_for_project(project)
     core_dir = wiki_root / "core"
@@ -366,6 +381,15 @@ def project_status_checks(project: Path) -> list[dict[str, str]]:
         "Cadence rules",
         f"{len(cadence_rules)} rules configured" if cadence_rules else "No Index Cadence Rules table found",
         "Use day-zero-cto:refine-core-context for Operating Cadence",
+    )
+
+    risks = read_risk_entries(core_dir)
+    missing_risk_dates = risks_missing_review_dates(core_dir)
+    add(
+        "pass" if not missing_risk_dates else "warn",
+        "Risk review dates",
+        f"All {len(risks)} active risks have calendar review dates" if not missing_risk_dates else f"{len(missing_risk_dates)} risk(s) missing a calendar review date",
+        "Use day-zero-cto:review-risks to add a date fallback to every active risk",
     )
 
     report_count = 0
@@ -598,6 +622,14 @@ def check_stale(project: Path) -> dict[str, Any]:
                 add("stale", alert["label"], alert["reason"], alert["command"])
         else:
             add("pass", "Cadence rules", "All scheduled report cadences are current")
+
+    missing_risk_dates = risks_missing_review_dates(wiki_root / "core")
+    if missing_risk_dates:
+        preview = ", ".join(missing_risk_dates[:3])
+        suffix = "" if len(missing_risk_dates) <= 3 else f" and {len(missing_risk_dates) - 3} more"
+        add("warn", "Risk review dates", f"Missing calendar review date: {preview}{suffix}", f"dzcto refresh {project}")
+    else:
+        add("pass", "Risk review dates", "All parsed active risks have calendar review dates")
 
     stale = any(check["status"] in {"stale", "fail"} for check in checks)
     ok = not any(check["status"] == "fail" for check in checks)

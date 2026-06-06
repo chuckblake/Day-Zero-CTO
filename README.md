@@ -106,6 +106,10 @@ The dashboard description under the title comes from the first real paragraph in
 
 For substantive core context updates, ask an agent to use the `refine-core-context` skill. It runs a short interview, drafts section-level Markdown updates, asks for approval or edits, writes only the source Markdown under `knowledge/wiki/core/`, and refreshes the generated HTML. Direct file edits are still fine for small typo, formatting, or copy fixes; the source files are `STRATEGY.md`, `TEAM.md`, `OPERATING_CADENCE.md`, `DECISIONS.md`, and `RISKS.md`.
 
+Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk cards and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited.
+
+Every active risk should carry a calendar date in its `Next Review` field. External triggers are welcome, but they should be additive, for example `2026-07-06 or on receipt of legal opinion`, because the local dashboard cannot detect most external events by itself. `dzcto status` and `dzcto check-stale` warn when parsed risks lack a calendar review date.
+
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: due or triggered decision reviews, priority risks, and cadence from core context.

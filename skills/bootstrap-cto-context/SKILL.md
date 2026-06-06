@@ -45,7 +45,7 @@ Use these files under `<project>/knowledge/wiki/core/` unless the user chooses a
 - `TEAM.md`: people, roles, responsibilities, reporting relationships, open questions, and communication preferences.
 - `OPERATING_CADENCE.md`: weekly review, CEO update rhythm, planning cycle, incident review rhythm, expected artifacts, and optional `## Index Cadence Rules` table with `Report`, `Folder`, `Cadence`, `Day`, `Grace Days`, `Command`, and optional `Prompt Context` columns for wiki due-alerts and prompt steering. Ask for or propose weekday intent for recurring reports. Commands should be Day Zero CTO skill prompts or `dzcto` helper commands, not coding workflow commands.
 - `DECISIONS.md`: recorded decisions already taken, original or approximate date, context, options considered, past-tense rationale, owner, and revisit trigger.
-- `RISKS.md`: risk, evidence, impact, likelihood, owner, mitigation, and next review date.
+- `RISKS.md`: risk, evidence, impact, likelihood, owner, mitigation, and calendar next review date. External triggers are allowed, but each active risk still needs a date fallback.
 
 ## Onboarding Options
 
