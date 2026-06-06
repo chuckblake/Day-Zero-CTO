@@ -91,6 +91,7 @@ All user-facing wiki pages are HTML. Core context starts as editable Markdown so
 Generated wiki pages use a compact command-center interface:
 
 - Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
+- A setup checklist for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
 - A linked `What needs you today` panel with decisions, high-priority risks, and operating cadence.
 - Risk register cards parsed from `core/RISKS.md` tables or headings, with severity filtering.
 - Report, core context, learning, and command sections modeled after the Arwen command-center template.
@@ -107,6 +108,7 @@ For substantive core context updates, ask an agent to use the `refine-core-conte
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: decision revisit triggers, priority risks, and cadence from core context.
+- `Setup Checklist`: self-serve onboarding readiness and the next action for incomplete setup items.
 - `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.
@@ -141,6 +143,8 @@ Open the printed local URL for the best search experience. A plain `file://` pag
 The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
 
 Generated command centers include refinement prompts for Strategy, Team, Operating Cadence, Decisions, and Risks. These prompts are meant for the conversational edit path: interview, draft, approve, write source Markdown, refresh.
+
+Generated report pages include an `Action Summary` when structured report data contains decisions, risks, asks, next focus, blockers, mitigations, or review questions. The summary is intentionally compact so a CTO can open a report and immediately see what needs judgment or follow-through.
 
 ## Install
 
@@ -190,6 +194,17 @@ This writes `~/.local/bin/dzcto` by default. Make sure `~/.local/bin` is on your
 
 ```bash
 dzcto serve "$HOME/Documents/Acme CTO"
+```
+
+For self-serve help and setup checks:
+
+```bash
+dzcto quickstart
+dzcto help onboarding
+dzcto help editing
+dzcto help reports
+dzcto status "$HOME/Documents/Acme CTO"
+dzcto version
 ```
 
 To update an existing local Codex install from a Git clone:

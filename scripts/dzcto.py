@@ -11,12 +11,13 @@ import mimetypes
 import os
 import subprocess
 import sys
+import textwrap
 import urllib.parse
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from dzcto_artifact import CORE_DOCS, cadence_alerts, core_doc_html_name, parse_cadence_rules
+from dzcto_artifact import CORE_DOCS, REPORT_FOLDERS, cadence_alerts, core_doc_html_name, parse_cadence_rules
 from dzcto_common import (
     TOOL_NAME,
     TOOL_VERSION,
@@ -35,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILLS_DIR = REPO_ROOT / "skills"
 DEFAULT_COMMAND_DEST = Path.home() / ".local" / "bin" / "dzcto"
 COMMAND_SHIM_MARKER = "Day Zero CTO stable command shim"
+UNKNOWN_VALUES = {"", "unknown", "tbd", "to be determined", "n/a", "none"}
 
 
 def script_path(name: str) -> Path:
@@ -67,6 +69,235 @@ def refresh_project(project: Path) -> int:
 
 def sh_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def shell_project(project: Path | None) -> str:
+    return f'"{project}"' if project else '"$HOME/Documents/Acme CTO"'
+
+
+def print_quickstart(project: Path | None = None) -> None:
+    project_arg = shell_project(project)
+    print(
+        textwrap.dedent(
+            f"""
+            Day Zero CTO quickstart
+
+            1. Check the install
+               dzcto doctor
+
+            2. Create or refresh a startup wiki
+               dzcto init {project_arg} --company-name "Acme" --company-description "Short company summary" --repo "$HOME/code/acme-app"
+
+            3. Open the command center
+               dzcto serve {project_arg}
+
+            4. Check what needs attention
+               dzcto status {project_arg}
+               dzcto check-stale {project_arg}
+
+            5. Keep core context accurate
+               Ask your agent to use day-zero-cto:refine-core-context for Strategy, Team, Operating Cadence, Decisions, or Risks.
+
+            6. Run the operating loop
+               Use the dashboard's AI prompt cards for Weekly CTO Review, CEO Update, Engineering Risk, Tech Stack, Review Decisions, and Learning.
+
+            Useful help:
+              dzcto help onboarding
+              dzcto help editing
+              dzcto help reports
+              dzcto help commands
+            """
+        ).strip()
+    )
+
+
+def print_help_topic(topic: str | None, project: Path | None = None) -> None:
+    project_arg = shell_project(project)
+    project_path = str(project) if project else "$HOME/Documents/Acme CTO"
+    topics = {
+        "onboarding": f"""
+            Onboarding checklist
+
+            1. Choose a project folder outside the code repo.
+            2. Capture company name and a short company description.
+            3. Add one or more read-only repo paths with --repo when code evidence exists.
+            4. Run dzcto init {project_arg}.
+            5. Open dzcto serve {project_arg}.
+            6. Use the dashboard setup checklist to finish core context, cadence rules, first reports, and learning seed.
+        """,
+        "editing": f"""
+            Editing core context
+
+            Edit source Markdown, not generated HTML:
+              {project_path}/knowledge/wiki/core/STRATEGY.md
+              {project_path}/knowledge/wiki/core/TEAM.md
+              {project_path}/knowledge/wiki/core/OPERATING_CADENCE.md
+              {project_path}/knowledge/wiki/core/DECISIONS.md
+              {project_path}/knowledge/wiki/core/RISKS.md
+
+            For substantive changes, ask an agent to use day-zero-cto:refine-core-context.
+            For recorded decision reviews, use day-zero-cto:review-decisions.
+
+            Then run:
+              dzcto refresh {project_arg}
+        """,
+        "reports": f"""
+            Report loop
+
+            Weekly CTO Review: delivery, risks, decisions, team/process, next focus.
+            CEO Update: progress, risks/blockers, asks/decisions, next.
+            Engineering Risk: top risks, mitigations, watchpoints.
+            Tech Stack: architecture shape, stack components, risks, onboarding notes.
+            CTO Code Review: blocking findings, FYI findings, questions, startup risk note.
+
+            Reports are written under:
+              {project_path}/knowledge/wiki/reports/
+
+            The dashboard shows the latest report cards and cadence due state after:
+              dzcto refresh {project_arg}
+        """,
+        "commands": f"""
+            Common commands
+
+            dzcto quickstart --project {project_arg}
+            dzcto doctor --project {project_arg}
+            dzcto init {project_arg} --company-name "Acme" --company-description "Short summary" --repo "$HOME/code/acme-app"
+            dzcto serve {project_arg}
+            dzcto refresh {project_arg}
+            dzcto status {project_arg}
+            dzcto check-stale {project_arg}
+            dzcto install-command
+            dzcto update --editable-skills
+        """,
+        "serve": f"""
+            Local server
+
+            Run:
+              dzcto serve {project_arg}
+
+            Then open the printed URL, usually:
+              http://127.0.0.1:8765/
+
+            Serving locally lets generated pages load search-index.json reliably and enables local refresh from the dashboard.
+        """,
+    }
+    if topic in topics:
+        print(textwrap.dedent(topics[topic]).strip())
+        return
+    print_quickstart(project)
+
+
+def has_real_value(value: Any) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip().lower()
+    return text not in UNKNOWN_VALUES
+
+
+def project_status_checks(project: Path) -> list[dict[str, str]]:
+    wiki_root = wiki_root_for_project(project)
+    core_dir = wiki_root / "core"
+    config = read_json(sidecar_dir(wiki_root) / "config.json", {})
+    repos = [str(item).strip() for item in (config.get("codeRepos", []) if isinstance(config, dict) else []) if str(item).strip()]
+    checks: list[dict[str, str]] = []
+
+    def add(status: str, label: str, detail: str, command: str = "") -> None:
+        checks.append({"status": status, "label": label, "detail": detail, "command": command})
+
+    add(
+        "pass" if wiki_root.exists() else "fail",
+        "Knowledge wiki",
+        str(wiki_root) if wiki_root.exists() else f"Missing {wiki_root}",
+        f"dzcto init {sh_quote(str(project))}",
+    )
+
+    company_name = config.get("companyName") if isinstance(config, dict) else ""
+    company_description = config.get("companyDescription") if isinstance(config, dict) else ""
+    add(
+        "pass" if has_real_value(company_name) else "warn",
+        "Company name",
+        str(company_name).strip() if has_real_value(company_name) else "Missing from .dzcto/config.json or Strategy title",
+        f"dzcto init {sh_quote(str(project))} --company-name \"<name>\"",
+    )
+    add(
+        "pass" if has_real_value(company_description) else "warn",
+        "Company description",
+        "Captured" if has_real_value(company_description) else "Add a Product Thesis or run init with --company-description",
+        f"dzcto init {sh_quote(str(project))} --company-description \"<summary>\"",
+    )
+    add(
+        "pass" if repos else "warn",
+        "Read-only repos",
+        f"{len(repos)} configured" if repos else "No repo paths configured",
+        f"dzcto init {sh_quote(str(project))} --repo \"<repo path>\"",
+    )
+
+    core_sources = [doc for doc in CORE_DOCS if (core_dir / doc).exists()]
+    add(
+        "pass" if len(core_sources) == len(CORE_DOCS) else "warn",
+        "Core context sources",
+        f"{len(core_sources)}/{len(CORE_DOCS)} source files present",
+        "Use day-zero-cto:refine-core-context to fill missing core docs",
+    )
+
+    cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
+    add(
+        "pass" if cadence_rules else "warn",
+        "Cadence rules",
+        f"{len(cadence_rules)} rules configured" if cadence_rules else "No Index Cadence Rules table found",
+        "Use day-zero-cto:refine-core-context for Operating Cadence",
+    )
+
+    report_count = 0
+    for folder in REPORT_FOLDERS:
+        report_count += len(list((wiki_root / "reports" / folder).glob("*.html")))
+    add(
+        "pass" if report_count else "warn",
+        "Reports",
+        f"{report_count} generated reports" if report_count else "No reports generated yet",
+        "Use the dashboard AI prompt cards to run the first reports",
+    )
+
+    learning_items = read_json(wiki_root / "learning" / "items.json", [])
+    learning_count = len(learning_items) if isinstance(learning_items, list) else 0
+    add(
+        "pass" if learning_count else "warn",
+        "Learning seed",
+        f"{learning_count} learning items" if learning_count else "No learning items yet",
+        f"dzcto learning --project {sh_quote(str(project))} --stats",
+    )
+
+    stale = check_stale(project)
+    stale_count = sum(1 for check in stale["checks"] if check["status"] in {"stale", "fail"})
+    add(
+        "pass" if stale_count == 0 else "warn",
+        "Generated artifacts",
+        "Current" if stale_count == 0 else f"{stale_count} stale/failing checks",
+        f"dzcto check-stale {sh_quote(str(project))}",
+    )
+    return checks
+
+
+def print_project_status(project: Path, *, as_json: bool = False) -> int:
+    checks = project_status_checks(project)
+    failing = [check for check in checks if check["status"] == "fail"]
+    warnings = [check for check in checks if check["status"] == "warn"]
+    if as_json:
+        print(json.dumps({"ok": not failing, "checks": checks}, indent=2, sort_keys=True))
+        return 1 if failing else 0
+    labels = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
+    for index, check in enumerate(checks, start=1):
+        print(f"[{index}/{len(checks)}] {labels.get(check['status'], check['status'].upper())} {check['label']} - {check['detail']}")
+        if check.get("command") and check["status"] != "pass":
+            print(f"      Next: {check['command']}")
+    print()
+    if failing:
+        print("Day Zero CTO project needs setup attention.")
+    elif warnings:
+        print("Day Zero CTO project is usable, with setup items remaining.")
+    else:
+        print("Day Zero CTO project is ready.")
+    return 1 if failing else 0
 
 
 def command_shim_text(current_bin: Path) -> str:
@@ -318,6 +549,7 @@ Use Day Zero CTO to help an early-stage technical leader organize company contex
 
 - In Claude Desktop chat, create or update downloadable artifacts inside Claude's available workspace unless the user has provided a mounted writable folder.
 - For local filesystem wikis, ask the user to run the local helper from a terminal or from an agent with filesystem access: `dzcto init`, `dzcto refresh`, `dzcto serve`, and `dzcto artifact`.
+- For self-serve setup guidance, ask the user to run `dzcto quickstart`, `dzcto help onboarding`, or `dzcto status "<project folder>"`.
 - If the helper lives under a versioned plugin cache path, ask the user to run `dzcto install-command` once to create a stable `~/.local/bin/dzcto` command.
 - Do not write Day Zero CTO artifacts into a code repo unless the user explicitly asks.
 - Treat code repos as read-only evidence by default; multiple repos are allowed.
@@ -499,6 +731,15 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="dzcto", description="Day Zero CTO local skill helper")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    help_cmd = sub.add_parser("help", help="Print Day Zero CTO workflow help")
+    help_cmd.add_argument("topic", nargs="?", choices=["onboarding", "editing", "reports", "commands", "serve"], help="Optional help topic")
+    help_cmd.add_argument("--project", help="Optional project folder for command examples")
+
+    quickstart = sub.add_parser("quickstart", help="Print the self-serve startup guide")
+    quickstart.add_argument("--project", help="Optional project folder for command examples")
+
+    sub.add_parser("version", help="Print the Day Zero CTO helper version")
+
     setup = sub.add_parser("setup", help="Install Day Zero CTO for Codex Desktop")
     setup.add_argument("--editable-skills", action="store_true", help="Also link skills into ~/.codex/skills for active Codex development")
     setup.add_argument("--plugin-link", help="Where to create the local plugin symlink")
@@ -546,6 +787,10 @@ def main(argv: list[str]) -> int:
     stale.add_argument("--json", action="store_true", help="Print JSON")
     stale.add_argument("--fail-on-stale", action="store_true", help="Exit 1 when stale items are found")
 
+    status = sub.add_parser("status", help="Show project setup checklist and operating health")
+    status.add_argument("project", help="Project folder")
+    status.add_argument("--json", action="store_true", help="Print JSON")
+
     bundle = sub.add_parser("collect-issue-bundle", help="Create a redacted troubleshooting bundle")
     bundle.add_argument("project", help="Project folder")
     bundle.add_argument("--output", help="Optional zip output path")
@@ -581,6 +826,18 @@ def main(argv: list[str]) -> int:
     learning.add_argument("--note")
 
     args = parser.parse_args(argv)
+
+    if args.command == "help":
+        print_help_topic(args.topic, resolve_project(args.project) if args.project else None)
+        return 0
+
+    if args.command == "quickstart":
+        print_quickstart(resolve_project(args.project) if args.project else None)
+        return 0
+
+    if args.command == "version":
+        print(TOOL_VERSION)
+        return 0
 
     if args.command == "setup":
         total = 3 + (1 if args.editable_skills else 0) + (1 if args.wiki_project else 0)
@@ -664,6 +921,9 @@ def main(argv: list[str]) -> int:
         else:
             print_stale_report(report)
         return 1 if args.fail_on_stale and report["stale"] else 0
+
+    if args.command == "status":
+        return print_project_status(resolve_project(args.project), as_json=args.json)
 
     if args.command == "collect-issue-bundle":
         project = resolve_project(args.project)

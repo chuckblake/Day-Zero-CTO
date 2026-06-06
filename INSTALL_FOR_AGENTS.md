@@ -12,7 +12,7 @@ Ask the user for these values before running Day Zero CTO work:
 - Company description or company website URL.
 - Optional read-only codebase paths. Multiple codebases are allowed.
 
-Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
+Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, setup checklist, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
 
 Dashboard description note: edit the first real paragraph in `<project>/knowledge/wiki/core/STRATEGY.md` under `Product Thesis`, `Company`, or `Stage`. Do not edit generated `index.html` directly.
 
@@ -199,14 +199,20 @@ Run these from a session where the plugin `bin/` directory is on `PATH`, or from
 
 ```bash
 dzcto install-command
+dzcto quickstart
+dzcto help onboarding
+dzcto help editing
+dzcto help reports
 dzcto update
 dzcto init "<project folder>" --company-name "<name>" --company-url "<url>" --repo "<repo path>"
 dzcto refresh "<project folder>"
 dzcto serve "<project folder>"
+dzcto status "<project folder>"
 dzcto doctor --project "<project folder>"
 dzcto check-stale "<project folder>"
 dzcto collect-issue-bundle "<project folder>"
 dzcto package-claude-desktop
+dzcto version
 ```
 
 Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases.
@@ -214,6 +220,8 @@ Use `--company-description "<summary>"` instead of `--company-url "<url>"` when 
 The generated wiki index has a Commands section with copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
 
 The Commands section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
+
+The generated dashboard setup checklist is the self-serve readiness view. Use `dzcto status "<project folder>"` when a terminal-facing check is easier than opening the dashboard.
 
 Use `day-zero-cto:review-decisions` when the user wants to review recorded decisions. Treat `DECISIONS.md` as a decision log, not a pending-decision queue; `Revisit Trigger` determines what needs another look.
 

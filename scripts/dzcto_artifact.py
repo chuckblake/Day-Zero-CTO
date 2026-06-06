@@ -62,6 +62,8 @@ CORE_DOC_HTML = {
     "RISKS.md": "risks.html",
 }
 
+UNKNOWN_VALUES = {"", "unknown", "tbd", "to be determined", "n/a", "none"}
+
 
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value), quote=True)
@@ -168,6 +170,23 @@ def company_description(strategy_path: Path, config: dict[str, Any] | None = Non
     configured = str((config or {}).get("companyDescription") or "").strip()
     fallback = "Company context has not been captured yet. Add a Product Thesis section to the Strategy source file to enrich this summary."
     return plain_markdown(paragraph or configured or fallback)
+
+
+def has_real_value(value: Any) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() not in UNKNOWN_VALUES
+
+
+def has_captured_company_description(strategy_path: Path, config: dict[str, Any] | None = None) -> bool:
+    paragraph = (
+        first_markdown_paragraph(markdown_section(strategy_path, "Product Thesis"))
+        or first_markdown_paragraph(markdown_section(strategy_path, "Company"))
+        or first_markdown_paragraph(markdown_section(strategy_path, "Stage"))
+    )
+    if has_real_value(plain_markdown(paragraph)):
+        return True
+    return has_real_value((config or {}).get("companyDescription"))
 
 
 def fetch_company_description(url: str) -> str | None:
@@ -492,14 +511,117 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> 
 
 def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
     return [
+        ("Project Status", f'dzcto status "{project_folder}"'),
         ("Check Stale", f'dzcto check-stale "{project_folder}"'),
         ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
         ("Serve Dashboard", f'dzcto serve "{project_folder}"'),
+        ("Quickstart Help", f'dzcto quickstart --project "{project_folder}"'),
         ("Install Stable Command", "dzcto install-command"),
         ("Doctor", f'dzcto doctor --project "{project_folder}"'),
         ("Update Day Zero CTO", f'dzcto update --project "{project_folder}"'),
         ("Issue Bundle", f'dzcto collect-issue-bundle "{project_folder}"'),
     ]
+
+
+def setup_checklist_items(
+    *,
+    wiki_root: Path,
+    strategy_path: Path,
+    config: dict[str, Any],
+    core_ready: int,
+    cadence_rules: list[dict[str, Any]],
+    report_count: int,
+    learning_items: list[dict[str, Any]],
+    repos: list[str],
+) -> list[dict[str, str]]:
+    def item(label: str, done: bool, detail: str, href: str, action: str) -> dict[str, str]:
+        return {
+            "label": label,
+            "state": "done" if done else "next",
+            "status": "Done" if done else "Next",
+            "detail": detail,
+            "href": href,
+            "action": action,
+        }
+
+    return [
+        item(
+            "Company context",
+            has_captured_company_description(strategy_path, config),
+            "Description is captured" if has_captured_company_description(strategy_path, config) else "Add the company thesis or summary",
+            "core/strategy.html",
+            "Refine Strategy",
+        ),
+        item(
+            "Read-only repos",
+            bool(repos),
+            f"{len(repos)} repo path{'s' if len(repos) != 1 else ''} configured" if repos else "Connect code evidence when available",
+            "#sec-commands",
+            "Run init with --repo",
+        ),
+        item(
+            "Core context",
+            core_ready == len(CORE_DOCS),
+            f"{core_ready}/{len(CORE_DOCS)} source files ready",
+            "#sec-core",
+            "Refine core docs",
+        ),
+        item(
+            "Operating cadence",
+            bool(cadence_rules),
+            f"{len(cadence_rules)} recurring ritual{'s' if len(cadence_rules) != 1 else ''} tracked" if cadence_rules else "Add Index Cadence Rules",
+            "core/operating-cadence.html",
+            "Refine Cadence",
+        ),
+        item(
+            "First reports",
+            report_count > 0,
+            f"{report_count} report artifact{'s' if report_count != 1 else ''}" if report_count else "Run Tech Stack, Risk, Weekly, or CEO update",
+            "#sec-reports",
+            "Run first report",
+        ),
+        item(
+            "Learning seed",
+            bool(active_learning_items(learning_items)),
+            f"{len(active_learning_items(learning_items))} active item{'s' if len(active_learning_items(learning_items)) != 1 else ''}" if active_learning_items(learning_items) else "Seed the first system concepts",
+            "learning/index.html",
+            "Run Learning",
+        ),
+        item(
+            "Generated pages",
+            all((wiki_root / "core" / core_doc_html_name(doc)).exists() for doc in CORE_DOCS),
+            "HTML pages generated" if all((wiki_root / "core" / core_doc_html_name(doc)).exists() for doc in CORE_DOCS) else "Refresh the wiki",
+            "#sec-commands",
+            "Refresh Wiki",
+        ),
+    ]
+
+
+def setup_checklist_html(items: list[dict[str, str]]) -> str:
+    complete = sum(1 for item in items if item["state"] == "done")
+    rows = "\n".join(
+        f"""<a class="setup-item" data-state="{esc(item["state"])}" href="{esc(item["href"])}">
+  <span class="setup-mark" aria-hidden="true"></span>
+  <span class="setup-body">
+    <span class="setup-title">{esc(item["label"])}</span>
+    <span class="setup-detail">{esc(item["detail"])}</span>
+  </span>
+  <span class="setup-action">{esc(item["status"] if item["state"] == "done" else item["action"])}</span>
+</a>"""
+        for item in items
+    )
+    return f"""
+  <section class="setup-panel" id="sec-setup" aria-label="Setup checklist">
+    <div class="setup-head">
+      <div>
+        <h2>Setup Checklist</h2>
+        <p>{esc(complete)} of {esc(len(items))} complete</p>
+      </div>
+      <a class="setup-help" href="#sec-commands">Commands</a>
+    </div>
+    <div class="setup-list">{rows}</div>
+  </section>
+"""
 
 
 def search_icon() -> str:
@@ -728,6 +850,90 @@ def render_sources(data: dict[str, Any]) -> str:
     return render_list_section("Sources", value_at(data, "sources", "source_list", "evidence_sources"))
 
 
+def item_headline(item: Any) -> str:
+    if isinstance(item, dict):
+        for key in [
+            "decision",
+            "ask",
+            "risk",
+            "priority",
+            "finding",
+            "question",
+            "title",
+            "name",
+            "headline",
+            "summary",
+            "mitigation",
+            "watchpoint",
+        ]:
+            value = text_value(value_at(item, key))
+            if value:
+                return value
+        return text_value(item)
+    return text_value(item)
+
+
+def action_group(label: str, value: Any) -> tuple[str, list[str]]:
+    items = [snippet(item_headline(item), 95) for item in array_value(value) if item_headline(item)]
+    return label, items
+
+
+def render_action_summary(kind: str, data: dict[str, Any]) -> str:
+    groups_by_kind = {
+        "weekly-reviews": [
+            action_group("Decisions", value_at(data, "decisions_needed", "decisions")),
+            action_group("Risks", value_at(data, "risks")),
+            action_group("Next Focus", value_at(data, "next_week_focus", "next_focus", "priorities")),
+        ],
+        "ceo-updates": [
+            action_group("Asks", value_at(data, "asks_decisions", "asks", "decisions")),
+            action_group("Risks / Blockers", value_at(data, "risks_blockers", "risks", "blockers")),
+            action_group("Next", value_at(data, "next", "up_next")),
+        ],
+        "engineering-risk": [
+            action_group("Top Risks", value_at(data, "top_risks", "risks")),
+            action_group("Mitigations", value_at(data, "mitigations")),
+            action_group("Watchpoints", value_at(data, "watchpoints")),
+        ],
+        "tech-stack": [
+            action_group("Stack Risks", value_at(data, "risks_watchpoints", "risks", "watchpoints")),
+            action_group("Onboarding", value_at(data, "onboarding_notes", "notes")),
+            action_group("Integrations", value_at(data, "integrations")),
+        ],
+        "decisions": [
+            action_group("Recommendation", value_at(data, "recommendation")),
+            action_group("Follow-Ups", value_at(data, "follow_ups", "followups")),
+            action_group("Watchpoints", value_at(data, "watchpoints")),
+        ],
+        "code-reviews": [
+            action_group("Recommendation", value_at(data, "merge_recommendation", "recommendation")),
+            action_group("Blocking", value_at(data, "blocking")),
+            action_group("Questions", value_at(data, "questions")),
+        ],
+    }
+    groups = [(label, items) for label, items in groups_by_kind.get(kind, []) if items]
+    if not groups:
+        return ""
+
+    cards = []
+    for label, items in groups:
+        preview = "".join(f"<li>{esc(item)}</li>" for item in items[:3])
+        cards.append(
+            f"""
+<article class="action-card">
+  <div class="action-top"><span>{esc(label)}</span><strong>{esc(len(items))}</strong></div>
+  <ul>{preview}</ul>
+</article>
+"""
+        )
+    return f"""
+<section class="artifact-section action-summary">
+  <h2>Action Summary</h2>
+  <div class="action-grid">{''.join(cards)}</div>
+</section>
+"""
+
+
 def render_weekly_review(data: dict[str, Any]) -> str:
     return "".join(
         [
@@ -840,7 +1046,8 @@ def render_structured_report(kind: str, data: dict[str, Any]) -> str:
         "code-reviews": render_code_review,
     }
     body = renderers.get(kind, render_generic_report)(data)
-    return body.strip() or render_generic_report(data)
+    action_summary = render_action_summary(kind, data)
+    return f"{action_summary}{body}".strip() or render_generic_report(data)
 
 
 def core_doc_html_name(doc: str) -> str:
@@ -1569,6 +1776,56 @@ h1.title { font-size: 38px; font-weight: 800; }
 .kpi[data-tone="info"]::before { background: var(--accent); }
 .kpi[data-tone="crit"] .k-val { color: var(--crit); }
 .kpi[data-tone="good"] .k-val { color: var(--good); }
+.setup-panel {
+  margin: -8px 0 28px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.setup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.setup-head h2 { font-size: 16px; font-weight: 800; }
+.setup-head p { margin-top: 2px; color: var(--muted); font-size: 12px; }
+.setup-help {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink-2);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.setup-help:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.setup-list { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.setup-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 2px 9px;
+  min-height: 96px;
+  padding: 13px;
+  border-right: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}
+.setup-item:last-child { border-right: 0; }
+.setup-item:hover { background: var(--surface-2); text-decoration: none; }
+.setup-mark { width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: var(--high); box-shadow: 0 0 0 4px var(--high-soft); }
+.setup-item[data-state="done"] .setup-mark { background: var(--good); box-shadow: 0 0 0 4px var(--good-soft); }
+.setup-body { min-width: 0; }
+.setup-title { display: block; color: var(--ink); font-size: 12.5px; font-weight: 800; }
+.setup-detail { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.setup-action { grid-column: 2; color: var(--accent); font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
+.setup-item[data-state="done"] .setup-action { color: var(--good); }
 .today {
   margin-bottom: 34px;
   overflow: hidden;
@@ -1807,6 +2064,20 @@ h1.title { font-size: 38px; font-weight: 800; }
 .artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small { display: block; }
 .artifact-list span, .artifact-list em, .artifact-list small { margin-top: 4px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
+.action-summary { margin-top: 0; border-top: 0; padding-top: 0; }
+.action-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); margin-top: 14px; }
+.action-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 14px;
+}
+.action-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.action-top span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.action-top strong { color: var(--ink); font-size: 22px; line-height: 1; }
+.action-card ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.action-card li { color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
 .prose { max-width: 900px; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
 .prose p, .prose ul { margin-top: 12px; }
@@ -1828,6 +2099,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
 }
 @media (max-width: 1040px) {
   .kpis { grid-template-columns: repeat(3, 1fr); }
+  .setup-list { grid-template-columns: repeat(3, 1fr); }
+  .setup-item { border-bottom: 1px solid var(--line); }
   .core { grid-template-columns: repeat(3, 1fr); }
   .status-grid { grid-template-columns: repeat(2, 1fr); }
 }
@@ -1840,11 +2113,14 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .today-col { border-right: 0; border-bottom: 1px solid var(--line); }
   .today-col:last-child { border-bottom: 0; }
   .reports, .reports-grid, .cmd-grid, .copy-grid, .learn, .learning-grid { grid-template-columns: 1fr; }
+  .action-grid { grid-template-columns: 1fr; }
   h1.title { font-size: 30px; }
 }
 @media (max-width: 560px) {
   .app { padding: 24px 16px 70px; }
   .kpis, .core, .status-grid, .summary, .grid { grid-template-columns: 1fr 1fr; }
+  .setup-list { grid-template-columns: 1fr; }
+  .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .app-footer { justify-content: flex-start; }
   .r-field-grid { grid-template-columns: 1fr; }
   .risk > summary { grid-template-columns: auto 1fr; }
@@ -2442,6 +2718,17 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     learning_counts_value = learning_counts(learning_items, today)
     repos = [str(item).strip() for item in (config.get("codeRepos", []) or []) if str(item).strip()]
     repo_count = len(repos)
+    setup_items = setup_checklist_items(
+        wiki_root=wiki_root,
+        strategy_path=strategy_path,
+        config=config,
+        core_ready=core_ready,
+        cadence_rules=cadence_rules,
+        report_count=report_count,
+        learning_items=learning_items,
+        repos=repos,
+    )
+    setup_html = setup_checklist_html(setup_items)
 
     ai_prompts = [
         (rule["label"], enrich_ai_prompt(rule["label"], exact_prompt(display_command(rule["command"]), project_folder, repos)))
@@ -2615,6 +2902,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <div class="k-sub">Read-only sources</div>
     </a>
   </div>
+
+  {setup_html}
 
   <section class="today" aria-label="Today">
     <div class="today-head">

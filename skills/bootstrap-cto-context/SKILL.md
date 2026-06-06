@@ -23,7 +23,7 @@ Establish the project `knowledge/wiki` workspace, connect read-only codebase evi
 8. Read only the codebase files needed to understand company stage, product thesis, team, cadence, current risks, and stack shape.
 9. If important facts are missing and cannot be inferred from local context, ask one concise question or mark the field as `Unknown`.
 10. Create or update the source core files below inside `<project>/knowledge/wiki/core/`. Preserve useful existing content; do not erase user notes. The helper renders user-facing `core/*.html` pages from these sources.
-11. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto refresh "<project folder>"` or `python3 scripts/dzcto.py refresh "<project folder>"`. The generated index should identify the company, show only company context under the title, and present a command-center dashboard with Cadence, Core Context, Reports, Learning, and Commands sections. Commands should include copyable AI prompts with the exact project folder and read-only repo paths, plus copyable local helper commands. New report artifacts should use structured JSON via `--data-file`; raw `--body-file` HTML is only a legacy fallback.
+11. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto refresh "<project folder>"` or `python3 scripts/dzcto.py refresh "<project folder>"`. The generated index should identify the company, show only company context under the title, and present a command-center dashboard with a Setup Checklist, Cadence, Core Context, Reports, Learning, and Commands sections. Commands should include copyable AI prompts with the exact project folder and read-only repo paths, plus copyable local helper commands. New report artifacts should use structured JSON via `--data-file`; raw `--body-file` HTML is only a legacy fallback.
 12. Ask: `Do you want to complete onboarding now?` If yes, offer these run-now options: Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, CTO Code Review if a branch/diff exists, and Initial Learning Seed.
 13. If the user chooses Initial Learning Seed, create exactly 25 evidence-backed learning items when enough evidence exists. Write them to a JSON array and run:
 
@@ -34,7 +34,8 @@ Establish the project `knowledge/wiki` workspace, connect read-only codebase evi
    python3 scripts/dzcto.py learning --project "<project folder>" --seed-file "<json learning seed file>"
    ```
 
-14. Summarize what was created, what remains unknown, where the project folder and knowledge wiki live, what codebase locations are being used read-only, which onboarding options were run, and which Day Zero CTO skill should run next.
+14. Run or recommend `dzcto status "<project folder>"` so the user has a terminal checklist that matches the dashboard setup checklist.
+15. Summarize what was created, what remains unknown, where the project folder and knowledge wiki live, what codebase locations are being used read-only, which onboarding options were run, and which Day Zero CTO skill should run next.
 
 ## Core Files
 

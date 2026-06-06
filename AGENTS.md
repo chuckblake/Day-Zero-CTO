@@ -23,6 +23,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, a
 - Prefer shared helper behavior in `scripts/` and expose stable wrappers in `bin/` when useful.
 - Installer and doctor scripts should print small numbered progress steps such as `[1/6]`, because users often watch these through an agent transcript.
 - `dzcto install-command` should remain the stable way to create `~/.local/bin/dzcto` so users do not need versioned Claude or Codex cache paths.
+- Keep `dzcto quickstart`, `dzcto help`, `dzcto status`, and `dzcto version` working as the self-serve front door for users who are not reading the README.
 - Local install updates should go through `dzcto update`, which uses `git pull --ff-only`, refreshes local plugin/skill links, and runs doctor. Do not tell users to remember a manual `git pull` plus `setup` sequence for Codex Desktop local installs.
 - Keep the skill route primary for users. Add deterministic local helper behavior under `dzcto` before introducing provider-specific complexity.
 - Generated wiki HTML should be template-rendered by helpers, include embedded `dzcto-provenance` JSON, and update `knowledge/wiki/.dzcto/` sidecar metadata.
@@ -30,7 +31,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, a
 - Generated pages should keep a visible footer with the Day Zero CTO skills version so users can identify what regenerated the wiki.
 - For substantive updates to core context Markdown, prefer the `refine-core-context` skill: interview the user, draft section updates, get approval, write source Markdown, then refresh the wiki. Direct Markdown edits are fine for small corrections.
 - Treat `core/DECISIONS.md` as a log of decisions already taken. Use the `review-decisions` skill and each row's `Revisit Trigger` when deciding what needs review.
-- The index should use the command-center sections: Cadence, Core Context, Reports, Learning, and Commands. Commands should provide copyable AI prompts with exact project/repo context plus copyable local helper commands. Do not restore Misc, handoffs, or one-on-one sections.
+- The index should use the command-center sections: Setup Checklist, Cadence, Core Context, Reports, Learning, and Commands. Commands should provide copyable AI prompts with exact project/repo context plus copyable local helper commands. Do not restore Misc, handoffs, or one-on-one sections.
 - When adding or changing install behavior, update `README.md` and `INSTALL_FOR_AGENTS.md`.
 - When releasing plugin-facing changes, bump both `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`; if the Claude marketplace entry has a version, bump it too.
 - Do not add a root `CLAUDE.md` file to this plugin repo; Claude Code's plugin validator warns that it is not loaded as plugin context. Put Claude install instructions in `README.md` and `INSTALL_FOR_AGENTS.md`.
