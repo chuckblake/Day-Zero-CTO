@@ -122,12 +122,13 @@ The hidden `.dzcto/` directory is the local metadata sidecar. It stores project 
 ```markdown
 ## Index Cadence Rules
 
-| Report | Folder | Cadence | Grace Days | Command |
-| --- | --- | --- | --- | --- |
-| Weekly CTO Review | weekly-reviews | weekly | 0 | Run the weekly CTO review for Acme. |
+| Report | Folder | Cadence | Day | Grace Days | Command |
+| --- | --- | --- | --- | --- | --- |
+| Weekly CTO Review | weekly-reviews | weekly | Monday | 0 | Run the weekly CTO review for Acme. |
 ```
 
 Supported cadences include `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, and `every N days/weeks/months`.
+The optional `Day` column is displayed on the dashboard cadence preview and can be a weekday or compact rule such as `First Friday`.
 
 Use the `Refresh Wiki` local command card, or run `dzcto refresh`, when source Markdown or reports change. It regenerates core HTML pages, the dashboard, the search index, and cadence alerts:
 

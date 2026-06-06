@@ -282,6 +282,13 @@ def cadence_days(value: str | None) -> int | None:
     return None
 
 
+def normalize_report_folder(value: str | None) -> str:
+    folder = (value or "").strip().strip("/")
+    if folder.startswith("reports/"):
+        folder = folder.removeprefix("reports/")
+    return folder
+
+
 def parse_cadence_rules(cadence_path: Path) -> list[dict[str, Any]]:
     if not cadence_path.exists():
         return []
@@ -312,8 +319,15 @@ def parse_cadence_rules(cadence_path: Path) -> list[dict[str, Any]]:
     rules: list[dict[str, Any]] = []
     for row in table_lines[2:]:
         values = dict(zip(headers, split_markdown_row(row)))
-        folder = values.get("folder") or values.get("report_folder") or values.get("kind")
+        folder = normalize_report_folder(values.get("folder") or values.get("report_folder") or values.get("kind"))
         cadence = values.get("cadence") or values.get("frequency")
+        day = (
+            values.get("day")
+            or values.get("weekday")
+            or values.get("day_of_week")
+            or values.get("schedule_day")
+            or ""
+        )
         command = values.get("command") or values.get("prompt") or values.get("run")
         label = values.get("report") or values.get("name") or REPORT_FOLDERS.get(str(folder), str(folder or ""))
         try:
@@ -327,6 +341,7 @@ def parse_cadence_rules(cadence_path: Path) -> list[dict[str, Any]]:
                     "label": label,
                     "folder": folder,
                     "cadence": cadence,
+                    "day": str(day).strip(),
                     "command": command,
                     "grace_days": grace_days,
                     "interval_days": interval_days,
@@ -443,7 +458,7 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> 
         (
             "Refine Operating Cadence",
             exact_prompt(
-                f"Use the Day Zero CTO refine-core-context workflow to refine core/OPERATING_CADENCE.md for {company}, including Index Cadence Rules if useful. Interview me section by section, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
+                f"Use the Day Zero CTO refine-core-context workflow to refine core/OPERATING_CADENCE.md for {company}, including Index Cadence Rules and weekday intent for recurring rituals if useful. Interview me section by section, draft updates for approval, write the approved Markdown source, and refresh the wiki.",
                 project_folder,
                 repos,
             ),
@@ -1326,6 +1341,7 @@ def cadence_rows(cadence_rules: list[dict[str, Any]], reports_dir: Path, today: 
             {
                 "name": str(rule["label"]),
                 "cadence": str(rule["cadence"]),
+                "day": str(rule.get("day") or ""),
                 "last": latest.isoformat() if latest else "No runs",
                 "next": relative_date(next_due, today),
             }
@@ -2497,7 +2513,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
             f"""<a class="cad-mini" href="core/operating-cadence.html">
   <div>
     <div class="cm-name">{esc(row["name"])}</div>
-    <div class="cm-sub">{esc(row["cadence"])} / last {esc(row["last"])}</div>
+    <div class="cm-sub">{esc(row["cadence"])}{f' / {esc(row["day"])}' if row["day"] else ''} / last {esc(row["last"])}</div>
   </div>
   <span class="cm-when">{esc(row["next"])}</span>
 </a>"""
