@@ -86,20 +86,23 @@ Recommended folder shape:
 
 All user-facing wiki pages are HTML. Core context starts as editable Markdown source under `core/`, then the helper renders matching HTML pages. The bookmarkable command center is `knowledge/wiki/index.html`.
 
-Generated wiki pages share a lightweight app shell:
+Generated wiki pages use a compact command-center interface:
 
-- A left-side navigation rail for Dashboard, Core, Reports, Learning, and Commands.
-- Client-side search across dashboard context, core docs, report artifacts, and active learning items.
-- Breadcrumbs on generated core, learning, and report pages.
-- Automatic page tables of contents when a page has enough sections.
+- KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
+- A `What needs you today` panel with decisions, high-priority risks, and operating cadence.
+- Risk register cards parsed from `core/RISKS.md` tables or headings, with severity filtering.
+- Report, core context, learning, and command sections modeled after the Arwen command-center template.
+- Top search across dashboard context, core docs, report artifacts, and active learning items.
+- Breadcrumbs, automatic page tables of contents, and a light/dark theme on generated pages.
 
 The helper writes `knowledge/wiki/search-index.json` whenever it refreshes the wiki. Search works best through `dzcto serve "<project folder>"`, because browsers may block `file://` pages from fetching the JSON index.
 
-The index shows company information under the title, then collapsible command-center sections:
+The index shows company information under the title, then a dashboard workspace:
 
-- `Cadence`: due alerts from `core/OPERATING_CADENCE.md`.
+- `What needs you today`: decisions, priority risks, and cadence from core context.
+- `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
-- `Reports`: dated links to report artifacts.
+- `Reports`: latest report cards for each artifact kind.
 - `Learning`: spaced-repetition state and mastery progress.
 - `Commands`: copyable AI prompts and local helper commands with the exact project and repo context.
 

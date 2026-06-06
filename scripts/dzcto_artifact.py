@@ -123,7 +123,9 @@ def plain_html(value: str | None) -> str:
     text = value or ""
     text = re.sub(r"<script\b[^>]*>.*?</script>", " ", text, flags=re.I | re.S)
     text = re.sub(r"<style\b[^>]*>.*?</style>", " ", text, flags=re.I | re.S)
+    text = re.sub(r'<header\b[^>]*class=["\'][^"\']*masthead[^"\']*["\'][^>]*>.*?</header>', " ", text, flags=re.I | re.S)
     text = re.sub(r'<aside\b[^>]*class=["\'][^"\']*shell-sidebar[^"\']*["\'][^>]*>.*?</aside>', " ", text, flags=re.I | re.S)
+    text = re.sub(r'<div\b[^>]*class=["\'][^"\']*search[^"\']*["\'][^>]*>.*?</div>', " ", text, flags=re.I | re.S)
     text = re.sub(r'<nav\b[^>]*class=["\'][^"\']*(?:breadcrumbs|toc)[^"\']*["\'][^>]*>.*?</nav>', " ", text, flags=re.I | re.S)
     text = re.sub(r"<[^>]+>", " ", text)
     text = html.unescape(text)
@@ -433,33 +435,22 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
     ]
 
 
-def shell_nav(prefix: str, active: str = "dashboard") -> str:
-    links = [
-        ("dashboard", "Dashboard", "index.html"),
-        ("core", "Core", "core/strategy.html"),
-        ("reports", "Reports", "index.html#reports"),
-        ("learning", "Learning", "learning/index.html"),
-        ("commands", "Commands", "index.html#commands"),
-    ]
-    link_html = "\n".join(
-        f'<a class="shell-link {"active" if key == active else ""}" href="{esc(prefix + href)}">{esc(label)}</a>'
-        for key, label, href in links
-    )
+def search_icon() -> str:
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>'
+
+
+def refresh_icon() -> str:
+    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>'
+
+
+def search_control(prefix: str) -> str:
     return f"""
-<aside class="shell-sidebar">
-  <a class="shell-brand" href="{esc(prefix)}index.html">
-    <span>Day Zero CTO</span>
-    <strong>Knowledge Wiki</strong>
-  </a>
-  <label class="shell-search">
-    <span>Search</span>
-    <input type="search" placeholder="Search wiki..." data-dzcto-search data-search-index="{esc(prefix)}search-index.json" data-search-prefix="{esc(prefix)}" autocomplete="off">
-  </label>
+<div class="search">
+  {search_icon()}
+  <input type="search" placeholder="Search wiki..." data-dzcto-search data-search-index="{esc(prefix)}search-index.json" data-search-prefix="{esc(prefix)}" autocomplete="off">
+  <button type="button" class="search-clear" data-dzcto-search-clear aria-label="Clear search">x</button>
   <div class="search-results" data-dzcto-search-results hidden></div>
-  <nav class="shell-nav" aria-label="Wiki navigation">
-    {link_html}
-  </nav>
-</aside>
+</div>
 """
 
 
@@ -473,28 +464,57 @@ def breadcrumbs(prefix: str, items: list[tuple[str, str | None]]) -> str:
     return f'<nav class="breadcrumbs" aria-label="Breadcrumb">{"<span>/</span>".join(parts)}</nav>'
 
 
-def page_shell(content: str, *, prefix: str = "", active: str = "dashboard") -> str:
+def page_shell(
+    content: str,
+    *,
+    prefix: str = "",
+    eyebrow: str = "Command Center - Day Zero CTO",
+    title: str = "Knowledge Wiki",
+    subtitle: str = "",
+    refresh: bool = False,
+) -> str:
+    refresh_button = (
+        f"""
+          <button type="button" class="btn" data-dzcto-refresh>
+            {refresh_icon()}
+            Refresh Cadence
+          </button>
+          <span class="refresh-note" data-dzcto-refresh-status aria-live="polite"></span>
+"""
+        if refresh
+        else ""
+    )
     return f"""
-<div class="app-shell">
-  {shell_nav(prefix, active)}
-  <main>
+<main class="app">
+  <header class="masthead">
+    <div>
+      <span class="eyebrow">{esc(eyebrow)}</span>
+      <h1 class="title">{esc(title)}</h1>
+      {f'<p class="lede">{esc(subtitle)}</p>' if subtitle else ''}
+    </div>
+    <div class="masthead-side">
+      <div class="util">
+        <button type="button" class="theme-btn" data-theme-toggle aria-label="Toggle light or dark theme"><span data-theme-label>Dark</span></button>
+      </div>
+      {search_control(prefix)}
+      {refresh_button}
+    </div>
+  </header>
     {content}
-  </main>
-</div>
+</main>
 """
 
 
 def copy_card(card_id: str, label: str, text: str, kind: str) -> str:
-    button_label = f"Copy {kind}"
-    return f"""<article class="copy-card">
-  <div class="copy-card-header">
+    return f"""<article class="cmd-card">
+  <div class="cc-top">
     <div>
-      <strong>{esc(label)}</strong>
-      <span>{esc(kind)}</span>
+      <div class="cc-ttl">{esc(label)}</div>
+      <div class="cc-kind">{esc(kind)}</div>
     </div>
-    <button type="button" data-copy-target="{esc(card_id)}">{esc(button_label)}</button>
+    <button type="button" class="copy-btn" data-copy-target="{esc(card_id)}">Copy</button>
   </div>
-  <pre id="{esc(card_id)}" class="copy-text">{esc(text)}</pre>
+  <pre id="{esc(card_id)}" class="cmd-pre">{esc(text)}</pre>
   <span class="copy-status" data-copy-status-for="{esc(card_id)}" aria-live="polite"></span>
 </article>"""
 
@@ -932,7 +952,7 @@ def learning_summary(items: list[dict[str, Any]], today: dt.date) -> str:
         parts.append(f"{counts['due']} due")
     if counts["new"]:
         parts.append(f"{counts['new']} new")
-    return " · ".join(parts)
+    return " / ".join(parts)
 
 
 def html_title(path: Path) -> str:
@@ -945,6 +965,14 @@ def html_title(path: Path) -> str:
     if match := re.search(r"<h1[^>]*>(.*?)</h1>", text, re.I | re.S):
         return plain_html(match.group(1)) or report_name(path)
     return report_name(path)
+
+
+def report_summary(path: Path, limit: int = 190) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    return snippet(plain_html(text), limit)
 
 
 def search_entry(
@@ -1071,178 +1099,751 @@ def read_learning_checklist_progress(learning_dir: Path) -> dict[str, Any]:
     return {"path": path, "confirmed": confirmed, "total": total, "percent": percent}
 
 
-def base_css() -> str:
+def normalize_key(value: str) -> str:
+    return re.sub(r"(^_+|_+$)", "", re.sub(r"[^a-z0-9]+", "_", value.lower()))
+
+
+def markdown_tables(path: Path) -> list[list[dict[str, str]]]:
+    if not path.exists():
+        return []
+
+    tables: list[list[dict[str, str]]] = []
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    index = 0
+    while index < len(lines):
+        if not lines[index].strip().startswith("|"):
+            index += 1
+            continue
+
+        table_lines: list[str] = []
+        while index < len(lines) and lines[index].strip().startswith("|"):
+            table_lines.append(lines[index].strip())
+            index += 1
+
+        if len(table_lines) < 2:
+            continue
+        rows = [split_markdown_row(line) for line in table_lines]
+        headers = [normalize_key(header) for header in rows[0]]
+        body_rows = rows[2:] if len(rows) > 2 and all(re.match(r"^:?-+:?$", cell.strip()) for cell in rows[1]) else rows[1:]
+        table: list[dict[str, str]] = []
+        for row in body_rows:
+            values = {headers[col]: row[col].strip() for col in range(min(len(headers), len(row)))}
+            if any(values.values()):
+                table.append(values)
+        if table:
+            tables.append(table)
+    return tables
+
+
+def value_from_row(row: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        normalized = normalize_key(key)
+        if row.get(normalized):
+            return row[normalized].strip()
+    return ""
+
+
+def markdown_heading_items(path: Path, *, limit: int = 8) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+
+    items: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    body: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if match := re.match(r"^#{2,4}\s+(.+)$", line.strip()):
+            if current:
+                current["summary"] = plain_markdown("\n".join(body))
+                items.append(current)
+                if len(items) >= limit:
+                    return items
+            current = {"title": plain_markdown(match.group(1))}
+            body = []
+            continue
+        if current and line.strip():
+            body.append(line.strip())
+    if current and len(items) < limit:
+        current["summary"] = plain_markdown("\n".join(body))
+        items.append(current)
+    return items
+
+
+def normalize_severity(value: str) -> str:
+    text = value.lower()
+    if re.search(r"critical|blocker|urgent", text):
+        return "Critical"
+    if re.search(r"high|severe", text):
+        return "High"
+    if re.search(r"medium|moderate|watch", text):
+        return "Medium"
+    return "Low"
+
+
+def severity_token(value: str) -> str:
+    return {"Critical": "crit", "High": "high", "Medium": "med", "Low": "low"}.get(value, "low")
+
+
+def severity_rank(value: str) -> int:
+    return {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}.get(value, 3)
+
+
+def read_risk_entries(core_dir: Path) -> list[dict[str, str]]:
+    path = core_dir / "RISKS.md"
+    risks: list[dict[str, str]] = []
+    for table in markdown_tables(path):
+        for row in table:
+            title = value_from_row(row, "risk", "title", "finding", "issue", "name") or next(iter(row.values()), "")
+            if not title:
+                continue
+            severity_source = value_from_row(row, "severity", "priority", "status", "likelihood") or title
+            risks.append(
+                {
+                    "title": plain_markdown(title),
+                    "severity": normalize_severity(severity_source),
+                    "category": plain_markdown(value_from_row(row, "category", "area", "type")),
+                    "owner": plain_markdown(value_from_row(row, "owner", "responsible", "owner_horizon")) or "Unassigned",
+                    "review": plain_markdown(value_from_row(row, "review", "review_date", "next_review", "due", "horizon", "needed_by")) or "Unscheduled",
+                    "evidence": plain_markdown(value_from_row(row, "evidence", "source", "sources", "signal")),
+                    "impact": plain_markdown(value_from_row(row, "impact", "business_impact", "why")),
+                    "mitigation": plain_markdown(value_from_row(row, "mitigation", "next_step", "action", "plan")),
+                }
+            )
+    if risks:
+        return sorted(risks, key=lambda item: (severity_rank(item["severity"]), item["title"].lower()))[:12]
+
+    fallback = []
+    for item in markdown_heading_items(path):
+        title = item["title"]
+        fallback.append(
+            {
+                "title": title,
+                "severity": normalize_severity(title),
+                "category": "Core context",
+                "owner": "Unassigned",
+                "review": "Unscheduled",
+                "evidence": item.get("summary", ""),
+                "impact": "",
+                "mitigation": "",
+            }
+        )
+    return sorted(fallback, key=lambda item: (severity_rank(item["severity"]), item["title"].lower()))[:12]
+
+
+def read_decision_entries(core_dir: Path) -> list[dict[str, str]]:
+    path = core_dir / "DECISIONS.md"
+    decisions: list[dict[str, str]] = []
+    for table in markdown_tables(path):
+        for row in table:
+            title = value_from_row(row, "decision", "title", "question", "ask", "name") or next(iter(row.values()), "")
+            if not title:
+                continue
+            decisions.append(
+                {
+                    "title": plain_markdown(title),
+                    "owner": plain_markdown(value_from_row(row, "owner", "responsible")) or "Founder",
+                    "when": plain_markdown(value_from_row(row, "needed_by", "due", "date", "status", "revisit")) or "Review",
+                    "context": plain_markdown(value_from_row(row, "context", "rationale", "why", "notes", "summary")),
+                }
+            )
+    if decisions:
+        return decisions[:8]
+
+    return [
+        {
+            "title": item["title"],
+            "owner": "Founder",
+            "when": "Review",
+            "context": item.get("summary", ""),
+        }
+        for item in markdown_heading_items(path, limit=8)
+    ]
+
+
+def relative_date(value: dt.date | None, today: dt.date) -> str:
+    if not value:
+        return "unscheduled"
+    delta = (value - today).days
+    if delta == 0:
+        return "today"
+    if delta < 0:
+        return f"{abs(delta)}d ago"
+    if delta < 7:
+        return f"in {delta}d"
+    if delta < 31:
+        return f"in {round(delta / 7)}w"
+    return f"in {round(delta / 30)}mo"
+
+
+def cadence_rows(cadence_rules: list[dict[str, Any]], reports_dir: Path, today: dt.date) -> list[dict[str, str]]:
+    rows = []
+    for rule in cadence_rules:
+        latest = latest_report_date(reports_dir, rule["folder"])
+        next_due = latest + dt.timedelta(days=rule["interval_days"]) if latest else today
+        rows.append(
+            {
+                "name": str(rule["label"]),
+                "cadence": str(rule["cadence"]),
+                "last": latest.isoformat() if latest else "No runs",
+                "next": relative_date(next_due, today),
+            }
+        )
+    return rows
+
+
+def core_icon(doc: str) -> str:
+    return {
+        "STRATEGY.md": "S",
+        "TEAM.md": "T",
+        "OPERATING_CADENCE.md": "C",
+        "DECISIONS.md": "D",
+        "RISKS.md": "R",
+    }.get(doc, "C")
+
+
+def search_text_attr(*values: Any) -> str:
+    return esc(plain_markdown(" ".join(text_value(value) for value in values)).lower())
+
+
+def command_center_css() -> str:
     return """
 :root {
-  --ink: #172033;
-  --muted: #647084;
-  --soft: #f5f7fa;
-  --panel: #ffffff;
-  --line: #d8e0ea;
-  --accent: #145c78;
-  --accent-soft: #e8f3f6;
-  --warn: #9b5b00;
-  --warn-soft: #fff4dd;
-  --good: #176442;
-  --good-soft: #e8f6ef;
-  --danger: #9f1d25;
-  --danger-soft: #ffe8eb;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f7f9fb;
+  --surface-3: #eef2f6;
+  --ink: #131b29;
+  --ink-2: #3c4858;
+  --muted: #687587;
+  --faint: #97a2b1;
+  --line: #e0e6ee;
+  --line-2: #d3dbe5;
+  --accent: #11657f;
+  --accent-2: #0c4d62;
+  --accent-soft: #e4f1f4;
+  --accent-ink: #0a3a4a;
+  --crit: #b3261e;
+  --crit-soft: #fbe6e4;
+  --crit-line: #f0c2bd;
+  --high: #b5560c;
+  --high-soft: #fbecdd;
+  --high-line: #f1cda6;
+  --med: #8a6500;
+  --med-soft: #f7f0d8;
+  --med-line: #e5d49b;
+  --low: #4a5a6e;
+  --low-soft: #eaeef3;
+  --low-line: #d2dae3;
+  --good: #176a44;
+  --good-soft: #e3f4ec;
+  --good-line: #b4ddc6;
+  --r-sm: 7px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+  --gap: 14px;
+  --shadow-sm: 0 1px 2px rgba(19,27,41,.05), 0 1px 1px rgba(19,27,41,.04);
+  --shadow-md: 0 4px 16px rgba(19,27,41,.08), 0 1px 3px rgba(19,27,41,.05);
+  --ring: 0 0 0 3px rgba(17,101,127,.28);
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --maxw: 1220px;
+}
+html[data-theme="dark"] {
+  --bg: #0c121b;
+  --surface: #131c28;
+  --surface-2: #18222f;
+  --surface-3: #1f2a39;
+  --ink: #eaf0f7;
+  --ink-2: #c2cdda;
+  --muted: #8c99a9;
+  --faint: #5f6e80;
+  --line: #243140;
+  --line-2: #2d3c4d;
+  --accent: #4db6d4;
+  --accent-2: #74cbe4;
+  --accent-soft: #16323d;
+  --accent-ink: #aee0ef;
+  --crit: #ff8e84;
+  --crit-soft: #3a1714;
+  --crit-line: #5e231d;
+  --high: #f0a85e;
+  --high-soft: #37220f;
+  --high-line: #5a3818;
+  --med: #e0c25a;
+  --med-soft: #322a10;
+  --med-line: #524417;
+  --low: #9fb0c2;
+  --low-soft: #1d2733;
+  --low-line: #2c3a4a;
+  --good: #5fd197;
+  --good-soft: #10291d;
+  --good-line: #1d4632;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 8px 28px rgba(0,0,0,.5);
+  --ring: 0 0 0 3px rgba(77,182,212,.32);
 }
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body {
   margin: 0;
+  background: var(--bg);
   color: var(--ink);
-  background: linear-gradient(180deg, #f9fbfd 0, #fff 260px);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  line-height: 1.55;
+  font-family: var(--ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
-.app-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
-main { width: 100%; max-width: 1180px; margin: 0 auto; padding: 36px 28px 64px; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1, h2, h3 { line-height: 1.15; letter-spacing: 0; margin: 0; }
-h1 { font-size: 40px; }
-h2 { font-size: 22px; }
-h3 { font-size: 16px; }
-p { color: var(--muted); margin: 0; }
-h1, h2, h3, p, a, code, strong { overflow-wrap: anywhere; }
-table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
-th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
-th { background: var(--soft); color: var(--ink); }
-code, pre { background: var(--soft); border: 1px solid var(--line); border-radius: 6px; }
-code { padding: 1px 5px; }
-pre { padding: 12px; overflow-x: auto; }
-button {
-  border: 1px solid #0f4f68;
-  border-radius: 7px;
+h1, h2, h3, h4 { margin: 0; line-height: 1.12; letter-spacing: 0; }
+p { margin: 0; color: var(--ink-2); }
+h1, h2, h3, h4, p, a, code, strong, span { overflow-wrap: anywhere; }
+button, input, select { font-family: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
+.app { max-width: var(--maxw); margin: 0 auto; padding: 38px 26px 90px; }
+.masthead { display: grid; grid-template-columns: 1fr auto; gap: 26px; align-items: start; margin-bottom: 26px; }
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+.eyebrow::before { content: ""; width: 18px; height: 2px; background: var(--accent); border-radius: 2px; }
+h1.title { font-size: 38px; font-weight: 800; }
+.title .light { color: var(--muted); font-weight: 500; }
+.lede { max-width: 680px; margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
+.masthead-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: min(300px, 100%); }
+.util { display: flex; gap: 8px; justify-content: flex-end; }
+.theme-btn, .icon-btn {
+  min-height: 34px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: .15s;
+}
+.theme-btn { display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; }
+.icon-btn { width: 34px; display: grid; place-items: center; }
+.theme-btn:hover, .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.search { position: relative; width: 280px; max-width: 100%; }
+.search input {
+  width: 100%;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13.5px;
+  padding: 9px 34px;
+}
+.search input::placeholder { color: var(--faint); }
+.search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.search-clear {
+  display: none;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+.search-results {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 7px);
+  max-height: 58vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+.search-result { display: block; color: var(--ink); border-radius: var(--r-sm); padding: 9px; }
+.search-result:hover, .search-result:focus { background: var(--surface-2); text-decoration: none; }
+.search-result span, .search-result strong, .search-result p { display: block; }
+.search-result span { color: var(--muted); font-size: 11px; font-weight: 800; margin-bottom: 2px; text-transform: uppercase; }
+.search-result p { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--accent-2);
   background: var(--accent);
   color: #fff;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 9px 12px;
+  border-radius: var(--r-md);
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+  transition: .15s;
 }
-button:hover { background: #0f4f68; }
-button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible { outline: 3px solid #9bc7d6; outline-offset: 2px; }
-.shell-sidebar { position: sticky; top: 0; height: 100vh; overflow: auto; border-right: 1px solid var(--line); background: rgba(255,255,255,.92); backdrop-filter: blur(10px); padding: 22px 16px; z-index: 4; }
-.shell-brand { display: block; color: var(--ink); margin-bottom: 20px; }
-.shell-brand:hover { text-decoration: none; }
-.shell-brand span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0; }
-.shell-brand strong { display: block; margin-top: 3px; font-size: 17px; }
-.shell-nav { display: grid; gap: 4px; margin-top: 14px; }
-.shell-link { display: block; border-radius: 7px; color: var(--ink); font-weight: 700; padding: 9px 10px; }
-.shell-link:hover, .shell-link.active { background: var(--accent-soft); text-decoration: none; }
-.shell-search { display: grid; gap: 6px; position: relative; }
-.shell-search span { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
-.shell-search input { width: 100%; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); font: inherit; padding: 9px 10px; }
-.search-results { border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 16px 40px rgba(23,32,51,.14); margin-top: 8px; max-height: 60vh; overflow: auto; padding: 6px; }
-.search-result { display: block; border-radius: 6px; color: var(--ink); padding: 9px; }
-.search-result:hover, .search-result:focus { background: var(--soft); text-decoration: none; }
-.search-result strong, .search-result span { display: block; }
-.search-result span { color: var(--muted); font-size: 12px; font-weight: 800; margin-bottom: 2px; text-transform: uppercase; }
-.search-result p { margin-top: 4px; font-size: 13px; }
-.breadcrumbs { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; color: var(--muted); font-size: 14px; margin-bottom: 22px; }
+.btn:hover { background: var(--accent-2); }
+.refresh-note { min-height: 14px; max-width: 280px; color: var(--muted); font-size: 12px; text-align: right; }
+.kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap); margin: 6px 0 30px; }
+.kpi {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 14px 15px;
+  box-shadow: var(--shadow-sm);
+}
+.k-label { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.k-val { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; font-size: 26px; font-weight: 800; }
+.k-val .unit { color: var(--faint); font-size: 13px; font-weight: 700; }
+.k-sub { margin-top: 4px; color: var(--muted); font-size: 11.5px; }
+.kpi[data-tone]::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; }
+.kpi[data-tone="crit"]::before { background: var(--crit); }
+.kpi[data-tone="good"]::before { background: var(--good); }
+.kpi[data-tone="warn"]::before { background: var(--high); }
+.kpi[data-tone="info"]::before { background: var(--accent); }
+.kpi[data-tone="crit"] .k-val { color: var(--crit); }
+.kpi[data-tone="good"] .k-val { color: var(--good); }
+.today {
+  margin-bottom: 34px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+}
+.today-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+.today-head h2 { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; }
+.stamp { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 4px var(--good-soft); }
+.today-grid { display: grid; grid-template-columns: 1.35fr 1fr 1fr; }
+.today-col { min-width: 0; padding: 18px 20px; border-right: 1px solid var(--line); }
+.today-col:last-child { border-right: 0; }
+.col-h { display: flex; align-items: center; gap: 7px; margin-bottom: 13px; color: var(--muted); font-size: 11.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.cnt { background: var(--surface-3); color: var(--ink-2); border-radius: var(--r-pill); padding: 1px 8px; font-size: 11px; }
+.dec, .mini-risk, .cad-mini { border-top: 1px solid var(--line); padding: 9px 0; }
+.dec:first-of-type, .mini-risk:first-of-type, .cad-mini:first-of-type { border-top: 0; padding-top: 2px; }
+.dec { display: flex; gap: 11px; }
+.idx { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; margin-top: 1px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 800; }
+.d-title, .mr-title, .cm-name { color: var(--ink); font-size: 13.5px; font-weight: 700; }
+.d-meta, .mr-meta, .cm-sub { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; color: var(--muted); font-size: 11.5px; }
+.mini-risk { display: flex; align-items: center; gap: 10px; }
+.sev-dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; }
+.dot-crit { background: var(--crit); }
+.dot-high { background: var(--high); }
+.dot-med { background: var(--med); }
+.dot-low { background: var(--low); }
+.cad-mini { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cm-when { color: var(--good); font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.section { border-top: 1px solid var(--line); }
+.section > summary { display: flex; align-items: center; gap: 14px; padding: 22px 2px 20px; cursor: pointer; list-style: none; }
+.section > summary::-webkit-details-marker, .risk > summary::-webkit-details-marker { display: none; }
+.chev { width: 9px; height: 9px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(-45deg); transition: transform .18s ease; flex: 0 0 auto; }
+.section[open] > summary .chev { transform: rotate(45deg); }
+.sec-title { color: var(--ink); font-size: 21px; font-weight: 800; white-space: nowrap; }
+.sec-num { color: var(--faint); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.sec-meta { display: flex; align-items: center; gap: 10px; margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; }
+.sec-body { padding: 4px 0 30px; }
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.tb-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+.chipset { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: var(--r-pill);
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  transition: .12s;
+}
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip .swatch { width: 8px; height: 8px; border-radius: 50%; }
+.tb-spacer { flex: 1; }
+.count-pill { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.risk-list { display: grid; gap: 10px; }
+.risk {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.risk > summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 13px; padding: 13px 15px; cursor: pointer; list-style: none; }
+.r-main { min-width: 0; }
+.r-title { color: var(--ink); font-size: 14.5px; font-weight: 700; }
+.r-sub { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.r-right { display: flex; align-items: center; gap: 12px; }
+.r-chev { width: 8px; height: 8px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(45deg); transition: transform .18s; }
+.risk[open] .r-chev { transform: rotate(225deg); }
+.r-detail { display: grid; gap: 12px; margin-top: -1px; padding: 14px 15px 16px 39px; border-top: 1px solid var(--line); }
+.rf-k { margin-bottom: 3px; color: var(--faint); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.rf-v { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+.r-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sev-badge, .tag { display: inline-block; border-radius: var(--r-pill); padding: 3px 9px; font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; }
+.b-crit, .high { color: var(--crit); background: var(--crit-soft); }
+.b-high { color: var(--high); background: var(--high-soft); }
+.b-med, .medium { color: var(--med); background: var(--med-soft); }
+.b-low, .ready { color: var(--low); background: var(--low-soft); }
+.reports, .reports-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+.report, .report-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 17px;
+  color: var(--ink);
+}
+.report:hover, .report-card:hover { border-color: var(--accent); text-decoration: none; }
+.report.empty, .report-card.empty { background: var(--surface-2); border-style: dashed; box-shadow: none; }
+.rp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.rp-name, .report-title { color: var(--ink); font-size: 15px; font-weight: 800; }
+.rp-cad, .report-count { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
+.rp-prev { color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+.rp-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
+.rp-date, .report-date { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.rp-open { color: var(--accent); font-size: 12.5px; font-weight: 800; }
+.report-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.report-link { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.core { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--gap); }
+.core-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 15px;
+  transition: .15s;
+}
+.core-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); transform: translateY(-1px); text-decoration: none; }
+.cc-ico { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-weight: 800; }
+.cc-name, .core-title { color: var(--ink); font-size: 14px; font-weight: 800; margin-top: 3px; }
+.cc-desc, .core-desc, .core-file { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.cc-stat { margin-top: auto; padding-top: 8px; color: var(--accent); font-size: 11.5px; font-weight: 800; }
+.missing-card { background: var(--surface-2); border-style: dashed; }
+.learn, .learning-grid { display: grid; grid-template-columns: 280px 1fr; gap: var(--gap); align-items: start; }
+.learn-panel, .learning-card {
+  display: block;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 17px;
+}
+.learn-panel:hover, .learning-card:hover { border-color: var(--accent); text-decoration: none; }
+.lp-h, .learning-title { color: var(--ink); font-size: 14px; font-weight: 800; }
+.lp-sub, .learning-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.learn-stats, .summary, .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.learn-stats .ls, .metric { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; text-align: center; }
+.learn-stats b, .metric .value, .metric strong { display: block; color: var(--ink); font-size: 20px; font-weight: 800; }
+.learn-stats span, .metric .label, .metric span { color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.metric .detail { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; text-transform: none; }
+.mastery { margin-top: 6px; }
+.m-bar { height: 7px; overflow: hidden; background: var(--surface-3); border-radius: var(--r-pill); }
+.m-fill { height: 100%; background: var(--accent); border-radius: var(--r-pill); }
+.m-txt { margin-top: 6px; color: var(--muted); font-size: 11.5px; }
+.learn-items { columns: 2; column-gap: var(--gap); }
+.li-card { break-inside: avoid; margin-bottom: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); padding: 11px 13px; }
+.li-new { color: var(--accent); font-size: 9.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.li-t { color: var(--ink); font-size: 12.5px; font-weight: 800; }
+.li-d { margin-top: 4px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+.cmd-groups, .command-groups { display: grid; gap: 22px; }
+.cmd-group-h, .command-group h3 { margin-bottom: 12px; color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.cmd-grid, .copy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+.cmd-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 15px;
+}
+.cc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cc-ttl { color: var(--ink); font-size: 13.5px; font-weight: 800; }
+.cc-kind { color: var(--faint); font-size: 10px; font-weight: 800; letter-spacing: 0; margin-top: 2px; text-transform: uppercase; }
+.copy-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border-radius: var(--r-sm);
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 800;
+  transition: .12s;
+}
+.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+.copy-btn.ok { background: var(--good-soft); border-color: var(--good-line); color: var(--good); }
+.cmd-pre, pre {
+  margin: 11px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  padding: 11px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.copy-status { display: block; min-height: 18px; margin-top: 7px; color: var(--good); font-size: 13px; }
+.breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 22px; color: var(--muted); font-size: 14px; }
 .breadcrumbs span { color: var(--muted); }
-.toc { border: 1px solid var(--line); border-radius: 8px; background: var(--soft); margin: 18px 0 24px; padding: 12px; }
-.toc[hidden] { display: none; }
+.toc { margin: 18px 0 24px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); padding: 12px; }
 .toc strong { display: block; margin-bottom: 8px; }
 .toc-links { display: flex; flex-wrap: wrap; gap: 8px; }
-.toc-links a { border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 13px; font-weight: 700; padding: 5px 9px; }
+.toc-links a { border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 800; padding: 5px 9px; }
 .toc-links a:hover { background: var(--accent-soft); text-decoration: none; }
-.topbar { display: flex; justify-content: space-between; gap: 22px; align-items: flex-start; margin-bottom: 24px; }
-.topbar > *, .status-card, .command-card, .core-card, .report-card, .learning-card, .help-command, .copy-card { min-width: 0; }
-.eyebrow { color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
-.subtitle { max-width: 780px; margin-top: 10px; font-size: 17px; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
-.status-note { min-height: 20px; color: var(--muted); font-size: 13px; text-align: right; width: 100%; }
-.status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 22px 0; }
-.status-card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; }
-.status-card span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
-.status-card strong { display: block; margin-top: 5px; font-size: 22px; }
-.status-good { background: var(--good-soft); border-color: #afd9c4; }
-.status-warn { background: var(--warn-soft); border-color: #ead49a; }
-.status-danger { background: var(--danger-soft); border-color: #efb9bf; }
-.command-strip { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; margin: 18px 0 26px; }
-.command-card, .cadence-alert, .cadence-ok { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; }
-.command-card code, .cadence-alert code { display: block; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
-.wiki-details { border-top: 1px solid var(--line); padding: 22px 0; }
-.wiki-details summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; cursor: pointer; list-style: none; }
-.wiki-details summary::-webkit-details-marker { display: none; }
-.wiki-heading { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; line-height: 1.2; }
-.wiki-chevron { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s ease; }
-.wiki-details[open] .wiki-chevron { transform: rotate(45deg); }
-.wiki-meta { color: var(--muted); font-size: 14px; text-align: right; white-space: nowrap; }
-.wiki-body { margin-top: 14px; }
-.core-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-.core-card, .report-card, .learning-card, .help-command { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 12px; color: var(--ink); }
-.core-card:hover, .report-card:hover, .learning-card:hover { background: var(--soft); text-decoration: none; }
-.core-title, .report-title, .learning-title, .help-command strong { display: block; font-weight: 800; }
-.core-desc, .report-date, .report-count, .learning-meta, .help-command span { display: block; color: var(--muted); font-size: 13px; margin-top: 5px; }
-.core-file { display: block; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; margin-top: 10px; }
-.missing-card { background: var(--soft); }
-.reports-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.report-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.report-link { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
-.report-date { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-top: 0; }
-.learning-grid, .help-grid, .copy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.help-command { display: grid; gap: 6px; }
-.help-command code { display: block; white-space: normal; overflow-wrap: anywhere; }
-.command-groups { display: grid; gap: 22px; }
-.command-group h3 { margin-bottom: 10px; }
-.copy-card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 12px; }
-.copy-card-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.copy-card-header strong, .copy-card-header span { display: block; }
-.copy-card-header span { color: var(--muted); font-size: 12px; font-weight: 800; margin-top: 3px; text-transform: uppercase; }
-.copy-card-header button { flex: 0 0 auto; padding: 7px 10px; }
-.copy-text { margin: 12px 0 0; max-height: 136px; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; font-size: 13px; }
-.copy-status { display: block; min-height: 18px; margin-top: 7px; color: var(--good); font-size: 13px; }
+.status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); margin: 20px 0 24px; }
+.status-card, .cadence-alert, .cadence-ok {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 14px;
+}
+.status-card span { display: block; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.status-card strong { display: block; margin-top: 6px; color: var(--ink); font-size: 22px; }
+.status-good, .cadence-ok { background: var(--good-soft); border-color: var(--good-line); }
+.status-warn, .cadence-alert { background: var(--med-soft); border-color: var(--med-line); }
+.status-danger { background: var(--crit-soft); border-color: var(--crit-line); }
 .cadence-list { display: grid; gap: 10px; }
-.cadence-alert { border-color: #e2b454; background: var(--warn-soft); }
-.cadence-ok { border-color: #afd9c4; background: var(--good-soft); }
+.cadence-alert code { display: block; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
 .artifact-section { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
 .artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
 .artifact-list { display: grid; gap: 10px; margin: 16px 0 24px; padding: 0; list-style: none; }
-.artifact-list li { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.artifact-list li { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: 12px; }
 .artifact-list strong, .artifact-list span, .artifact-list em, .artifact-list small { display: block; }
 .artifact-list span, .artifact-list em, .artifact-list small { margin-top: 4px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
-.grid, .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
-.metric { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--panel); }
-.metric .label, .metric span { color: var(--muted); font-size: 13px; }
-.metric .value, .metric strong { display: block; margin-top: 5px; font-size: 22px; font-weight: 800; color: var(--ink); }
-.metric .detail { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
-.tag { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 800; white-space: nowrap; }
-.high { color: var(--danger); background: var(--danger-soft); }
-.medium { color: var(--warn); background: var(--warn-soft); }
-.ready { color: var(--good); background: var(--good-soft); }
-.empty-item { color: var(--muted); }
-.nav { color: var(--muted); font-size: 14px; margin-bottom: 22px; }
-.prose { max-width: 880px; }
+.prose { max-width: 900px; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
 .prose p, .prose ul { margin-top: 12px; }
-@media (max-width: 920px) {
-  .app-shell { display: block; }
-  .shell-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
-  .shell-nav { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); }
-  .shell-link { text-align: center; padding: 8px 5px; font-size: 13px; }
-  main { padding: 30px 18px 52px; }
-  h1 { font-size: 32px; }
-  .topbar, .command-strip { grid-template-columns: 1fr; display: grid; }
-  .actions { justify-content: flex-start; }
-  .status-note { text-align: left; }
-  .status-grid, .core-grid, .reports-grid, .learning-grid, .help-grid, .copy-grid, .summary, .grid { grid-template-columns: 1fr; }
-  .report-link { grid-template-columns: 1fr; gap: 2px; }
-  .wiki-details summary { align-items: flex-start; }
-  .wiki-meta { text-align: left; white-space: normal; }
+.empty-item, .no-results { color: var(--faint); font-size: 13px; }
+.no-results { border: 1px dashed var(--line-2); border-radius: var(--r-md); padding: 22px; text-align: center; }
+table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
+th { background: var(--surface-3); color: var(--ink); }
+code { border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); padding: 1px 5px; }
+@media (max-width: 1040px) {
+  .kpis { grid-template-columns: repeat(3, 1fr); }
+  .core { grid-template-columns: repeat(3, 1fr); }
+  .status-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 860px) {
+  .masthead { grid-template-columns: 1fr; }
+  .masthead-side { align-items: stretch; }
+  .util { justify-content: flex-end; }
+  .search { width: 100%; }
+  .refresh-note { text-align: left; max-width: none; }
+  .today-grid { grid-template-columns: 1fr; }
+  .today-col { border-right: 0; border-bottom: 1px solid var(--line); }
+  .today-col:last-child { border-bottom: 0; }
+  .reports, .reports-grid, .cmd-grid, .copy-grid, .learn, .learning-grid { grid-template-columns: 1fr; }
+  h1.title { font-size: 30px; }
+}
+@media (max-width: 560px) {
+  .app { padding: 24px 16px 70px; }
+  .kpis, .core, .status-grid, .summary, .grid { grid-template-columns: 1fr 1fr; }
+  .r-field-grid { grid-template-columns: 1fr; }
+  .risk > summary { grid-template-columns: auto 1fr; }
+  .r-right { grid-column: 2; justify-content: space-between; }
+  .sec-title { white-space: normal; }
+  .learn-items { columns: 1; }
+}
+@media print {
+  .masthead-side, .toolbar { display: none !important; }
+  body { background: #fff; }
+  .app { max-width: none; }
 }
 """
+
+
+def base_css() -> str:
+    return command_center_css()
 
 
 def refresh_script() -> str:
     return """
 <script>
 (() => {
-  const button = document.querySelector('[data-dzcto-refresh]');
-  const status = document.querySelector('[data-dzcto-refresh-status]');
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+  }
+
+  function normalizedTerms(value) {
+    return String(value || '').toLowerCase().split(/\\s+/).filter((term) => term.length > 1);
+  }
+
+  function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('dzcto-theme', theme); } catch (error) {}
+    $$('[data-theme-label]').forEach((label) => {
+      label.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    });
+  }
+
+  try {
+    setTheme(localStorage.getItem('dzcto-theme') || 'light');
+  } catch (error) {
+    setTheme('light');
+  }
+
+  $$('[data-theme-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+  });
+
+  const button = $('[data-dzcto-refresh]');
+  const status = $('[data-dzcto-refresh-status]');
   if (button && status) {
     button.addEventListener('click', async () => {
       status.textContent = 'Refreshing...';
@@ -1282,42 +1883,33 @@ def refresh_script() -> str:
     return ok;
   }
 
-  document.querySelectorAll('[data-copy-target]').forEach((copyButton) => {
-    copyButton.addEventListener('click', async () => {
-      const target = document.getElementById(copyButton.dataset.copyTarget);
-      const copyStatus = document.querySelector(`[data-copy-status-for="${copyButton.dataset.copyTarget}"]`);
-      if (!target) return;
-      try {
-        const copied = await copyText(target.textContent.trim());
-        if (copied) {
-          if (copyStatus) copyStatus.textContent = 'Copied';
-          return;
-        }
+  document.addEventListener('click', async (event) => {
+    const copyButton = event.target.closest('[data-copy-target]');
+    if (!copyButton) return;
+    const target = document.getElementById(copyButton.dataset.copyTarget);
+    const copyStatus = document.querySelector(`[data-copy-status-for="${copyButton.dataset.copyTarget}"]`);
+    if (!target) return;
+    try {
+      const copied = await copyText(target.textContent.trim());
+      copyButton.classList.toggle('ok', copied);
+      copyButton.textContent = copied ? 'Copied' : 'Select';
+      if (copyStatus) copyStatus.textContent = copied ? 'Copied' : 'Selected';
+      if (!copied) {
         const range = document.createRange();
         range.selectNodeContents(target);
         const selection = window.getSelection();
         selection.removeAllRanges();
         selection.addRange(range);
-        if (copyStatus) copyStatus.textContent = 'Selected';
-      } catch (error) {
-        if (copyStatus) copyStatus.textContent = 'Select the text and copy manually';
       }
-    });
+      setTimeout(() => {
+        copyButton.classList.remove('ok');
+        copyButton.textContent = 'Copy';
+        if (copyStatus) copyStatus.textContent = '';
+      }, 1600);
+    } catch (error) {
+      if (copyStatus) copyStatus.textContent = 'Select the text and copy manually';
+    }
   });
-
-  function escapeHtml(value) {
-    return String(value || '').replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    }[char]));
-  }
-
-  function normalizedTerms(value) {
-    return String(value || '').toLowerCase().split(/\\s+/).filter((term) => term.length > 1);
-  }
 
   function scoreEntry(entry, terms) {
     const title = String(entry.title || '').toLowerCase();
@@ -1368,17 +1960,62 @@ def refresh_script() -> str:
     container.hidden = false;
     container.innerHTML = results.slice(0, 8).map(({ entry }) => `
       <a class="search-result" href="${escapeHtml(prefixedUrl(prefix, entry.url))}">
-        <span>${escapeHtml([entry.kind, entry.date].filter(Boolean).join(' · '))}</span>
+        <span>${escapeHtml([entry.kind, entry.date].filter(Boolean).join(' / '))}</span>
         <strong>${escapeHtml(entry.title)}</strong>
         <p>${escapeHtml(entry.summary)}</p>
       </a>
     `).join('');
   }
 
+  function applyDashboardFilters(query) {
+    const q = query.trim().toLowerCase();
+    const selected = $('.chip[aria-pressed="true"]')?.dataset.sev || 'all';
+    let visibleRisks = 0;
+    $$('.risk[data-search-text]').forEach((item) => {
+      const matchesQuery = !q || item.dataset.searchText.includes(q);
+      const matchesSeverity = selected === 'all' || item.dataset.sev === selected;
+      const visible = matchesQuery && matchesSeverity;
+      item.hidden = !visible;
+      if (visible) visibleRisks += 1;
+    });
+    const riskCount = $('[data-risk-count]');
+    if (riskCount) {
+      const total = Number(riskCount.dataset.total || visibleRisks);
+      riskCount.textContent = `${visibleRisks} of ${total} shown`;
+    }
+    let visibleReports = 0;
+    $$('.report[data-search-text], .report-card[data-search-text]').forEach((item) => {
+      const visible = !q || item.dataset.searchText.includes(q);
+      item.hidden = !visible;
+      if (visible) visibleReports += 1;
+    });
+    const reportCount = $('[data-report-count]');
+    if (reportCount && q) reportCount.textContent = `${visibleReports} matching`;
+    if (q) {
+      const riskSection = $('#sec-risks');
+      const reportSection = $('#sec-reports');
+      if (riskSection) riskSection.open = true;
+      if (reportSection) reportSection.open = true;
+    }
+  }
+
+  $$('[data-sev]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const group = chip.closest('.chipset');
+      if (group) $$('[data-sev]', group).forEach((item) => item.setAttribute('aria-pressed', String(item === chip)));
+      const input = $('[data-dzcto-search]');
+      applyDashboardFilters(input ? input.value : '');
+    });
+  });
+
   document.querySelectorAll('[data-dzcto-search]').forEach((input) => {
-    const container = input.closest('.shell-sidebar')?.querySelector('[data-dzcto-search-results]');
+    const search = input.closest('.search');
+    const container = search?.querySelector('[data-dzcto-search-results]');
+    const clear = search?.querySelector('[data-dzcto-search-clear]');
     if (!container) return;
-    input.addEventListener('input', async () => {
+    const runSearch = async () => {
+      if (clear) clear.style.display = input.value ? 'block' : 'none';
+      applyDashboardFilters(input.value);
       const terms = normalizedTerms(input.value);
       const entries = await loadSearchIndex(input);
       const results = entries
@@ -1386,23 +2023,57 @@ def refresh_script() -> str:
         .filter((result) => result.score > 0)
         .sort((a, b) => b.score - a.score);
       renderSearchResults(input, container, results, input.value);
-    });
+    };
+    input.addEventListener('input', runSearch);
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         input.value = '';
         container.hidden = true;
+        if (clear) clear.style.display = 'none';
+        applyDashboardFilters('');
       }
+    });
+    if (clear) clear.addEventListener('click', () => {
+      input.value = '';
+      container.hidden = true;
+      clear.style.display = 'none';
+      applyDashboardFilters('');
+      input.focus();
     });
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
     const active = document.activeElement;
-    if (active && ['INPUT', 'TEXTAREA'].includes(active.tagName)) return;
-    const input = document.querySelector('[data-dzcto-search]');
-    if (input) {
-      event.preventDefault();
-      input.focus();
+    const typing = active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName);
+    if (event.key === 'Escape' && typing) {
+      active.blur();
+      return;
+    }
+    if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === '/') {
+      const input = $('[data-dzcto-search]');
+      if (input) {
+        event.preventDefault();
+        input.focus();
+      }
+      return;
+    }
+    if (event.key === 'd' || event.key === 'D') {
+      setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+      return;
+    }
+    if (event.key === 'e' || event.key === 'E') {
+      const sections = $$('.section');
+      const shouldOpen = sections.some((section) => !section.open);
+      sections.forEach((section) => section.open = shouldOpen);
+      return;
+    }
+    if (/^[1-5]$/.test(event.key)) {
+      const section = $$('.section')[Number(event.key) - 1];
+      if (section) {
+        section.open = true;
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
   });
 
@@ -1431,7 +2102,7 @@ def refresh_script() -> str:
 def write_html_page(path: Path, title: str, body: str, provenance: dict[str, Any]) -> None:
     path.write_text(
         f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1507,13 +2178,6 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
     )
     content = f"""
   {breadcrumbs("../", [("Learning", None)])}
-  <div class="topbar">
-    <div>
-      <p class="eyebrow">Learning</p>
-      <h1>{esc(company)} Learning</h1>
-      <p class="subtitle">Spaced repetition for system knowledge. Each prompt teaches one concept, records a self-rating, updates the mastery checklist, and schedules the next review.</p>
-    </div>
-  </div>
   <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
   <div data-toc-scope>
   <div class="summary">
@@ -1543,7 +2207,13 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
     <ul>{review_rows}</ul>
   </section>
 """
-    body = page_shell(f"{content}\n  </div>", prefix="../", active="learning")
+    body = page_shell(
+        f"{content}\n  </div>",
+        prefix="../",
+        eyebrow="Learning - Day Zero CTO",
+        title=f"{company} Learning",
+        subtitle="Spaced repetition for system knowledge. Each prompt teaches one concept, records a self-rating, updates the mastery checklist, and schedules the next review.",
+    )
     write_html_page(learning_dir / "index.html", f"{company} Learning", body, provenance)
     update_manifest(wiki_root, provenance)
 
@@ -1553,20 +2223,13 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     safe_date = esc(date)
     content = f"""
     {breadcrumbs("../../", [("Reports", "index.html#reports"), (REPORT_FOLDERS[kind], None)])}
-    <div class="topbar">
-      <div>
-        <p class="eyebrow">{esc(REPORT_FOLDERS[kind])}</p>
-        <h1>{safe_title}</h1>
-        <p class="subtitle">{safe_date}</p>
-      </div>
-    </div>
     <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
     <div data-toc-scope>
       {body}
     </div>
 """
     return f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1574,7 +2237,7 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     <style>{base_css()}</style>
   </head>
   <body>
-    {page_shell(content, prefix="../../", active="reports")}
+    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=date)}
     {provenance_block(provenance)}
     {refresh_script()}
   </body>
@@ -1611,13 +2274,6 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         )
         content = f"""
   {breadcrumbs("../", [("Core", "index.html#core"), (title, None)])}
-  <div class="topbar">
-    <div>
-      <p class="eyebrow">Core Context</p>
-      <h1>{esc(title)}</h1>
-      <p class="subtitle">{esc(description)}</p>
-    </div>
-  </div>
   <div class="status-grid">
     <div class="status-card {'status-good' if source_path.exists() else 'status-warn'}"><span>Status</span><strong>{esc(status)}</strong></div>
     <div class="status-card"><span>Source</span><strong>{esc(doc)}</strong></div>
@@ -1629,7 +2285,7 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
     {content_html}
   </section>
 """
-        body = page_shell(content, prefix="../", active="core")
+        body = page_shell(content, prefix="../", eyebrow="Core Context - Day Zero CTO", title=title, subtitle=description)
         write_html_page(wiki_root / relative_path, title, body, provenance)
         update_manifest(wiki_root, provenance)
         pages.append(
@@ -1662,35 +2318,47 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     report_count = sum(len(links) for _folder, _label, links in report_entries)
     report_sections = []
     for folder, label, links in report_entries:
+        cadence_label = "Scheduled"
+        latest = report_run_date(links[0]) if links else ""
         if links:
-            items = "\n".join(
-                f'<li class="report-link"><span class="report-date">{esc(report_run_date(path))}</span><a href="{esc(path.relative_to(wiki_root).as_posix())}">{esc(report_name(path))}</a></li>'
-                for path in links[:5]
+            latest_path = links[0]
+            href = latest_path.relative_to(wiki_root).as_posix()
+            preview = report_summary(latest_path) or "Generated report artifact."
+            report_sections.append(
+                f"""<a class="report" href="{esc(href)}" data-search-text="{search_text_attr(label, preview, latest)}">
+  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-cad">{esc(cadence_label)}</span></div>
+  <p class="rp-prev">{esc(preview)}</p>
+  <div class="rp-foot"><span class="rp-date">{esc(latest)}</span><span class="rp-open">Open report</span></div>
+</a>"""
             )
         else:
-            items = '<li class="empty-item">No reports yet.</li>'
-        latest = report_run_date(links[0]) if links else "No runs"
-        report_sections.append(
-            f"""<article class="report-card">
-  <span class="report-title">{esc(label)}</span>
-  <span class="report-count">{pluralize(len(links), "artifact")} · latest {esc(latest)}</span>
-  <ul class="report-list">{items}</ul>
+            report_sections.append(
+                f"""<article class="report empty" data-search-text="{search_text_attr(label, 'No reports generated yet')}">
+  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-cad">{esc(cadence_label)}</span></div>
+  <p class="rp-prev">No reports generated yet.</p>
+  <div class="rp-foot"><span class="rp-date">No runs</span></div>
 </article>"""
-        )
+            )
 
     core_links = []
     for page in core_pages:
         card_class = "core-card" if page["source_exists"] else "core-card missing-card"
         core_links.append(
             f"""<a class="{card_class}" href="{esc(page["html"])}">
-  <span class="core-title">{esc(page["title"])}</span>
-  <span class="core-desc">{esc(page["description"])}</span>
-  <span class="core-file">{esc(Path(page["html"]).name)}</span>
+  <span class="cc-ico">{esc(core_icon(page["doc"]))}</span>
+  <span class="cc-name">{esc(page["title"])}</span>
+  <span class="cc-desc">{esc(page["description"])}</span>
+  <span class="cc-stat">{'Ready' if page["source_exists"] else 'Needs source'}</span>
 </a>"""
         )
 
     cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
     alerts = cadence_alerts(cadence_rules, reports_dir, today)
+    risks = read_risk_entries(core_dir)
+    decisions = read_decision_entries(core_dir)
+    critical_risks = sum(1 for risk in risks if risk["severity"] == "Critical")
+    high_or_critical_risks = [risk for risk in risks if risk["severity"] in {"Critical", "High"}]
+    cadence_preview_rows = cadence_rows(cadence_rules, reports_dir, today)
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
     write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
@@ -1724,9 +2392,9 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     if not cadence_rules:
         report_status = pluralize(report_count, "artifact")
     elif not alerts:
-        report_status = f"{pluralize(report_count, 'artifact')} · All current"
+        report_status = f"{pluralize(report_count, 'artifact')} / All current"
     else:
-        report_status = f"{pluralize(report_count, 'artifact')} · {pluralize(len(alerts), 'alert')}"
+        report_status = f"{pluralize(report_count, 'artifact')} / {pluralize(len(alerts), 'alert')}"
     learning_status = learning_summary(learning_items, today)
     learning_counts_value = learning_counts(learning_items, today)
     repos = [str(item).strip() for item in (config.get("codeRepos", []) or []) if str(item).strip()]
@@ -1763,9 +2431,104 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 </a>
 <div class="learning-card">
   <span class="learning-title">Mastery</span>
-  <span class="learning-meta">{esc(learning_counts_value["active"] - learning_counts_value["new"])} seen · {esc(learning_counts_value["new"])} new</span>
+  <span class="learning-meta">{esc(learning_counts_value["active"] - learning_counts_value["new"])} seen / {esc(learning_counts_value["new"])} new</span>
 </div>
 """
+
+    decision_rows = (
+        "\n".join(
+            f"""<div class="dec" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
+  <span class="idx">{index}</span>
+  <div class="d-body">
+    <div class="d-title">{esc(decision["title"])}</div>
+    <div class="d-meta"><span class="owner-tag">{esc(decision["owner"])}</span><span>/</span><span>{esc(decision["when"])}</span></div>
+  </div>
+</div>"""
+            for index, decision in enumerate(decisions[:5], start=1)
+        )
+        if decisions
+        else '<p class="empty-item">No decisions awaiting review.</p>'
+    )
+
+    top_risk_rows = (
+        "\n".join(
+            f"""<div class="mini-risk">
+  <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
+  <div class="mr-body">
+    <div class="mr-title">{esc(risk["title"])}</div>
+    <div class="mr-meta">{esc(risk["severity"])} / {esc(risk["owner"])}</div>
+  </div>
+</div>"""
+            for risk in high_or_critical_risks[:5]
+        )
+        if high_or_critical_risks
+        else '<p class="empty-item">No high-priority risks found in core context.</p>'
+    )
+
+    cadence_preview_html = (
+        "\n".join(
+            f"""<div class="cad-mini">
+  <div>
+    <div class="cm-name">{esc(row["name"])}</div>
+    <div class="cm-sub">{esc(row["cadence"])} / last {esc(row["last"])}</div>
+  </div>
+  <span class="cm-when">{esc(row["next"])}</span>
+</div>"""
+            for row in cadence_preview_rows[:5]
+        )
+        if cadence_preview_rows
+        else '<p class="empty-item">No cadence rules yet.</p>'
+    )
+
+    risk_cards = (
+        "\n".join(
+            f"""<details class="risk" data-sev="{esc(risk["severity"])}" data-rank="{severity_rank(risk["severity"])}" data-search-text="{search_text_attr(*risk.values())}">
+  <summary>
+    <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
+    <div class="r-main">
+      <div class="r-title">{esc(risk["title"])}</div>
+      <div class="r-sub">
+        <span class="sev-badge b-{severity_token(risk["severity"])}">{esc(risk["severity"])}</span>
+        {f'<span>{esc(risk["category"])}</span><span>/</span>' if risk["category"] else ''}
+        <span>{esc(risk["owner"])}</span>
+      </div>
+    </div>
+    <div class="r-right">
+      <span class="count-pill">review {esc(risk["review"])}</span>
+      <span class="r-chev" aria-hidden="true"></span>
+    </div>
+  </summary>
+  <div class="r-detail">
+    <div class="r-field"><div class="rf-k">Evidence</div><div class="rf-v">{esc(risk["evidence"] or "No evidence captured yet.")}</div></div>
+    <div class="r-field"><div class="rf-k">Business impact</div><div class="rf-v">{esc(risk["impact"] or "Impact not captured yet.")}</div></div>
+    <div class="r-field"><div class="rf-k">Mitigation</div><div class="rf-v">{esc(risk["mitigation"] or "Mitigation not captured yet.")}</div></div>
+    <div class="r-field-grid">
+      <div class="r-field"><div class="rf-k">Owner</div><div class="rf-v">{esc(risk["owner"])}</div></div>
+      <div class="r-field"><div class="rf-k">Review</div><div class="rf-v">{esc(risk["review"])}</div></div>
+    </div>
+  </div>
+</details>"""
+            for risk in risks
+        )
+        if risks
+        else '<div class="no-results">No risk rows found. Add a table or headings to core/RISKS.md.</div>'
+    )
+
+    learning_percent = 0
+    if learning_counts_value["active"]:
+        learning_percent = round(((learning_counts_value["active"] - learning_counts_value["new"]) / learning_counts_value["active"]) * 100)
+    learning_items_preview = (
+        "\n".join(
+            f"""<div class="li-card">
+  <span class="li-new">{esc(learning_item_status(item, today))}</span>
+  <div class="li-t">{esc(text_value(item.get("title") or item.get("id") or "Learning item"))}</div>
+  <div class="li-d">{esc(snippet(text_value(item.get("summary") or item.get("details") or item.get("detail")), 120))}</div>
+</div>"""
+            for item in active_learning_items(learning_items)[:8]
+        )
+        if active_learning_items(learning_items)
+        else '<div class="li-card"><div class="li-t">No learning items yet</div><div class="li-d">Run the learning skill to seed the first system concepts.</div></div>'
+    )
 
     generated_at = utc_now()
     provenance = provenance_payload(
@@ -1777,66 +2540,162 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         generated_at=generated_at,
     )
     content = f"""
-  <div class="topbar">
-    <div>
-      <p class="eyebrow">Command Center</p>
-      <h1>{esc(company)} Day Zero CTO</h1>
-      <p class="subtitle">{esc(description)}</p>
+  <div class="kpis">
+    <div class="kpi {cadence_class}" data-tone="{'crit' if alerts else 'good' if cadence_rules else 'warn'}">
+      <div class="k-label">Cadence due</div>
+      <div class="k-val">{esc(len(alerts))}<span class="unit">/ {esc(len(cadence_rules))}</span></div>
+      <div class="k-sub">{esc(cadence_label)}</div>
     </div>
-    <div class="actions">
-      <button type="button" data-dzcto-refresh>Refresh Cadence</button>
-      <span class="status-note" data-dzcto-refresh-status></span>
+    <div class="kpi" data-tone="{'crit' if critical_risks else 'warn' if high_or_critical_risks else 'good'}">
+      <div class="k-label">Open risks</div>
+      <div class="k-val">{esc(len(risks))}{f'<span class="unit">/ {critical_risks} crit</span>' if critical_risks else ''}</div>
+      <div class="k-sub">Register tracked</div>
+    </div>
+    <div class="kpi" data-tone="{'warn' if decisions else 'good'}">
+      <div class="k-label">Decisions</div>
+      <div class="k-val">{esc(len(decisions))}</div>
+      <div class="k-sub">Awaiting review</div>
+    </div>
+    <div class="kpi" data-tone="info">
+      <div class="k-label">Reports</div>
+      <div class="k-val">{esc(report_count)}<span class="unit">/ {esc(len(REPORT_FOLDERS))}</span></div>
+      <div class="k-sub">{esc(report_status)}</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Learning due</div>
+      <div class="k-val">{esc(learning_counts_value["due"])}<span class="unit">/ {esc(learning_counts_value["new"])} new</span></div>
+      <div class="k-sub">Spaced repetition</div>
+    </div>
+    <div class="kpi" data-tone="good">
+      <div class="k-label">Repos</div>
+      <div class="k-val">{esc(repo_count)}</div>
+      <div class="k-sub">Read-only sources</div>
     </div>
   </div>
-  <div class="status-grid">
-    <div class="status-card {cadence_class}"><span>Cadence</span><strong>{esc(cadence_label)}</strong></div>
-    <div class="status-card"><span>Reports</span><strong>{esc(report_count)}</strong></div>
-    <div class="status-card"><span>Learning Due</span><strong>{esc(learning_counts_value["due"])}</strong></div>
-    <div class="status-card"><span>Repos</span><strong>{esc(repo_count)}</strong></div>
-  </div>
-  <div class="command-strip">
-    <div class="command-card">
-      <strong>Primary command</strong>
-      <p>Run the next operating review from your agent or terminal.</p>
-      <code>{esc(local_helper_commands(project_folder)[0][1])}</code>
+
+  <section class="today" aria-label="Today">
+    <div class="today-head">
+      <h2><span class="pulse" aria-hidden="true"></span>What needs you today</h2>
+      <span class="stamp">{esc(today.isoformat())} / generated {esc(generated_at.replace("T", " ").replace("Z", " UTC"))}</span>
     </div>
-    <div class="command-card">
-      <strong>Browser refresh</strong>
-      <p>For the button to execute Python, open this wiki through the local server.</p>
-      <code>{esc(local_helper_commands(project_folder)[2][1])}</code>
+    <div class="today-grid">
+      <div class="today-col">
+        <div class="col-h">Decisions awaiting you <span class="cnt">{esc(len(decisions))}</span></div>
+        {decision_rows}
+      </div>
+      <div class="today-col">
+        <div class="col-h">Open risks by priority <span class="cnt">{esc(len(high_or_critical_risks))}</span></div>
+        {top_risk_rows}
+      </div>
+      <div class="today-col">
+        <div class="col-h">Operating cadence</div>
+        {cadence_preview_html}
+      </div>
     </div>
-  </div>
-  <details class="wiki-details" id="cadence" open>
-    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Cadence</span><span class="wiki-meta">{esc(report_status)}</span></summary>
-    <div class="wiki-body">{cadence_status_html}</div>
+  </section>
+
+  <details class="section" id="sec-risks" open>
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">01</span>
+      <span class="sec-title">Risk Register</span>
+      <span class="sec-meta"><span data-risk-count data-total="{esc(len(risks))}">{esc(len(risks))} of {esc(len(risks))} shown</span></span>
+    </summary>
+    <div class="sec-body">
+      <div class="toolbar">
+        <span class="tb-label">Severity</span>
+        <div class="chipset">
+          <button type="button" class="chip" data-sev="all" aria-pressed="true">All</button>
+          <button type="button" class="chip" data-sev="Critical" aria-pressed="false"><span class="swatch dot-crit"></span>Critical</button>
+          <button type="button" class="chip" data-sev="High" aria-pressed="false"><span class="swatch dot-high"></span>High</button>
+          <button type="button" class="chip" data-sev="Medium" aria-pressed="false"><span class="swatch dot-med"></span>Medium</button>
+        </div>
+        <span class="tb-spacer"></span>
+        <span class="count-pill">{esc(critical_risks)} critical</span>
+      </div>
+      <div class="risk-list">{risk_cards}</div>
+    </div>
   </details>
-  <details class="wiki-details" id="core" open>
-    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Core Context</span><span class="wiki-meta">{core_ready}/{len(CORE_DOCS)} ready</span></summary>
-    <div class="wiki-body core-grid">{''.join(core_links)}</div>
+
+  <details class="section" id="sec-reports" open>
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">02</span>
+      <span class="sec-title">Reports</span>
+      <span class="sec-meta" data-report-count>{esc(report_status)}</span>
+    </summary>
+    <div class="sec-body">
+      <div class="reports">{''.join(report_sections)}</div>
+    </div>
   </details>
-  <details class="wiki-details" id="reports" open>
-    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Reports</span><span class="wiki-meta">{esc(report_status)}</span></summary>
-    <div class="wiki-body reports-grid">{''.join(report_sections)}</div>
+
+  <details class="section" id="sec-core" open>
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">03</span>
+      <span class="sec-title">Core Context</span>
+      <span class="sec-meta">{core_ready}/{len(CORE_DOCS)} ready</span>
+    </summary>
+    <div class="sec-body">
+      <div class="core">{''.join(core_links)}</div>
+    </div>
   </details>
-  <details class="wiki-details" id="learning" open>
-    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Learning</span><span class="wiki-meta">{esc(learning_status)}</span></summary>
-    <div class="wiki-body learning-grid">{learning_cards}</div>
+
+  <details class="section" id="sec-learning">
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">04</span>
+      <span class="sec-title">Learning</span>
+      <span class="sec-meta">{esc(learning_status)}</span>
+    </summary>
+    <div class="sec-body">
+      <div class="learn">
+        <a class="learn-panel" href="learning/index.html">
+          <div class="lp-h">Spaced Repetition</div>
+          <div class="lp-sub">One concept per prompt. Self-rate to schedule the next review.</div>
+          <div class="learn-stats">
+            <div class="ls"><b>{esc(learning_counts_value["active"])}</b><span>Active</span></div>
+            <div class="ls"><b>{esc(learning_counts_value["due"])}</b><span>Due</span></div>
+            <div class="ls"><b>{esc(learning_counts_value["new"])}</b><span>New</span></div>
+          </div>
+          <div class="mastery">
+            <div class="m-bar"><div class="m-fill" style="width:{esc(learning_percent)}%"></div></div>
+            <div class="m-txt">Mastery: {esc(learning_percent)}%</div>
+          </div>
+        </a>
+        <div class="learn-items">{learning_items_preview}</div>
+      </div>
+    </div>
   </details>
-  <details class="wiki-details" id="commands">
-    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Commands</span><span class="wiki-meta">{pluralize(command_card_count, "copy card")}</span></summary>
-    <div class="wiki-body command-groups">
-      <section class="command-group">
-        <h3>AI Prompts</h3>
-        <div class="copy-grid">{''.join(ai_prompt_items)}</div>
-      </section>
-      <section class="command-group">
-        <h3>Local Commands</h3>
-        <div class="copy-grid">{''.join(local_command_items)}</div>
-      </section>
+
+  <details class="section" id="sec-commands">
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">05</span>
+      <span class="sec-title">Commands</span>
+      <span class="sec-meta">{pluralize(command_card_count, "copy card")}</span>
+    </summary>
+    <div class="sec-body">
+      <div class="cmd-groups">
+        <section>
+          <div class="cmd-group-h">AI Prompts</div>
+          <div class="cmd-grid">{''.join(ai_prompt_items)}</div>
+        </section>
+        <section>
+          <div class="cmd-group-h">Local Commands</div>
+          <div class="cmd-grid">{''.join(local_command_items)}</div>
+        </section>
+      </div>
     </div>
   </details>
 """
-    body = page_shell(content, active="dashboard")
+    body = page_shell(
+        content,
+        eyebrow="Command Center - Day Zero CTO",
+        title=f"{company} Day Zero CTO",
+        subtitle=description,
+        refresh=True,
+    )
     write_html_page(wiki_root / "index.html", f"{company} Day Zero CTO", body, provenance)
     update_manifest(wiki_root, provenance)
 

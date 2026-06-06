@@ -12,7 +12,7 @@ Ask the user for these values before running Day Zero CTO work:
 - Company description or company website URL.
 - Optional read-only codebase paths. Multiple codebases are allowed.
 
-Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include navigation, breadcrumbs, table-of-contents links, and a local search index at `<project>/knowledge/wiki/search-index.json`.
+Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
 
 Runtime note: helpers require Python 3.10+ and use only the Python standard library. Run `bin/dzcto doctor` from the repo before promising generated artifacts.
 
