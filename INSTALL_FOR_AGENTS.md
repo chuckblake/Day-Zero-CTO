@@ -200,6 +200,7 @@ Run these from a session where the plugin `bin/` directory is on `PATH`, or from
 ```bash
 dzcto install-command
 dzcto quickstart
+dzcto help commands
 dzcto help onboarding
 dzcto help editing
 dzcto help reports
@@ -217,7 +218,7 @@ dzcto version
 
 Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases.
 
-The generated wiki index has a Commands section with copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
+The generated wiki index has Help and Commands sections. Help contains a project-specific command reference; Commands has copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
 
 The Commands section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
 

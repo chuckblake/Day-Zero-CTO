@@ -516,6 +516,7 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
         ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
         ("Serve Dashboard", f'dzcto serve "{project_folder}"'),
         ("Quickstart Help", f'dzcto quickstart --project "{project_folder}"'),
+        ("Command Reference", f'dzcto help commands --project "{project_folder}"'),
         ("Install Stable Command", "dzcto install-command"),
         ("Doctor", f'dzcto doctor --project "{project_folder}"'),
         ("Update Day Zero CTO", f'dzcto update --project "{project_folder}"'),
@@ -621,6 +622,82 @@ def setup_checklist_html(items: list[dict[str, str]]) -> str:
     </div>
     <div class="setup-list">{rows}</div>
   </section>
+"""
+
+
+def dashboard_help_html(project_folder: Path) -> str:
+    project = str(project_folder)
+    help_cards = [
+        (
+            "Start",
+            "Run setup checks, open the served dashboard, and use the setup checklist until the project is ready.",
+            f'dzcto quickstart --project "{project}"',
+        ),
+        (
+            "Edit",
+            "Update source Markdown under knowledge/wiki/core, or ask an agent to run refine-core-context for guided edits.",
+            f'dzcto help editing --project "{project}"',
+        ),
+        (
+            "Operate",
+            "Run weekly reviews, CEO updates, risk reviews, decision reviews, learning, and tech-stack reports from prompt cards.",
+            f'dzcto help reports --project "{project}"',
+        ),
+        (
+            "Check",
+            "Use status, doctor, check-stale, and issue bundles when setup or generated pages look wrong.",
+            f'dzcto help troubleshooting --project "{project}"',
+        ),
+    ]
+    command_rows = [
+        ("quickstart", f'dzcto quickstart --project "{project}"', "Print the shortest self-serve setup path."),
+        ("help", f'dzcto help commands --project "{project}"', "Show complete workflow and command help."),
+        ("version", "dzcto version", "Print the installed helper version."),
+        ("setup", 'dzcto setup --wiki-project "<project>" --company-name "<name>"', "Install the local Codex plugin entry and optionally initialize a wiki."),
+        ("update", f'dzcto update --project "{project}"', "Pull or relink the local install and run doctor."),
+        ("install-command", "dzcto install-command", "Create a stable shell command such as ~/.local/bin/dzcto."),
+        ("init", f'dzcto init "{project}" --company-name "<name>" --company-description "<summary>"', "Create or refresh the project wiki and metadata."),
+        ("refresh", f'dzcto refresh "{project}"', "Regenerate dashboard, core pages, search index, learning index, and cadence alerts."),
+        ("serve", f'dzcto serve "{project}"', "Serve the wiki locally for search and refresh support."),
+        ("status", f'dzcto status "{project}"', "Show setup checklist and operating health."),
+        ("doctor", f'dzcto doctor --project "{project}"', "Check install, manifests, helper syntax, wrappers, and project files."),
+        ("check-stale", f'dzcto check-stale "{project}"', "Check generated artifacts, version drift, missing files, and cadence due state."),
+        ("artifact", f'dzcto artifact --project "{project}" --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json', "Generate durable HTML reports from structured data."),
+        ("learning", f'dzcto learning --project "{project}" --select', "Manage spaced-repetition learning items and reviews."),
+        ("collect-issue-bundle", f'dzcto collect-issue-bundle "{project}"', "Create a redacted troubleshooting bundle."),
+        ("package-claude-desktop", "dzcto package-claude-desktop", "Build an uploadable Claude Desktop custom skill zip."),
+    ]
+    card_html = "\n".join(
+        f"""<article class="help-card">
+  <h3>{esc(title)}</h3>
+  <p>{esc(detail)}</p>
+  <code>{esc(command)}</code>
+</article>"""
+        for title, detail, command in help_cards
+    )
+    rows_html = "\n".join(
+        f"<tr><td><code>{esc(name)}</code></td><td><code>{esc(example)}</code></td><td>{esc(purpose)}</td></tr>"
+        for name, example, purpose in command_rows
+    )
+    return f"""
+  <details class="section" id="sec-help" open>
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">05</span>
+      <span class="sec-title">Help</span>
+      <span class="sec-meta">Self-serve guide</span>
+    </summary>
+    <div class="sec-body">
+      <div class="help-grid">{card_html}</div>
+      <section class="artifact-section command-reference">
+        <h2>Command Reference</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Example</th><th>Use when</th></tr></thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+      </section>
+    </div>
+  </details>
 """
 
 
@@ -2078,6 +2155,18 @@ h1.title { font-size: 38px; font-weight: 800; }
 .action-top strong { color: var(--ink); font-size: 22px; line-height: 1; }
 .action-card ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .action-card li { color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
+.help-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+.help-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 15px;
+}
+.help-card h3 { color: var(--ink); font-size: 14px; font-weight: 800; }
+.help-card p { margin-top: 6px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.help-card code { display: block; margin-top: 10px; white-space: normal; overflow-wrap: anywhere; }
+.command-reference table code { white-space: normal; overflow-wrap: anywhere; }
 .prose { max-width: 900px; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
 .prose p, .prose ul { margin-top: 12px; }
@@ -2114,6 +2203,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .today-col:last-child { border-bottom: 0; }
   .reports, .reports-grid, .cmd-grid, .copy-grid, .learn, .learning-grid { grid-template-columns: 1fr; }
   .action-grid { grid-template-columns: 1fr; }
+  .help-grid { grid-template-columns: 1fr 1fr; }
   h1.title { font-size: 30px; }
 }
 @media (max-width: 560px) {
@@ -2121,6 +2211,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .kpis, .core, .status-grid, .summary, .grid { grid-template-columns: 1fr 1fr; }
   .setup-list { grid-template-columns: 1fr; }
   .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .help-grid { grid-template-columns: 1fr; }
   .app-footer { justify-content: flex-start; }
   .r-field-grid { grid-template-columns: 1fr; }
   .risk > summary { grid-template-columns: auto 1fr; }
@@ -2387,7 +2478,7 @@ def refresh_script() -> str:
       sections.forEach((section) => section.open = shouldOpen);
       return;
     }
-    if (/^[1-5]$/.test(event.key)) {
+    if (/^[1-6]$/.test(event.key)) {
       const section = $$('.section')[Number(event.key) - 1];
       if (section) {
         section.open = true;
@@ -2753,6 +2844,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         for index, (label, command) in enumerate(local_helper_commands(project_folder), start=1)
     ]
     command_card_count = len(ai_prompt_items) + len(local_command_items)
+    help_html = dashboard_help_html(project_folder)
 
     learning_cards = f"""
 <a class="learning-card" href="learning/index.html">
@@ -3000,10 +3092,12 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </div>
   </details>
 
+  {help_html}
+
   <details class="section" id="sec-commands">
     <summary>
       <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">05</span>
+      <span class="sec-num">06</span>
       <span class="sec-title">Commands</span>
       <span class="sec-meta">{pluralize(command_card_count, "copy card")}</span>
     </summary>

@@ -200,6 +200,7 @@ For self-serve help and setup checks:
 
 ```bash
 dzcto quickstart
+dzcto help commands
 dzcto help onboarding
 dzcto help editing
 dzcto help reports
@@ -323,22 +324,61 @@ Then upload the new `dist/day-zero-cto-claude-desktop.zip`.
 
 Claude Desktop chat can follow the Day Zero CTO procedures and create downloadable artifacts in its workspace. Durable local filesystem wikis, browser refresh, and stale checks still need a local helper with filesystem access, such as Codex Desktop, Claude Code, or a terminal running `dzcto init`, `dzcto artifact`, `dzcto refresh`, or `dzcto serve`.
 
-## Helper Commands
+## Command Reference
 
-Run these from a session where the plugin `bin/` directory is on `PATH`, or from a local clone with `bin/dzcto`.
+Run these from a session where the plugin `bin/` directory is on `PATH`, or from a local clone with `bin/dzcto`. For the terminal-native version of this table, run:
 
 ```bash
-dzcto install-command
-dzcto setup
-dzcto update
-dzcto init "<project folder>" --company-name "<name>" --company-description "<summary>" --repo "<repo path>"
-dzcto refresh "<project folder>"
-dzcto serve "<project folder>"
-dzcto doctor --project "<project folder>"
-dzcto check-stale "<project folder>"
-dzcto collect-issue-bundle "<project folder>"
-dzcto package-claude-desktop
+dzcto help commands
+dzcto <command> -h
 ```
+
+### Start and Help
+
+| Command | Use when | Key options |
+| --- | --- | --- |
+| `dzcto quickstart` | Print the shortest self-serve setup path. | `--project <project>` for project-specific examples. |
+| `dzcto help` | Print Day Zero CTO workflow help. With no topic, prints the command reference. | Topics: `onboarding`, `editing`, `reports`, `commands`, `serve`, `troubleshooting`, `learning`, `artifacts`; optional `--project <project>`. |
+| `dzcto version` | Print the installed helper version. | None. |
+
+### Install and Update
+
+| Command | Use when | Key options |
+| --- | --- | --- |
+| `dzcto setup` | Install the local Codex plugin marketplace entry and optionally initialize a project wiki. | `--editable-skills`, `--plugin-link <path>`, `--marketplace-file <path>`, `--editable-skills-dir <path>`, `--wiki-project <project>`, `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, repeatable `--repo <path>`. |
+| `dzcto update` | Pull latest changes or refresh local install links, then run doctor. | `--no-pull`, `--allow-dirty`, `--editable-skills`, `--plugin-link <path>`, `--marketplace-file <path>`, `--editable-skills-dir <path>`, `--project <project>`. |
+| `dzcto install-command` | Create a stable shell command so users do not need versioned plugin cache paths. | `--dest <path>` defaults to `~/.local/bin/dzcto`; `--force` replaces an existing generated shim. |
+| `dzcto package-claude-desktop` | Build an uploadable Claude Desktop custom skill zip. | `--output <zip>`; defaults to `dist/day-zero-cto-claude-desktop.zip`. |
+
+### Project Wiki
+
+| Command | Use when | Key options |
+| --- | --- | --- |
+| `dzcto init "<project folder>"` | Create or refresh `<project>/knowledge/wiki`, sidecar metadata, generated core pages, search index, and dashboard. | `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, repeatable `--repo <path>`. |
+| `dzcto refresh "<project folder>"` | Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance. | Project folder argument. |
+| `dzcto serve "<project folder>"` | Serve the wiki locally so search JSON loads reliably and local refresh works. | `--host 127.0.0.1`, `--port 8765`. |
+| `dzcto status "<project folder>"` | Show the setup checklist and operating health for the project. | `--json` for machine-readable output. |
+| `dzcto doctor` | Check install health, manifests, helper syntax, wrappers, and optional project files. | `--project <project>`, `--json`. |
+| `dzcto check-stale "<project folder>"` | Check stale generated pages, generator version drift, missing artifacts, and cadence due state. | `--json`, `--fail-on-stale`. |
+
+### Reports and Artifacts
+
+| Command | Use when | Key options |
+| --- | --- | --- |
+| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `tech-stack`, `engineering-risk`, `weekly-reviews`, `ceo-updates`, `decisions`, `code-reviews`. |
+| `dzcto collect-issue-bundle "<project folder>"` | Create a troubleshooting bundle with redacted sidecar metadata and stale checks. | `--output <zip>`, `--no-redact`. |
+
+### Learning
+
+| Command | Use when | Key options |
+| --- | --- | --- |
+| `dzcto learning --project <project> --select` | Select the next due or new learning item. | Optional `--date YYYY-MM-DD`. |
+| `dzcto learning --project <project> --add` | Add one learning item. | `--id <id>`, `--title <title>`, `--summary <text>`, `--details <text>`, `--details-file <path>`, `--source <text>`, `--tags <csv>`. |
+| `dzcto learning --project <project> --seed-file <json>` | Seed multiple learning items from a JSON file. | `--seed-file <json>`. |
+| `dzcto learning --project <project> --record <rating>` | Record a review rating and schedule the next review. | `--id <id>`, `--note <text>`, optional `--date YYYY-MM-DD`; ratings include `Needs Work`, `Familiar`, and `Confident`. |
+| `dzcto learning --project <project> --stats` | Print learning counts and progress. | `--stats`. |
+
+Generated dashboard pages also include a `Help` section with a project-specific command reference and copyable command cards.
 
 ## Report Payloads
 
@@ -398,7 +438,7 @@ day-zero-cto/
 └── README.md
 ```
 
-`scripts/dzcto.py` is the canonical local command surface. It exposes `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `artifact`, `learning`, `check-stale`, `collect-issue-bundle`, and `package-claude-desktop`.
+`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
 
 `scripts/dzcto_artifact.py` owns HTML generation, sidecar metadata, generated core HTML pages, report templates, learning index rendering, cadence alerts, and the command-center index.
 

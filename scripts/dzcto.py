@@ -111,10 +111,81 @@ def print_quickstart(project: Path | None = None) -> None:
     )
 
 
+def command_reference_text(project: Path | None = None) -> str:
+    project_arg = shell_project(project)
+    return textwrap.dedent(
+        f"""
+        Day Zero CTO command reference
+
+        Start and help
+          dzcto quickstart [--project <project>]
+              Print the shortest self-serve setup path.
+          dzcto help [onboarding|editing|reports|commands|serve|troubleshooting|learning|artifacts] [--project <project>]
+              Print workflow help. With no topic, prints this command reference.
+          dzcto version
+              Print the installed Day Zero CTO helper version.
+
+        Install and update
+          dzcto setup [--editable-skills] [--plugin-link <path>] [--marketplace-file <path>] [--editable-skills-dir <path>]
+                     [--wiki-project <project>] [--company-name <name>] [--company-description <summary>] [--company-url <url>] [--repo <path> ...]
+              Install the local Codex plugin marketplace entry and optionally initialize a project wiki.
+          dzcto update [--no-pull] [--allow-dirty] [--editable-skills] [--plugin-link <path>] [--marketplace-file <path>]
+                       [--editable-skills-dir <path>] [--project <project>]
+              Pull or relink the local install, optionally refresh editable Codex skill links, then run doctor.
+          dzcto install-command [--dest <path>] [--force]
+              Create a stable shell command, usually ~/.local/bin/dzcto, so users do not need versioned plugin cache paths.
+          dzcto package-claude-desktop [--output <zip>]
+              Build an uploadable Claude Desktop custom skill zip.
+
+        Project wiki
+          dzcto init {project_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>] [--repo <path> ...]
+              Create or refresh <project>/knowledge/wiki, sidecar metadata, generated core pages, search index, and dashboard.
+          dzcto refresh {project_arg}
+              Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance.
+          dzcto serve {project_arg} [--host 127.0.0.1] [--port 8765]
+              Serve the wiki locally so search JSON loads reliably and local refresh works.
+          dzcto status {project_arg} [--json]
+              Show the setup checklist and operating health for the project.
+          dzcto doctor [--project <project>] [--json]
+              Check install health, manifests, helper syntax, wrappers, and optional project files.
+          dzcto check-stale {project_arg} [--json] [--fail-on-stale]
+              Check stale generated pages, generator version, missing artifacts, and cadence due state.
+
+        Reports and artifacts
+          dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
+              Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
+              Kinds: tech-stack, engineering-risk, weekly-reviews, ceo-updates, decisions, code-reviews.
+          dzcto collect-issue-bundle <project> [--output <zip>] [--no-redact]
+              Create a troubleshooting bundle with redacted sidecar metadata and stale checks.
+
+        Learning
+          dzcto learning --project <project> [--date YYYY-MM-DD] --select
+              Select the next due learning item.
+          dzcto learning --project <project> --add --id <id> --title <title> [--summary <text>] [--details <text>|--details-file <path>] [--source <text>] [--tags <csv>]
+              Add one learning item.
+          dzcto learning --project <project> --seed-file <json>
+              Seed multiple learning items from a JSON file.
+          dzcto learning --project <project> --record <rating> --id <id> [--note <text>] [--date YYYY-MM-DD]
+              Record a review rating such as Needs Work, Familiar, or Confident.
+          dzcto learning --project <project> --stats
+              Print learning counts and progress.
+
+        Editing rule
+          Edit Markdown sources under <project>/knowledge/wiki/core/, not generated HTML. For substantive updates,
+          ask an agent to use day-zero-cto:refine-core-context, then run dzcto refresh {project_arg}.
+
+        More detail
+          Every command also supports argparse help:
+            dzcto <command> -h
+        """
+    ).strip()
+
+
 def print_help_topic(topic: str | None, project: Path | None = None) -> None:
     project_arg = shell_project(project)
     project_path = str(project) if project else "$HOME/Documents/Acme CTO"
     topics = {
+        "commands": command_reference_text(project),
         "onboarding": f"""
             Onboarding checklist
 
@@ -156,19 +227,6 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             The dashboard shows the latest report cards and cadence due state after:
               dzcto refresh {project_arg}
         """,
-        "commands": f"""
-            Common commands
-
-            dzcto quickstart --project {project_arg}
-            dzcto doctor --project {project_arg}
-            dzcto init {project_arg} --company-name "Acme" --company-description "Short summary" --repo "$HOME/code/acme-app"
-            dzcto serve {project_arg}
-            dzcto refresh {project_arg}
-            dzcto status {project_arg}
-            dzcto check-stale {project_arg}
-            dzcto install-command
-            dzcto update --editable-skills
-        """,
         "serve": f"""
             Local server
 
@@ -180,11 +238,55 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
 
             Serving locally lets generated pages load search-index.json reliably and enables local refresh from the dashboard.
         """,
+        "troubleshooting": f"""
+            Troubleshooting
+
+            Check install health:
+              dzcto doctor --project {project_arg}
+
+            Check generated-page and cadence freshness:
+              dzcto check-stale {project_arg}
+
+            Check setup readiness:
+              dzcto status {project_arg}
+
+            Create a redacted issue bundle:
+              dzcto collect-issue-bundle {project_arg}
+
+            Rebuild generated pages:
+              dzcto refresh {project_arg}
+        """,
+        "learning": f"""
+            Learning
+
+            Select the next due item:
+              dzcto learning --project {project_arg} --select
+
+            Seed multiple items:
+              dzcto learning --project {project_arg} --seed-file learning-items.json
+
+            Record a review:
+              dzcto learning --project {project_arg} --record Familiar --id <item-id>
+
+            Show stats:
+              dzcto learning --project {project_arg} --stats
+        """,
+        "artifacts": f"""
+            Artifacts
+
+            Generate structured reports with JSON data:
+              dzcto artifact --project {project_arg} --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json
+
+            Supported kinds:
+              tech-stack, engineering-risk, weekly-reviews, ceo-updates, decisions, code-reviews
+
+            Prefer --data-file so reports get structured sections and action summaries. Use --body-file only for legacy raw HTML.
+        """,
     }
     if topic in topics:
         print(textwrap.dedent(topics[topic]).strip())
         return
-    print_quickstart(project)
+    print(command_reference_text(project))
 
 
 def has_real_value(value: Any) -> bool:
@@ -732,7 +834,12 @@ def main(argv: list[str]) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     help_cmd = sub.add_parser("help", help="Print Day Zero CTO workflow help")
-    help_cmd.add_argument("topic", nargs="?", choices=["onboarding", "editing", "reports", "commands", "serve"], help="Optional help topic")
+    help_cmd.add_argument(
+        "topic",
+        nargs="?",
+        choices=["onboarding", "editing", "reports", "commands", "serve", "troubleshooting", "learning", "artifacts"],
+        help="Optional help topic",
+    )
     help_cmd.add_argument("--project", help="Optional project folder for command examples")
 
     quickstart = sub.add_parser("quickstart", help="Print the self-serve startup guide")

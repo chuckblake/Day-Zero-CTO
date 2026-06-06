@@ -31,7 +31,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, a
 - Generated pages should keep a visible footer with the Day Zero CTO skills version so users can identify what regenerated the wiki.
 - For substantive updates to core context Markdown, prefer the `refine-core-context` skill: interview the user, draft section updates, get approval, write source Markdown, then refresh the wiki. Direct Markdown edits are fine for small corrections.
 - Treat `core/DECISIONS.md` as a log of decisions already taken. Use the `review-decisions` skill and each row's `Revisit Trigger` when deciding what needs review.
-- The index should use the command-center sections: Setup Checklist, Cadence, Core Context, Reports, Learning, and Commands. Commands should provide copyable AI prompts with exact project/repo context plus copyable local helper commands. Do not restore Misc, handoffs, or one-on-one sections.
+- The index should use the command-center sections: Setup Checklist, Cadence, Core Context, Reports, Learning, Help, and Commands. Help should include a project-specific command reference. Commands should provide copyable AI prompts with exact project/repo context plus copyable local helper commands. Do not restore Misc, handoffs, or one-on-one sections.
 - When adding or changing install behavior, update `README.md` and `INSTALL_FOR_AGENTS.md`.
 - When releasing plugin-facing changes, bump both `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`; if the Claude marketplace entry has a version, bump it too.
 - Do not add a root `CLAUDE.md` file to this plugin repo; Claude Code's plugin validator warns that it is not loaded as plugin context. Put Claude install instructions in `README.md` and `INSTALL_FOR_AGENTS.md`.
