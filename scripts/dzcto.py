@@ -99,7 +99,7 @@ def print_quickstart(project: Path | None = None) -> None:
                Ask your agent to use day-zero-cto:refine-core-context for Strategy, Team, Operating Cadence, Decisions, or Risks.
 
             6. Run the operating loop
-               Use the dashboard's AI prompt cards for Weekly CTO Review, CEO Update, Engineering Risk, Tech Stack, Review Decisions, and Learning.
+               Use the dashboard's AI prompt cards for Weekly CTO Review, CEO Update, Engineering Risk, Tech Stack, Review Decisions, Review Risks, and Learning.
 
             Useful help:
               dzcto help onboarding
@@ -127,7 +127,8 @@ def command_reference_text(project: Path | None = None) -> str:
 
         Install and update
           dzcto setup [--editable-skills] [--plugin-link <path>] [--marketplace-file <path>] [--editable-skills-dir <path>]
-                     [--wiki-project <project>] [--company-name <name>] [--company-description <summary>] [--company-url <url>] [--repo <path> ...]
+                     [--wiki-project <project>] [--company-name <name>] [--company-description <summary>] [--company-url <url>]
+                     [--report-prompt-context <text>] [--repo <path> ...]
               Install the local Codex plugin marketplace entry and optionally initialize a project wiki.
           dzcto update [--no-pull] [--allow-dirty] [--editable-skills] [--plugin-link <path>] [--marketplace-file <path>]
                        [--editable-skills-dir <path>] [--project <project>]
@@ -138,7 +139,8 @@ def command_reference_text(project: Path | None = None) -> str:
               Build an uploadable Claude Desktop custom skill zip.
 
         Project wiki
-          dzcto init {project_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>] [--repo <path> ...]
+          dzcto init {project_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>]
+                     [--report-prompt-context <text>] [--repo <path> ...]
               Create or refresh <project>/knowledge/wiki, sidecar metadata, generated core pages, search index, and dashboard.
           dzcto refresh {project_arg}
               Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance.
@@ -170,9 +172,21 @@ def command_reference_text(project: Path | None = None) -> str:
           dzcto learning --project <project> --stats
               Print learning counts and progress.
 
+        Skill prompt workflows
+          day-zero-cto:refine-core-context
+              Interview, draft, approve, write source Markdown, and refresh core context.
+          day-zero-cto:review-decisions
+              Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed.
+          day-zero-cto:review-risks
+              Walk active risks one at a time and keep, update, close, punt, or mark evidence needed.
+          day-zero-cto:review-engineering-risk
+              Create a fresh engineering-risk report artifact.
+
         Editing rule
           Edit Markdown sources under <project>/knowledge/wiki/core/, not generated HTML. For substantive updates,
           ask an agent to use day-zero-cto:refine-core-context, then run dzcto refresh {project_arg}.
+          To steer report prompt cards, add reportPromptContext in .dzcto/config.json or a Prompt Context column
+          in core/OPERATING_CADENCE.md Index Cadence Rules.
 
         More detail
           Every command also supports argparse help:
@@ -208,6 +222,9 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
 
             For substantive changes, ask an agent to use day-zero-cto:refine-core-context.
             For recorded decision reviews, use day-zero-cto:review-decisions.
+            For active risk-register reviews, use day-zero-cto:review-risks.
+            For report prompt steering, add reportPromptContext to .dzcto/config.json or add a Prompt Context
+            column to the Index Cadence Rules table in OPERATING_CADENCE.md.
 
             Then run:
               dzcto refresh {project_arg}
@@ -218,6 +235,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             Weekly CTO Review: delivery, risks, decisions, team/process, next focus.
             CEO Update: progress, risks/blockers, asks/decisions, next.
             Engineering Risk: top risks, mitigations, watchpoints.
+            Review Risks: walk the risk register one item at a time and update RISKS.md.
             Tech Stack: architecture shape, stack components, risks, onboarding notes.
             CTO Code Review: blocking findings, FYI findings, questions, startup risk note.
 
@@ -662,7 +680,8 @@ Read the matching reference file when needed:
 
 - `references/bootstrap-cto-context.md`: onboarding and project wiki setup.
 - `references/tech-stack.md`: codebase stack mapping.
-- `references/review-engineering-risk.md`: engineering risk review.
+- `references/review-engineering-risk.md`: engineering risk report.
+- `references/review-risks.md`: risk-register review and update workflow.
 - `references/weekly-cto-review.md`: weekly CTO operating review.
 - `references/write-ceo-update.md`: CEO-facing update.
 - `references/work-through-problem.md`: decision and problem walkthroughs.
@@ -856,6 +875,7 @@ def main(argv: list[str]) -> int:
     setup.add_argument("--company-name")
     setup.add_argument("--company-description")
     setup.add_argument("--company-url")
+    setup.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards")
     setup.add_argument("--repo", action="append", default=[], help="Read-only code repository path for the wiki; may be repeated")
 
     update = sub.add_parser("update", help="Pull latest Day Zero CTO and refresh a local install")
@@ -875,6 +895,7 @@ def main(argv: list[str]) -> int:
     init.add_argument("--company-name")
     init.add_argument("--company-description")
     init.add_argument("--company-url")
+    init.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards")
     init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
 
     refresh = sub.add_parser("refresh", help="Refresh wiki indexes, core HTML pages, and cadence alerts")
@@ -975,6 +996,8 @@ def main(argv: list[str]) -> int:
                 init_args.extend(["--company-description", args.company_description])
             if args.company_url:
                 init_args.extend(["--company-url", args.company_url])
+            if args.report_prompt_context:
+                init_args.extend(["--report-prompt-context", args.report_prompt_context])
             for repo in args.repo:
                 init_args.extend(["--repo", repo])
             code = run_script("dzcto_artifact.py", init_args)
@@ -1004,6 +1027,8 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--company-description", args.company_description])
         if args.company_url:
             init_args.extend(["--company-url", args.company_url])
+        if args.report_prompt_context:
+            init_args.extend(["--report-prompt-context", args.report_prompt_context])
         for repo in args.repo:
             init_args.extend(["--repo", repo])
         return run_script("dzcto_artifact.py", init_args)

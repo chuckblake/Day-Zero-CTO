@@ -205,7 +205,7 @@ dzcto help onboarding
 dzcto help editing
 dzcto help reports
 dzcto update
-dzcto init "<project folder>" --company-name "<name>" --company-url "<url>" --repo "<repo path>"
+dzcto init "<project folder>" --company-name "<name>" --company-url "<url>" --report-prompt-context "<guidance>" --repo "<repo path>"
 dzcto refresh "<project folder>"
 dzcto serve "<project folder>"
 dzcto status "<project folder>"
@@ -216,15 +216,17 @@ dzcto package-claude-desktop
 dzcto version
 ```
 
-Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases.
+Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases. Use `--report-prompt-context "<guidance>"` when the user wants extra steering appended to generated report prompt cards.
 
-The generated wiki index has Help and Commands sections. Help contains a project-specific command reference; Commands has copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
+The generated wiki index has one Help section. It is the clean self-serve help document: project-specific command reference, copyable AI prompts, and copyable local commands. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands, including update.
 
-The Commands section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
+The Help section also includes Refine Strategy, Refine Team, Refine Operating Cadence, Refine Decisions, and Refine Risks prompts for the guided interview-and-approval path.
 
 The full setup checklist lives at `<project>/knowledge/wiki/setup/index.html`. The dashboard highlights it only while setup is incomplete; after completion, it becomes a quieter reference link. Use `dzcto status "<project folder>"` when a terminal-facing check is easier than opening the setup page.
 
 Use `day-zero-cto:review-decisions` when the user wants to review recorded decisions. Treat `DECISIONS.md` as a decision log, not a pending-decision queue; `Revisit Trigger` determines what needs another look.
+
+Use `day-zero-cto:review-risks` when the user wants to review the risk register one risk at a time. Treat `RISKS.md` as the active register; next review date, severity, mitigation state, and evidence gaps determine what needs another look.
 
 ## Verify
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Risks"
+  short_description: "Walk the risk register and resolve reviews."
+  default_prompt: "Review the Day Zero CTO risk register."

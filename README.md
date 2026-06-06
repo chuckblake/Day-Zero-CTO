@@ -29,6 +29,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
 | `work-through-problem` | Reason through ambiguous CTO decisions and tradeoffs. |
 | `review-decisions` | Walk the decision log one recorded decision at a time, using revisit triggers to reaffirm, supersede, punt, or mark evidence needed. |
+| `review-risks` | Walk the risk register one active risk at a time, using review dates, severity, mitigation state, and evidence gaps to keep, update, close, punt, or mark evidence needed. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
 | `write-ceo-update` | Translate engineering work, risks, and asks into CEO-facing signal. |
 | `review-engineering-risk` | Find risks that threaten product, customers, delivery, trust, or runway. |
@@ -92,9 +93,9 @@ Generated wiki pages use a compact command-center interface:
 
 - Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos.
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages.
-- A linked `What needs you today` panel with decisions, high-priority risks, and operating cadence.
+- A linked `What needs you today` panel with due decision reviews, high-priority risks, and operating cadence.
 - Risk register cards parsed from `core/RISKS.md` tables or headings, with severity filtering.
-- Report, core context, learning, and command sections modeled after the Arwen command-center template.
+- Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
 - Breadcrumbs, automatic page tables of contents, and a light/dark theme on generated pages.
 - A visible footer showing the Day Zero CTO skills version used to generate the page.
@@ -107,13 +108,13 @@ For substantive core context updates, ask an agent to use the `refine-core-conte
 
 The index shows company information under the title, then a dashboard workspace:
 
-- `What needs you today`: decision revisit triggers, priority risks, and cadence from core context.
+- `What needs you today`: due or triggered decision reviews, priority risks, and cadence from core context.
 - `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it becomes a quieter reference link to `setup/index.html`.
 - `Risk Register`: severity-filterable cards from `core/RISKS.md`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.
 - `Learning`: spaced-repetition state and mastery progress.
-- `Commands`: copyable AI prompts and local helper commands with the exact project and repo context.
+- `Help`: one expandable help document with the command reference, copyable AI prompts, and local helper commands with the exact project and repo context.
 
 The hidden `.dzcto/` directory is the local metadata sidecar. It stores project config, connected repo paths, artifact manifests, diagnostics, and latest helper logs. Generated HTML pages embed a `dzcto-provenance` JSON block with tool version, generation time, config hash, source hashes when available, and artifact ID.
 
@@ -124,13 +125,14 @@ The hidden `.dzcto/` directory is the local metadata sidecar. It stores project 
 ```markdown
 ## Index Cadence Rules
 
-| Report | Folder | Cadence | Day | Grace Days | Command |
-| --- | --- | --- | --- | --- | --- |
-| Weekly CTO Review | weekly-reviews | weekly | Monday | 0 | Run the weekly CTO review for Acme. |
+| Report | Folder | Cadence | Day | Grace Days | Command | Prompt Context |
+| --- | --- | --- | --- | --- | --- | --- |
+| Weekly CTO Review | weekly-reviews | weekly | Monday | 0 | Run the weekly CTO review for Acme. | Focus on beta readiness and evidence from the Rails app. |
 ```
 
 Supported cadences include `daily`, `weekly`, `biweekly`, `monthly`, `quarterly`, and `every N days/weeks/months`.
 The optional `Day` column is displayed on the dashboard cadence preview and can be a weekday or compact rule such as `First Friday`.
+The optional `Prompt Context` column is appended to that cadence row's AI prompt card. For global report steering, set `reportPromptContext` in `<project>/knowledge/wiki/.dzcto/config.json`, or run `dzcto init "<project folder>" --report-prompt-context "<guidance>"`.
 
 Use the `Refresh Wiki` local command card, or run `dzcto refresh`, when source Markdown or reports change. It regenerates core HTML pages, the dashboard, the search index, and cadence alerts:
 
@@ -140,9 +142,9 @@ dzcto serve "<project folder>"
 
 Open the printed local URL for the best search experience. A plain `file://` page may not load the generated search index because browsers often block local JSON fetches.
 
-The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
+The Help section is the simple cross-agent bridge. It contains the command reference plus copy cards. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
 
-Generated command centers include refinement prompts for Strategy, Team, Operating Cadence, Decisions, and Risks. These prompts are meant for the conversational edit path: interview, draft, approve, write source Markdown, refresh.
+Generated command centers include review prompts for Decisions and Risks, plus refinement prompts for Strategy, Team, Operating Cadence, Decisions, and Risks. Refinement prompts are meant for the conversational edit path: interview, draft, approve, write source Markdown, refresh.
 
 Generated report pages include an `Action Summary` when structured report data contains decisions, risks, asks, next focus, blockers, mitigations, or review questions. The summary is intentionally compact so a CTO can open a report and immediately see what needs judgment or follow-through.
 
@@ -174,6 +176,7 @@ bin/dzcto setup \
   --wiki-project "$HOME/Documents/Acme CTO" \
   --company-name "Acme" \
   --company-url "https://acme.example" \
+  --report-prompt-context "Focus reports on beta readiness and enterprise buyer risk." \
   --repo "$HOME/code/acme-app" \
   --repo "$HOME/code/acme-api" \
   --plugin-link "$HOME/plugins/day-zero-cto" \
@@ -345,7 +348,7 @@ dzcto <command> -h
 
 | Command | Use when | Key options |
 | --- | --- | --- |
-| `dzcto setup` | Install the local Codex plugin marketplace entry and optionally initialize a project wiki. | `--editable-skills`, `--plugin-link <path>`, `--marketplace-file <path>`, `--editable-skills-dir <path>`, `--wiki-project <project>`, `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, repeatable `--repo <path>`. |
+| `dzcto setup` | Install the local Codex plugin marketplace entry and optionally initialize a project wiki. | `--editable-skills`, `--plugin-link <path>`, `--marketplace-file <path>`, `--editable-skills-dir <path>`, `--wiki-project <project>`, `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, `--report-prompt-context <text>`, repeatable `--repo <path>`. |
 | `dzcto update` | Pull latest changes or refresh local install links, then run doctor. | `--no-pull`, `--allow-dirty`, `--editable-skills`, `--plugin-link <path>`, `--marketplace-file <path>`, `--editable-skills-dir <path>`, `--project <project>`. |
 | `dzcto install-command` | Create a stable shell command so users do not need versioned plugin cache paths. | `--dest <path>` defaults to `~/.local/bin/dzcto`; `--force` replaces an existing generated shim. |
 | `dzcto package-claude-desktop` | Build an uploadable Claude Desktop custom skill zip. | `--output <zip>`; defaults to `dist/day-zero-cto-claude-desktop.zip`. |
@@ -354,7 +357,7 @@ dzcto <command> -h
 
 | Command | Use when | Key options |
 | --- | --- | --- |
-| `dzcto init "<project folder>"` | Create or refresh `<project>/knowledge/wiki`, sidecar metadata, generated core pages, search index, and dashboard. | `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, repeatable `--repo <path>`. |
+| `dzcto init "<project folder>"` | Create or refresh `<project>/knowledge/wiki`, sidecar metadata, generated core pages, search index, and dashboard. | `--company-name <name>`, `--company-description <summary>`, `--company-url <url>`, `--report-prompt-context <text>`, repeatable `--repo <path>`. |
 | `dzcto refresh "<project folder>"` | Regenerate dashboard, core HTML pages, learning index, search index, cadence alerts, and provenance. | Project folder argument. |
 | `dzcto serve "<project folder>"` | Serve the wiki locally so search JSON loads reliably and local refresh works. | `--host 127.0.0.1`, `--port 8765`. |
 | `dzcto status "<project folder>"` | Show the terminal setup checklist and operating health for the project. | `--json` for machine-readable output. |
@@ -377,6 +380,15 @@ dzcto <command> -h
 | `dzcto learning --project <project> --seed-file <json>` | Seed multiple learning items from a JSON file. | `--seed-file <json>`. |
 | `dzcto learning --project <project> --record <rating>` | Record a review rating and schedule the next review. | `--id <id>`, `--note <text>`, optional `--date YYYY-MM-DD`; ratings include `Needs Work`, `Familiar`, and `Confident`. |
 | `dzcto learning --project <project> --stats` | Print learning counts and progress. | `--stats`. |
+
+### Skill Prompt Workflows
+
+| Skill prompt | Use when |
+| --- | --- |
+| `day-zero-cto:refine-core-context` | Interview, draft, approve, write source Markdown, and refresh core context. |
+| `day-zero-cto:review-decisions` | Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed. |
+| `day-zero-cto:review-risks` | Walk active risks one at a time and keep, update, close, punt, or mark evidence needed. |
+| `day-zero-cto:review-engineering-risk` | Create a fresh engineering-risk report artifact. |
 
 Generated dashboard pages also include a `Help` section with a project-specific command reference and copyable command cards.
 
@@ -419,6 +431,7 @@ day-zero-cto/
 │   ├── tech-stack/
 │   ├── work-through-problem/
 │   ├── review-decisions/
+│   ├── review-risks/
 │   ├── weekly-cto-review/
 │   ├── write-ceo-update/
 │   ├── review-engineering-risk/

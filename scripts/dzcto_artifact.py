@@ -216,9 +216,10 @@ def apply_init_metadata(
     company_name_value: str | None = None,
     company_description_value: str | None = None,
     company_url: str | None = None,
+    report_prompt_context: str | None = None,
     repos: list[str] | None = None,
 ) -> None:
-    if not any([company_name_value, company_description_value, company_url, repos]):
+    if not any([company_name_value, company_description_value, company_url, report_prompt_context, repos]):
         return
 
     config_path = sidecar_dir(wiki_root) / "config.json"
@@ -232,6 +233,8 @@ def apply_init_metadata(
         description = fetch_company_description(company_url) or ""
     if description:
         config["companyDescription"] = description
+    if report_prompt_context and report_prompt_context.strip():
+        config["reportPromptContext"] = report_prompt_context.strip()
     if repos:
         existing = [str(item) for item in config.get("codeRepos", []) if str(item).strip()]
         for repo in repos:
@@ -348,6 +351,13 @@ def parse_cadence_rules(cadence_path: Path) -> list[dict[str, Any]]:
             or ""
         )
         command = values.get("command") or values.get("prompt") or values.get("run")
+        prompt_context = (
+            values.get("prompt_context")
+            or values.get("report_prompt_context")
+            or values.get("custom_prompt_context")
+            or values.get("steering")
+            or ""
+        )
         label = values.get("report") or values.get("name") or REPORT_FOLDERS.get(str(folder), str(folder or ""))
         try:
             grace_days = int(values.get("grace_days") or values.get("grace") or 0)
@@ -362,6 +372,7 @@ def parse_cadence_rules(cadence_path: Path) -> list[dict[str, Any]]:
                     "cadence": cadence,
                     "day": str(day).strip(),
                     "command": command,
+                    "prompt_context": str(prompt_context).strip(),
                     "grace_days": grace_days,
                     "interval_days": interval_days,
                 }
@@ -421,12 +432,32 @@ def repo_context(repos: list[str]) -> str:
     return f"Use read-only code repos: {repo_list}."
 
 
-def prompt_context(project_folder: Path, repos: list[str]) -> str:
-    return f"Use project folder `{project_folder}`. {repo_context(repos)}"
+def configured_report_prompt_context(config: dict[str, Any] | None) -> str:
+    config = config or {}
+    for key in ("reportPromptContext", "promptContext", "customPromptContext"):
+        value = config.get(key)
+        if isinstance(value, list):
+            text = " ".join(str(item).strip() for item in value if str(item).strip())
+        else:
+            text = str(value or "").strip()
+        if text:
+            return text
+    return ""
 
 
-def exact_prompt(base: str, project_folder: Path, repos: list[str]) -> str:
-    return f"{base.strip()} {prompt_context(project_folder, repos)}".strip()
+def combine_prompt_context(*values: str | None) -> str:
+    return " ".join(str(value).strip() for value in values if str(value or "").strip())
+
+
+def prompt_context(project_folder: Path, repos: list[str], custom_context: str = "") -> str:
+    context = f"Use project folder `{project_folder}`. {repo_context(repos)}"
+    if custom_context.strip():
+        context = f"{context} Additional prompt context: {custom_context.strip()}"
+    return context
+
+
+def exact_prompt(base: str, project_folder: Path, repos: list[str], custom_context: str = "") -> str:
+    return f"{base.strip()} {prompt_context(project_folder, repos, custom_context)}".strip()
 
 
 def enrich_ai_prompt(label: str, prompt: str) -> str:
@@ -435,7 +466,7 @@ def enrich_ai_prompt(label: str, prompt: str) -> str:
     return prompt
 
 
-def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> list[tuple[str, str]]:
+def default_ai_prompts(company: str, project_folder: Path, repos: list[str], report_prompt_context: str = "") -> list[tuple[str, str]]:
     return [
         (
             "Weekly CTO Review",
@@ -443,11 +474,21 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> 
                 f"Run the weekly CTO review for {company}. Prefer read-only local Git history for the review window when available; do not run mutating Git commands.",
                 project_folder,
                 repos,
+                report_prompt_context,
             ),
         ),
-        ("CEO Update", exact_prompt(f"Write the CEO engineering update for {company}.", project_folder, repos)),
-        ("Tech Stack", exact_prompt(f"Review the connected codebase(s) and create a Tech Stack report for {company}.", project_folder, repos)),
-        ("Engineering Risk Review", exact_prompt(f"Run the engineering risk review for {company}.", project_folder, repos)),
+        ("CEO Update", exact_prompt(f"Write the CEO engineering update for {company}.", project_folder, repos, report_prompt_context)),
+        ("Tech Stack", exact_prompt(f"Review the connected codebase(s) and create a Tech Stack report for {company}.", project_folder, repos, report_prompt_context)),
+        ("Engineering Risk Review", exact_prompt(f"Run the engineering risk review for {company}.", project_folder, repos, report_prompt_context)),
+        (
+            "Review Risks",
+            exact_prompt(
+                f"Use the Day Zero CTO review-risks workflow to walk the risk register for {company}. Prioritize risks whose next review is due, severity is high, or mitigation is unclear, and let me keep active, update, close, punt, or mark evidence needed one item at a time.",
+                project_folder,
+                repos,
+                report_prompt_context,
+            ),
+        ),
         ("Learning", exact_prompt(f"Run a Day Zero CTO learning prompt for {company}.", project_folder, repos)),
         ("Decision Help", exact_prompt(f"Help me work through a CTO decision for {company}: <decision or problem>.", project_folder, repos)),
         (
@@ -504,6 +545,7 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> 
                 f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo(s) as read-only unless I explicitly ask for code changes.",
                 project_folder,
                 repos,
+                report_prompt_context,
             ),
         ),
     ]
@@ -516,7 +558,6 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
         ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
         ("Serve Dashboard", f'dzcto serve "{project_folder}"'),
         ("Quickstart Help", f'dzcto quickstart --project "{project_folder}"'),
-        ("Command Reference", f'dzcto help commands --project "{project_folder}"'),
         ("Install Stable Command", "dzcto install-command"),
         ("Doctor", f'dzcto doctor --project "{project_folder}"'),
         ("Update Day Zero CTO", f'dzcto update --project "{project_folder}"'),
@@ -557,7 +598,7 @@ def setup_checklist_items(
             "Read-only repos",
             bool(repos),
             f"{len(repos)} repo path{'s' if len(repos) != 1 else ''} configured" if repos else "Connect code evidence when available",
-            "#sec-commands",
+            "#sec-help",
             "Run init with --repo",
         ),
         item(
@@ -592,7 +633,7 @@ def setup_checklist_items(
             "Generated pages",
             all((wiki_root / "core" / core_doc_html_name(doc)).exists() for doc in CORE_DOCS),
             "HTML pages generated" if all((wiki_root / "core" / core_doc_html_name(doc)).exists() for doc in CORE_DOCS) else "Refresh the wiki",
-            "#sec-commands",
+            "#sec-help",
             "Refresh Wiki",
         ),
     ]
@@ -624,13 +665,13 @@ def setup_checklist_html(items: list[dict[str, str]], prefix: str = "") -> str:
     complete = sum(1 for item in items if item["state"] == "done")
     rows = setup_checklist_rows(items, prefix)
     return f"""
-  <section class="setup-panel" id="sec-setup" aria-label="Setup checklist">
+  <section class="setup-panel setup-page-list" id="sec-setup" aria-label="Setup checklist">
     <div class="setup-head">
       <div>
         <h2>Setup Checklist</h2>
         <p>{esc(complete)} of {esc(len(items))} complete</p>
       </div>
-      <a class="setup-help" href="{esc(setup_link("#sec-commands", prefix))}">Commands</a>
+      <a class="setup-help" href="{esc(setup_link("#sec-help", prefix))}">Help</a>
     </div>
     <div class="setup-list">{rows}</div>
   </section>
@@ -666,8 +707,9 @@ def setup_dashboard_summary_html(items: list[dict[str, str]]) -> str:
 """
 
 
-def dashboard_help_html(project_folder: Path) -> str:
+def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_command_items: list[str]) -> str:
     project = str(project_folder)
+    copy_card_count = len(ai_prompt_items) + len(local_command_items)
     help_cards = [
         (
             "Start",
@@ -726,7 +768,7 @@ def dashboard_help_html(project_folder: Path) -> str:
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">05</span>
       <span class="sec-title">Help</span>
-      <span class="sec-meta">Self-serve guide</span>
+      <span class="sec-meta">Self-serve guide / {pluralize(copy_card_count, "copy card")}</span>
     </summary>
     <div class="sec-body">
       <div class="help-grid">{card_html}</div>
@@ -736,6 +778,19 @@ def dashboard_help_html(project_folder: Path) -> str:
           <thead><tr><th>Command</th><th>Example</th><th>Use when</th></tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
+      </section>
+      <section class="artifact-section help-copy-cards">
+        <h2>Copy Cards</h2>
+        <div class="cmd-groups">
+          <section>
+            <div class="cmd-group-h">AI Prompts</div>
+            <div class="cmd-grid">{''.join(ai_prompt_items)}</div>
+          </section>
+          <section>
+            <div class="cmd-group-h">Local Commands</div>
+            <div class="cmd-grid">{''.join(local_command_items)}</div>
+          </section>
+        </div>
       </section>
     </div>
   </details>
@@ -1188,7 +1243,7 @@ def render_markdown_table(lines: list[str]) -> str:
     body_rows = []
     for row in rows[2:]:
         body_rows.append("<tr>" + "".join(f"<td>{inline_markdown(cell)}</td>" for cell in row) + "</tr>")
-    return f"<table><thead><tr>{headers}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
+    return f'<div class="markdown-table"><table><thead><tr>{headers}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>'
 
 
 def markdown_to_html(markdown: str) -> str:
@@ -1656,6 +1711,40 @@ def read_decision_entries(core_dir: Path) -> list[dict[str, str]]:
     ]
 
 
+def dates_in_text(value: str) -> list[dt.date]:
+    dates: list[dt.date] = []
+    for match in re.finditer(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", value):
+        try:
+            dates.append(dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3))))
+        except ValueError:
+            pass
+    return dates
+
+
+def decision_review_due(decision: dict[str, str], today: dt.date) -> bool:
+    trigger = plain_markdown(decision.get("when") or "").strip()
+    if not has_real_value(trigger):
+        return False
+    normalized = trigger.lower()
+    if re.search(r"\b(no review|not due|none|n/a|unscheduled|no revisit)\b", normalized):
+        return False
+
+    dates = dates_in_text(normalized)
+    if dates:
+        return min(dates) <= today
+
+    return bool(
+        re.search(
+            r"\b(overdue|due today|due now|review now|revisit now|needs review|review needed|triggered|condition met|asap|pending decision|needs decision|blocked)\b",
+            normalized,
+        )
+    )
+
+
+def due_decision_entries(decisions: list[dict[str, str]], today: dt.date) -> list[dict[str, str]]:
+    return [decision for decision in decisions if decision_review_due(decision, today)]
+
+
 def relative_date(value: dt.date | None, today: dt.date) -> str:
     if not value:
         return "unscheduled"
@@ -1958,6 +2047,21 @@ h1.title { font-size: 38px; font-weight: 800; }
 .setup-detail { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
 .setup-action { grid-column: 2; color: var(--accent); font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
 .setup-item[data-state="done"] .setup-action { color: var(--good); }
+.setup-page-list .setup-list { grid-template-columns: 1fr; }
+.setup-page-list .setup-item {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto;
+  align-items: center;
+  min-height: auto;
+  padding: 15px 18px;
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+.setup-page-list .setup-item:last-child { border-bottom: 0; }
+.setup-page-list .setup-body { display: grid; gap: 3px; }
+.setup-page-list .setup-title { font-size: 13.5px; }
+.setup-page-list .setup-detail { font-size: 12.5px; }
+.setup-page-list .setup-action { grid-column: auto; align-self: center; }
 .setup-summary {
   display: flex;
   align-items: center;
@@ -2264,11 +2368,13 @@ h1.title { font-size: 38px; font-weight: 800; }
 .help-card p { margin-top: 6px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
 .help-card code { display: block; margin-top: 10px; white-space: normal; overflow-wrap: anywhere; }
 .command-reference table code { white-space: normal; overflow-wrap: anywhere; }
-.prose { max-width: 900px; }
+.prose { max-width: none; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
-.prose p, .prose ul { margin-top: 12px; }
+.prose p, .prose ul { max-width: 900px; margin-top: 12px; }
 .empty-item, .no-results { color: var(--faint); font-size: 13px; }
 .no-results { border: 1px dashed var(--line-2); border-radius: var(--r-md); padding: 22px; text-align: center; }
+.markdown-table { width: 100%; overflow-x: auto; }
+.markdown-table table { min-width: 100%; }
 table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
 th, td { border: 1px solid var(--line); padding: 9px; text-align: left; vertical-align: top; }
 th { background: var(--surface-3); color: var(--ink); }
@@ -2310,6 +2416,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .kpis, .core, .status-grid, .summary, .grid { grid-template-columns: 1fr 1fr; }
   .setup-list { grid-template-columns: 1fr; }
   .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .setup-page-list .setup-item { grid-template-columns: auto minmax(0, 1fr); }
+  .setup-page-list .setup-action { grid-column: 2; margin-top: 4px; }
   .help-grid { grid-template-columns: 1fr; }
   .app-footer { justify-content: flex-start; }
   .r-field-grid { grid-template-columns: 1fr; }
@@ -2577,7 +2685,7 @@ def refresh_script() -> str:
       sections.forEach((section) => section.open = shouldOpen);
       return;
     }
-    if (/^[1-6]$/.test(event.key)) {
+    if (/^[1-5]$/.test(event.key)) {
       const section = $$('.section')[Number(event.key) - 1];
       if (section) {
         section.open = true;
@@ -2908,6 +3016,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     alerts = cadence_alerts(cadence_rules, reports_dir, today)
     risks = read_risk_entries(core_dir)
     decisions = read_decision_entries(core_dir)
+    due_decisions = due_decision_entries(decisions, today)
     critical_risks = sum(1 for risk in risks if risk["severity"] == "Critical")
     high_or_critical_risks = [risk for risk in risks if risk["severity"] in {"Critical", "High"}]
     cadence_preview_rows = cadence_rows(cadence_rules, reports_dir, today)
@@ -2965,12 +3074,24 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         setup_items=setup_items,
     )
 
+    report_prompt_context = configured_report_prompt_context(config)
     ai_prompts = [
-        (rule["label"], enrich_ai_prompt(rule["label"], exact_prompt(display_command(rule["command"]), project_folder, repos)))
+        (
+            rule["label"],
+            enrich_ai_prompt(
+                rule["label"],
+                exact_prompt(
+                    display_command(rule["command"]),
+                    project_folder,
+                    repos,
+                    combine_prompt_context(report_prompt_context, str(rule.get("prompt_context") or "")),
+                ),
+            ),
+        )
         for rule in cadence_rules
         if display_command(rule["command"])
     ]
-    ai_prompts.extend(default_ai_prompts(company, project_folder, repos))
+    ai_prompts.extend(default_ai_prompts(company, project_folder, repos, report_prompt_context))
     seen: set[str] = set()
     seen_labels: set[str] = set()
     ai_prompt_items = []
@@ -2987,8 +3108,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         copy_card(f"local-command-{index}-{slugify(label)}", label, command, "Command")
         for index, (label, command) in enumerate(local_helper_commands(project_folder), start=1)
     ]
-    command_card_count = len(ai_prompt_items) + len(local_command_items)
-    help_html = dashboard_help_html(project_folder)
+    help_html = dashboard_help_html(project_folder, ai_prompt_items, local_command_items)
 
     learning_cards = f"""
 <a class="learning-card" href="learning/index.html">
@@ -3010,10 +3130,10 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     <div class="d-meta"><span class="owner-tag">{esc(decision["owner"])}</span><span>/</span><span>{esc(decision["when"])}</span></div>
   </div>
 </a>"""
-            for index, decision in enumerate(decisions[:5], start=1)
+            for index, decision in enumerate(due_decisions[:5], start=1)
         )
-        if decisions
-        else '<p class="empty-item">No recorded decisions found.</p>'
+        if due_decisions
+        else '<p class="empty-item">No decision revisit triggers are due or marked triggered.</p>'
     )
 
     top_risk_rows = (
@@ -3148,7 +3268,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </div>
     <div class="today-grid">
       <div class="today-col">
-        <div class="col-h">Decision revisit triggers <span class="cnt">{esc(len(decisions))}</span></div>
+        <div class="col-h">Decision reviews due <span class="cnt">{esc(len(due_decisions))}</span></div>
         {decision_rows}
       </div>
       <div class="today-col">
@@ -3237,27 +3357,6 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
   </details>
 
   {help_html}
-
-  <details class="section" id="sec-commands">
-    <summary>
-      <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">06</span>
-      <span class="sec-title">Commands</span>
-      <span class="sec-meta">{pluralize(command_card_count, "copy card")}</span>
-    </summary>
-    <div class="sec-body">
-      <div class="cmd-groups">
-        <section>
-          <div class="cmd-group-h">AI Prompts</div>
-          <div class="cmd-grid">{''.join(ai_prompt_items)}</div>
-        </section>
-        <section>
-          <div class="cmd-group-h">Local Commands</div>
-          <div class="cmd-grid">{''.join(local_command_items)}</div>
-        </section>
-      </div>
-    </div>
-  </details>
 """
     body = page_shell(
         content,
@@ -3282,6 +3381,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--company-name", help="Company name to store in wiki metadata")
     parser.add_argument("--company-description", help="Short company description to store in wiki metadata")
     parser.add_argument("--company-url", help="Company website URL; used as context and optional description source")
+    parser.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards")
     parser.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
     args = parser.parse_args(argv)
 
@@ -3305,6 +3405,7 @@ def main(argv: list[str]) -> int:
         company_name_value=args.company_name,
         company_description_value=args.company_description,
         company_url=args.company_url,
+        report_prompt_context=args.report_prompt_context,
         repos=args.repo,
     )
 
