@@ -86,6 +86,15 @@ Recommended folder shape:
 
 All user-facing wiki pages are HTML. Core context starts as editable Markdown source under `core/`, then the helper renders matching HTML pages. The bookmarkable command center is `knowledge/wiki/index.html`.
 
+Generated wiki pages share a lightweight app shell:
+
+- A left-side navigation rail for Dashboard, Core, Reports, Learning, and Commands.
+- Client-side search across dashboard context, core docs, report artifacts, and active learning items.
+- Breadcrumbs on generated core, learning, and report pages.
+- Automatic page tables of contents when a page has enough sections.
+
+The helper writes `knowledge/wiki/search-index.json` whenever it refreshes the wiki. Search works best through `dzcto serve "<project folder>"`, because browsers may block `file://` pages from fetching the JSON index.
+
 The index shows company information under the title, then collapsible command-center sections:
 
 - `Cadence`: due alerts from `core/OPERATING_CADENCE.md`.
@@ -116,7 +125,7 @@ The dashboard refresh button can update cadence alerts only when the wiki is ser
 dzcto serve "<project folder>"
 ```
 
-Open the printed local URL and click `Refresh Cadence`. A plain `file://` page cannot run Python directly, so the button will tell the user to use `dzcto serve`.
+Open the printed local URL and click `Refresh Cadence`. A plain `file://` page cannot run Python directly, and may not load the generated search index, so the button will tell the user to use `dzcto serve`.
 
 The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, updates, stale checks, serving, diagnostics, and issue bundles.
 

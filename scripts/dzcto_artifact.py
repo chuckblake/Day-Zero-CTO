@@ -119,6 +119,25 @@ def plain_markdown(value: str | None) -> str:
     return text.strip()
 
 
+def plain_html(value: str | None) -> str:
+    text = value or ""
+    text = re.sub(r"<script\b[^>]*>.*?</script>", " ", text, flags=re.I | re.S)
+    text = re.sub(r"<style\b[^>]*>.*?</style>", " ", text, flags=re.I | re.S)
+    text = re.sub(r'<aside\b[^>]*class=["\'][^"\']*shell-sidebar[^"\']*["\'][^>]*>.*?</aside>', " ", text, flags=re.I | re.S)
+    text = re.sub(r'<nav\b[^>]*class=["\'][^"\']*(?:breadcrumbs|toc)[^"\']*["\'][^>]*>.*?</nav>', " ", text, flags=re.I | re.S)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def snippet(value: str | None, limit: int = 180) -> str:
+    text = plain_markdown(value) if value else ""
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rsplit(" ", 1)[0].rstrip() + "..."
+
+
 def project_config(wiki_root: Path) -> dict[str, Any]:
     value = read_json(sidecar_dir(wiki_root) / "config.json", {})
     return value if isinstance(value, dict) else {}
@@ -412,6 +431,57 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
         ("Update Day Zero CTO", f'dzcto update --project "{project_folder}"'),
         ("Issue Bundle", f'dzcto collect-issue-bundle "{project_folder}"'),
     ]
+
+
+def shell_nav(prefix: str, active: str = "dashboard") -> str:
+    links = [
+        ("dashboard", "Dashboard", "index.html"),
+        ("core", "Core", "core/strategy.html"),
+        ("reports", "Reports", "index.html#reports"),
+        ("learning", "Learning", "learning/index.html"),
+        ("commands", "Commands", "index.html#commands"),
+    ]
+    link_html = "\n".join(
+        f'<a class="shell-link {"active" if key == active else ""}" href="{esc(prefix + href)}">{esc(label)}</a>'
+        for key, label, href in links
+    )
+    return f"""
+<aside class="shell-sidebar">
+  <a class="shell-brand" href="{esc(prefix)}index.html">
+    <span>Day Zero CTO</span>
+    <strong>Knowledge Wiki</strong>
+  </a>
+  <label class="shell-search">
+    <span>Search</span>
+    <input type="search" placeholder="Search wiki..." data-dzcto-search data-search-index="{esc(prefix)}search-index.json" data-search-prefix="{esc(prefix)}" autocomplete="off">
+  </label>
+  <div class="search-results" data-dzcto-search-results hidden></div>
+  <nav class="shell-nav" aria-label="Wiki navigation">
+    {link_html}
+  </nav>
+</aside>
+"""
+
+
+def breadcrumbs(prefix: str, items: list[tuple[str, str | None]]) -> str:
+    parts = [f'<a href="{esc(prefix)}index.html">Dashboard</a>']
+    for label, href in items:
+        if href:
+            parts.append(f'<a href="{esc(prefix + href)}">{esc(label)}</a>')
+        else:
+            parts.append(f"<span>{esc(label)}</span>")
+    return f'<nav class="breadcrumbs" aria-label="Breadcrumb">{"<span>/</span>".join(parts)}</nav>'
+
+
+def page_shell(content: str, *, prefix: str = "", active: str = "dashboard") -> str:
+    return f"""
+<div class="app-shell">
+  {shell_nav(prefix, active)}
+  <main>
+    {content}
+  </main>
+</div>
+"""
 
 
 def copy_card(card_id: str, label: str, text: str, kind: str) -> str:
@@ -865,6 +935,116 @@ def learning_summary(items: list[dict[str, Any]], today: dt.date) -> str:
     return " · ".join(parts)
 
 
+def html_title(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return report_name(path)
+    if match := re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S):
+        return plain_html(match.group(1)) or report_name(path)
+    if match := re.search(r"<h1[^>]*>(.*?)</h1>", text, re.I | re.S):
+        return plain_html(match.group(1)) or report_name(path)
+    return report_name(path)
+
+
+def search_entry(
+    *,
+    title: str,
+    kind: str,
+    url: str,
+    text: str,
+    summary: str | None = None,
+    date: str | None = None,
+    section: str | None = None,
+) -> dict[str, str]:
+    haystack = plain_html(text)
+    return {
+        "title": title,
+        "kind": kind,
+        "url": url,
+        "summary": snippet(summary or haystack),
+        "date": date or "",
+        "section": section or "",
+        "text": haystack,
+    }
+
+
+def write_search_index(
+    wiki_root: Path,
+    project_folder: Path,
+    *,
+    company: str,
+    description: str,
+    core_pages: list[dict[str, Any]],
+    report_entries: list[tuple[str, str, list[Path]]],
+    learning_items: list[dict[str, Any]],
+) -> None:
+    entries: list[dict[str, str]] = [
+        search_entry(
+            title=f"{company} Day Zero CTO",
+            kind="Dashboard",
+            url="index.html",
+            text=f"{company} {description} cadence core context reports learning commands",
+            summary=description,
+        )
+    ]
+
+    core_dir = wiki_root / "core"
+    for page in core_pages:
+        if not page["source_exists"]:
+            continue
+        source_path = core_dir / page["doc"]
+        source_text = source_path.read_text(encoding="utf-8", errors="replace")
+        entries.append(
+            search_entry(
+                title=page["title"],
+                kind="Core",
+                url=page["html"],
+                text=source_text,
+                summary=page["description"],
+                section=page["doc"],
+            )
+        )
+
+    for folder, label, links in report_entries:
+        for path in links:
+            html_text = path.read_text(encoding="utf-8", errors="replace")
+            entries.append(
+                search_entry(
+                    title=html_title(path),
+                    kind=label,
+                    url=path.relative_to(wiki_root).as_posix(),
+                    text=html_text,
+                    summary=plain_html(html_text),
+                    date=report_run_date(path),
+                    section=folder,
+                )
+            )
+
+    for item in active_learning_items(learning_items):
+        title = text_value(item.get("title") or item.get("id") or "Learning item")
+        summary = text_value(item.get("summary"))
+        details = text_value(item.get("details") or item.get("detail"))
+        entries.append(
+            search_entry(
+                title=title,
+                kind="Learning",
+                url="learning/index.html",
+                text=f"{title} {summary} {details} {text_value(item.get('source'))} {text_value(item.get('tags'))}",
+                summary=summary or details,
+                date=text_value(item.get("due_on")),
+                section="learning",
+            )
+        )
+
+    payload = {
+        "generatedAt": utc_now(),
+        "projectFolder": str(project_folder),
+        "entries": entries,
+    }
+    write_json(wiki_root / "search-index.json", payload)
+
+
 def learning_item_status(item: dict[str, Any], today: dt.date) -> str:
     if int(item.get("seen_count", 0) or 0) == 0:
         return "New"
@@ -916,6 +1096,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.55;
 }
+.app-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
 main { width: 100%; max-width: 1180px; margin: 0 auto; padding: 36px 28px 64px; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -941,7 +1122,32 @@ button {
   padding: 9px 12px;
 }
 button:hover { background: #0f4f68; }
-button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #9bc7d6; outline-offset: 2px; }
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible { outline: 3px solid #9bc7d6; outline-offset: 2px; }
+.shell-sidebar { position: sticky; top: 0; height: 100vh; overflow: auto; border-right: 1px solid var(--line); background: rgba(255,255,255,.92); backdrop-filter: blur(10px); padding: 22px 16px; z-index: 4; }
+.shell-brand { display: block; color: var(--ink); margin-bottom: 20px; }
+.shell-brand:hover { text-decoration: none; }
+.shell-brand span { display: block; color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0; }
+.shell-brand strong { display: block; margin-top: 3px; font-size: 17px; }
+.shell-nav { display: grid; gap: 4px; margin-top: 14px; }
+.shell-link { display: block; border-radius: 7px; color: var(--ink); font-weight: 700; padding: 9px 10px; }
+.shell-link:hover, .shell-link.active { background: var(--accent-soft); text-decoration: none; }
+.shell-search { display: grid; gap: 6px; position: relative; }
+.shell-search span { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.shell-search input { width: 100%; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); font: inherit; padding: 9px 10px; }
+.search-results { border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 16px 40px rgba(23,32,51,.14); margin-top: 8px; max-height: 60vh; overflow: auto; padding: 6px; }
+.search-result { display: block; border-radius: 6px; color: var(--ink); padding: 9px; }
+.search-result:hover, .search-result:focus { background: var(--soft); text-decoration: none; }
+.search-result strong, .search-result span { display: block; }
+.search-result span { color: var(--muted); font-size: 12px; font-weight: 800; margin-bottom: 2px; text-transform: uppercase; }
+.search-result p { margin-top: 4px; font-size: 13px; }
+.breadcrumbs { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; color: var(--muted); font-size: 14px; margin-bottom: 22px; }
+.breadcrumbs span { color: var(--muted); }
+.toc { border: 1px solid var(--line); border-radius: 8px; background: var(--soft); margin: 18px 0 24px; padding: 12px; }
+.toc[hidden] { display: none; }
+.toc strong { display: block; margin-bottom: 8px; }
+.toc-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.toc-links a { border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 13px; font-weight: 700; padding: 5px 9px; }
+.toc-links a:hover { background: var(--accent-soft); text-decoration: none; }
 .topbar { display: flex; justify-content: space-between; gap: 22px; align-items: flex-start; margin-bottom: 24px; }
 .topbar > *, .status-card, .command-card, .core-card, .report-card, .learning-card, .help-command, .copy-card { min-width: 0; }
 .eyebrow { color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
@@ -1014,6 +1220,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
 .prose p, .prose ul { margin-top: 12px; }
 @media (max-width: 920px) {
+  .app-shell { display: block; }
+  .shell-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  .shell-nav { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); }
+  .shell-link { text-align: center; padding: 8px 5px; font-size: 13px; }
   main { padding: 30px 18px 52px; }
   h1 { font-size: 32px; }
   .topbar, .command-strip { grid-template-columns: 1fr; display: grid; }
@@ -1094,6 +1304,125 @@ def refresh_script() -> str:
       }
     });
   });
+
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+  }
+
+  function normalizedTerms(value) {
+    return String(value || '').toLowerCase().split(/\\s+/).filter((term) => term.length > 1);
+  }
+
+  function scoreEntry(entry, terms) {
+    const title = String(entry.title || '').toLowerCase();
+    const kind = String(entry.kind || '').toLowerCase();
+    const text = `${entry.title || ''} ${entry.kind || ''} ${entry.section || ''} ${entry.summary || ''} ${entry.text || ''}`.toLowerCase();
+    let score = 0;
+    for (const term of terms) {
+      if (!text.includes(term)) return 0;
+      if (title.startsWith(term)) score += 12;
+      if (title.includes(term)) score += 8;
+      if (kind.includes(term)) score += 4;
+      score += 1;
+    }
+    return score;
+  }
+
+  async function loadSearchIndex(input) {
+    if (input._dzctoIndex) return input._dzctoIndex;
+    try {
+      const response = await fetch(input.dataset.searchIndex || 'search-index.json');
+      if (!response.ok) throw new Error('Search index unavailable');
+      const payload = await response.json();
+      input._dzctoIndex = Array.isArray(payload.entries) ? payload.entries : [];
+    } catch (error) {
+      input._dzctoIndex = [];
+    }
+    return input._dzctoIndex;
+  }
+
+  function prefixedUrl(prefix, url) {
+    const value = String(url || 'index.html');
+    if (/^(https?:|file:|\\/|#)/.test(value)) return value;
+    return `${prefix || ''}${value}`;
+  }
+
+  function renderSearchResults(input, container, results, query) {
+    if (!query.trim()) {
+      container.hidden = true;
+      container.innerHTML = '';
+      return;
+    }
+    if (!results.length) {
+      container.hidden = false;
+      container.innerHTML = '<div class="search-result"><strong>No matches</strong><p>Try a report type, decision, risk, or stack term.</p></div>';
+      return;
+    }
+    const prefix = input.dataset.searchPrefix || '';
+    container.hidden = false;
+    container.innerHTML = results.slice(0, 8).map(({ entry }) => `
+      <a class="search-result" href="${escapeHtml(prefixedUrl(prefix, entry.url))}">
+        <span>${escapeHtml([entry.kind, entry.date].filter(Boolean).join(' · '))}</span>
+        <strong>${escapeHtml(entry.title)}</strong>
+        <p>${escapeHtml(entry.summary)}</p>
+      </a>
+    `).join('');
+  }
+
+  document.querySelectorAll('[data-dzcto-search]').forEach((input) => {
+    const container = input.closest('.shell-sidebar')?.querySelector('[data-dzcto-search-results]');
+    if (!container) return;
+    input.addEventListener('input', async () => {
+      const terms = normalizedTerms(input.value);
+      const entries = await loadSearchIndex(input);
+      const results = entries
+        .map((entry) => ({ entry, score: scoreEntry(entry, terms) }))
+        .filter((result) => result.score > 0)
+        .sort((a, b) => b.score - a.score);
+      renderSearchResults(input, container, results, input.value);
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        input.value = '';
+        container.hidden = true;
+      }
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+    const active = document.activeElement;
+    if (active && ['INPUT', 'TEXTAREA'].includes(active.tagName)) return;
+    const input = document.querySelector('[data-dzcto-search]');
+    if (input) {
+      event.preventDefault();
+      input.focus();
+    }
+  });
+
+  document.querySelectorAll('[data-dzcto-toc]').forEach((toc) => {
+    const scope = document.querySelector('[data-toc-scope]') || document.querySelector('main');
+    const headings = Array.from(scope.querySelectorAll('h2, h3')).filter((heading) => heading.textContent.trim());
+    if (headings.length < 2) {
+      toc.hidden = true;
+      return;
+    }
+    headings.forEach((heading) => {
+      if (!heading.id) {
+        heading.id = heading.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+      }
+    });
+    toc.hidden = false;
+    toc.innerHTML = `<strong>On this page</strong><div class="toc-links">${
+      headings.map((heading) => `<a href="#${escapeHtml(heading.id)}">${escapeHtml(heading.textContent.trim())}</a>`).join('')
+    }</div>`;
+  });
 })();
 </script>
 """
@@ -1112,6 +1441,7 @@ def write_html_page(path: Path, title: str, body: str, provenance: dict[str, Any
   <body>
     {body}
     {provenance_block(provenance)}
+    {refresh_script()}
   </body>
 </html>
 """,
@@ -1175,9 +1505,8 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
         title=f"{company} Learning",
         generated_at=generated_at,
     )
-    body = f"""
-<main>
-  <p class="nav"><a href="../index.html">Knowledge wiki index</a></p>
+    content = f"""
+  {breadcrumbs("../", [("Learning", None)])}
   <div class="topbar">
     <div>
       <p class="eyebrow">Learning</p>
@@ -1185,6 +1514,8 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
       <p class="subtitle">Spaced repetition for system knowledge. Each prompt teaches one concept, records a self-rating, updates the mastery checklist, and schedules the next review.</p>
     </div>
   </div>
+  <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
+  <div data-toc-scope>
   <div class="summary">
     <div class="metric"><span>Active</span><strong>{counts["active"]}</strong></div>
     <div class="metric"><span>Due</span><strong>{counts["due"]}</strong></div>
@@ -1211,8 +1542,8 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
     <h2>Recent Reviews</h2>
     <ul>{review_rows}</ul>
   </section>
-</main>
 """
+    body = page_shell(f"{content}\n  </div>", prefix="../", active="learning")
     write_html_page(learning_dir / "index.html", f"{company} Learning", body, provenance)
     update_manifest(wiki_root, provenance)
 
@@ -1220,6 +1551,20 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
 def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any]) -> str:
     safe_title = esc(title)
     safe_date = esc(date)
+    content = f"""
+    {breadcrumbs("../../", [("Reports", "index.html#reports"), (REPORT_FOLDERS[kind], None)])}
+    <div class="topbar">
+      <div>
+        <p class="eyebrow">{esc(REPORT_FOLDERS[kind])}</p>
+        <h1>{safe_title}</h1>
+        <p class="subtitle">{safe_date}</p>
+      </div>
+    </div>
+    <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
+    <div data-toc-scope>
+      {body}
+    </div>
+"""
     return f"""<!doctype html>
 <html lang="en">
   <head>
@@ -1229,18 +1574,9 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     <style>{base_css()}</style>
   </head>
   <body>
-    <main>
-      <p class="nav"><a href="../../index.html">Knowledge wiki index</a></p>
-      <div class="topbar">
-        <div>
-          <p class="eyebrow">{esc(REPORT_FOLDERS[kind])}</p>
-          <h1>{safe_title}</h1>
-          <p class="subtitle">{safe_date}</p>
-        </div>
-      </div>
-      {body}
-    </main>
+    {page_shell(content, prefix="../../", active="reports")}
     {provenance_block(provenance)}
+    {refresh_script()}
   </body>
 </html>
 """
@@ -1273,9 +1609,8 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
             generated_at=utc_now(),
             source_hashes=source_hash,
         )
-        body = f"""
-<main>
-  <p class="nav"><a href="../index.html">Knowledge wiki index</a></p>
+        content = f"""
+  {breadcrumbs("../", [("Core", "index.html#core"), (title, None)])}
   <div class="topbar">
     <div>
       <p class="eyebrow">Core Context</p>
@@ -1289,11 +1624,12 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
     <div class="status-card"><span>Updated</span><strong>{esc(dt.date.today().isoformat())}</strong></div>
     <div class="status-card"><span>Page</span><strong>HTML</strong></div>
   </div>
-  <section class="artifact-section prose">
+  <nav class="toc" data-dzcto-toc hidden aria-label="Page sections"></nav>
+  <section class="artifact-section prose" data-toc-scope>
     {content_html}
   </section>
-</main>
 """
+        body = page_shell(content, prefix="../", active="core")
         write_html_page(wiki_root / relative_path, title, body, provenance)
         update_manifest(wiki_root, provenance)
         pages.append(
@@ -1358,6 +1694,15 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     learning_items = read_learning_items(learning_dir)
     learning_reviews = read_learning_reviews(learning_dir)
     write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
+    write_search_index(
+        wiki_root,
+        project_folder,
+        company=company,
+        description=description,
+        core_pages=core_pages,
+        report_entries=report_entries,
+        learning_items=learning_items,
+    )
 
     if not cadence_rules:
         cadence_status_html = '<div class="cadence-alert"><strong>No cadence rules</strong><p>Add an Index Cadence Rules table to Operating Cadence when this project has recurring DZCTO reports.</p></div>'
@@ -1431,8 +1776,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         title=f"{company} Day Zero CTO Knowledge Wiki",
         generated_at=generated_at,
     )
-    body = f"""
-<main>
+    content = f"""
   <div class="topbar">
     <div>
       <p class="eyebrow">Command Center</p>
@@ -1462,23 +1806,23 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <code>{esc(local_helper_commands(project_folder)[2][1])}</code>
     </div>
   </div>
-  <details class="wiki-details" open>
+  <details class="wiki-details" id="cadence" open>
     <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Cadence</span><span class="wiki-meta">{esc(report_status)}</span></summary>
     <div class="wiki-body">{cadence_status_html}</div>
   </details>
-  <details class="wiki-details" open>
+  <details class="wiki-details" id="core" open>
     <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Core Context</span><span class="wiki-meta">{core_ready}/{len(CORE_DOCS)} ready</span></summary>
     <div class="wiki-body core-grid">{''.join(core_links)}</div>
   </details>
-  <details class="wiki-details" open>
+  <details class="wiki-details" id="reports" open>
     <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Reports</span><span class="wiki-meta">{esc(report_status)}</span></summary>
     <div class="wiki-body reports-grid">{''.join(report_sections)}</div>
   </details>
-  <details class="wiki-details" open>
+  <details class="wiki-details" id="learning" open>
     <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Learning</span><span class="wiki-meta">{esc(learning_status)}</span></summary>
     <div class="wiki-body learning-grid">{learning_cards}</div>
   </details>
-  <details class="wiki-details">
+  <details class="wiki-details" id="commands">
     <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Commands</span><span class="wiki-meta">{pluralize(command_card_count, "copy card")}</span></summary>
     <div class="wiki-body command-groups">
       <section class="command-group">
@@ -1491,9 +1835,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       </section>
     </div>
   </details>
-</main>
-{refresh_script()}
 """
+    body = page_shell(content, active="dashboard")
     write_html_page(wiki_root / "index.html", f"{company} Day Zero CTO", body, provenance)
     update_manifest(wiki_root, provenance)
 
