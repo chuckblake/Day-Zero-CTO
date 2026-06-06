@@ -354,22 +354,78 @@ def display_command(command: str) -> str:
     return text.strip()
 
 
-def default_help_commands(company: str) -> list[tuple[str, str]]:
+def repo_context(repos: list[str]) -> str:
+    if not repos:
+        return "No read-only code repo is configured; ask for repo access if the work needs code or Git evidence."
+    if len(repos) == 1:
+        return f"Use read-only code repo `{repos[0]}`."
+    repo_list = ", ".join(f"`{repo}`" for repo in repos)
+    return f"Use read-only code repos: {repo_list}."
+
+
+def prompt_context(project_folder: Path, repos: list[str]) -> str:
+    return f"Use project folder `{project_folder}`. {repo_context(repos)}"
+
+
+def exact_prompt(base: str, project_folder: Path, repos: list[str]) -> str:
+    return f"{base.strip()} {prompt_context(project_folder, repos)}".strip()
+
+
+def enrich_ai_prompt(label: str, prompt: str) -> str:
+    if re.search(r"weekly\s+cto|weekly\s+review", f"{label} {prompt}", re.I) and "read-only local Git history" not in prompt:
+        return f"{prompt.strip()} Prefer read-only local Git history for the review window when available; do not run mutating Git commands."
+    return prompt
+
+
+def default_ai_prompts(company: str, project_folder: Path, repos: list[str]) -> list[tuple[str, str]]:
     return [
-        ("Weekly CTO Review", f"Run the weekly CTO review for {company}."),
-        ("CEO Update", f"Write the CEO engineering update for {company}."),
-        ("Tech Stack", f"Review the connected codebase(s) and create a Tech Stack report for {company}."),
-        ("Engineering Risk Review", f"Run the engineering risk review for {company}."),
-        ("Learning", f"Run a Day Zero CTO learning prompt for {company}."),
-        ("Check Stale", 'dzcto check-stale "<project folder>"'),
-        ("Doctor", 'dzcto doctor --project "<project folder>"'),
-        ("Issue Bundle", 'dzcto collect-issue-bundle "<project folder>"'),
-        ("Decision Help", f"Help me work through a CTO decision for {company}: <decision or problem>."),
+        (
+            "Weekly CTO Review",
+            exact_prompt(
+                f"Run the weekly CTO review for {company}. Prefer read-only local Git history for the review window when available; do not run mutating Git commands.",
+                project_folder,
+                repos,
+            ),
+        ),
+        ("CEO Update", exact_prompt(f"Write the CEO engineering update for {company}.", project_folder, repos)),
+        ("Tech Stack", exact_prompt(f"Review the connected codebase(s) and create a Tech Stack report for {company}.", project_folder, repos)),
+        ("Engineering Risk Review", exact_prompt(f"Run the engineering risk review for {company}.", project_folder, repos)),
+        ("Learning", exact_prompt(f"Run a Day Zero CTO learning prompt for {company}.", project_folder, repos)),
+        ("Decision Help", exact_prompt(f"Help me work through a CTO decision for {company}: <decision or problem>.", project_folder, repos)),
         (
             "CTO Code Review",
-            f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo(s) as read-only unless I explicitly ask for code changes.",
+            exact_prompt(
+                f"Run a CTO code review for {company} against <branch, PR, or diff>. Treat the repo(s) as read-only unless I explicitly ask for code changes.",
+                project_folder,
+                repos,
+            ),
         ),
     ]
+
+
+def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
+    return [
+        ("Check Stale", f'dzcto check-stale "{project_folder}"'),
+        ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
+        ("Serve Dashboard", f'dzcto serve "{project_folder}"'),
+        ("Doctor", f'dzcto doctor --project "{project_folder}"'),
+        ("Issue Bundle", f'dzcto collect-issue-bundle "{project_folder}"'),
+    ]
+
+
+def copy_card(card_id: str, label: str, text: str, kind: str) -> str:
+    button_label = f"Copy {kind}"
+    return f"""<article class="copy-card">
+  <div class="copy-card-header">
+    <div>
+      <strong>{esc(label)}</strong>
+      <span>{esc(kind)}</span>
+    </div>
+    <button type="button" data-copy-target="{esc(card_id)}">{esc(button_label)}</button>
+  </div>
+  <pre id="{esc(card_id)}" class="copy-text">{esc(text)}</pre>
+  <span class="copy-status" data-copy-status-for="{esc(card_id)}" aria-live="polite"></span>
+</article>"""
 
 
 def present(value: Any) -> bool:
@@ -886,7 +942,7 @@ button {
 button:hover { background: #0f4f68; }
 button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #9bc7d6; outline-offset: 2px; }
 .topbar { display: flex; justify-content: space-between; gap: 22px; align-items: flex-start; margin-bottom: 24px; }
-.topbar > *, .status-card, .command-card, .core-card, .report-card, .learning-card, .help-command { min-width: 0; }
+.topbar > *, .status-card, .command-card, .core-card, .report-card, .learning-card, .help-command, .copy-card { min-width: 0; }
 .eyebrow { color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
 .subtitle { max-width: 780px; margin-top: 10px; font-size: 17px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
@@ -920,9 +976,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .report-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
 .report-link { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
 .report-date { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-top: 0; }
-.learning-grid, .help-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.learning-grid, .help-grid, .copy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .help-command { display: grid; gap: 6px; }
 .help-command code { display: block; white-space: normal; overflow-wrap: anywhere; }
+.command-groups { display: grid; gap: 22px; }
+.command-group h3 { margin-bottom: 10px; }
+.copy-card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 12px; }
+.copy-card-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.copy-card-header strong, .copy-card-header span { display: block; }
+.copy-card-header span { color: var(--muted); font-size: 12px; font-weight: 800; margin-top: 3px; text-transform: uppercase; }
+.copy-card-header button { flex: 0 0 auto; padding: 7px 10px; }
+.copy-text { margin: 12px 0 0; max-height: 136px; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; font-size: 13px; }
+.copy-status { display: block; min-height: 18px; margin-top: 7px; color: var(--good); font-size: 13px; }
 .cadence-list { display: grid; gap: 10px; }
 .cadence-alert { border-color: #e2b454; background: var(--warn-soft); }
 .cadence-ok { border-color: #afd9c4; background: var(--good-soft); }
@@ -953,7 +1018,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
   .topbar, .command-strip { grid-template-columns: 1fr; display: grid; }
   .actions { justify-content: flex-start; }
   .status-note { text-align: left; }
-  .status-grid, .core-grid, .reports-grid, .learning-grid, .help-grid, .summary, .grid { grid-template-columns: 1fr; }
+  .status-grid, .core-grid, .reports-grid, .learning-grid, .help-grid, .copy-grid, .summary, .grid { grid-template-columns: 1fr; }
   .report-link { grid-template-columns: 1fr; gap: 2px; }
   .wiki-details summary { align-items: flex-start; }
   .wiki-meta { text-align: left; white-space: normal; }
@@ -967,21 +1032,66 @@ def refresh_script() -> str:
 (() => {
   const button = document.querySelector('[data-dzcto-refresh]');
   const status = document.querySelector('[data-dzcto-refresh-status]');
-  if (!button || !status) return;
-  button.addEventListener('click', async () => {
-    status.textContent = 'Refreshing...';
-    if (location.protocol === 'file:') {
-      status.textContent = 'Open with dzcto serve "<project folder>" to refresh from the browser.';
-      return;
+  if (button && status) {
+    button.addEventListener('click', async () => {
+      status.textContent = 'Refreshing...';
+      if (location.protocol === 'file:') {
+        status.textContent = 'Open with dzcto serve "<project folder>" to refresh from the browser.';
+        return;
+      }
+      try {
+        const response = await fetch('/__dzcto/refresh', { method: 'POST' });
+        if (!response.ok) throw new Error(await response.text());
+        status.textContent = 'Refreshed. Reloading...';
+        location.reload();
+      } catch (error) {
+        status.textContent = 'Refresh failed. Run dzcto refresh "<project folder>" in a terminal.';
+      }
+    });
+  }
+
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (error) {}
     }
-    try {
-      const response = await fetch('/__dzcto/refresh', { method: 'POST' });
-      if (!response.ok) throw new Error(await response.text());
-      status.textContent = 'Refreshed. Reloading...';
-      location.reload();
-    } catch (error) {
-      status.textContent = 'Refresh failed. Run dzcto refresh "<project folder>" in a terminal.';
-    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const ok = document.execCommand('copy');
+    textarea.remove();
+    return ok;
+  }
+
+  document.querySelectorAll('[data-copy-target]').forEach((copyButton) => {
+    copyButton.addEventListener('click', async () => {
+      const target = document.getElementById(copyButton.dataset.copyTarget);
+      const copyStatus = document.querySelector(`[data-copy-status-for="${copyButton.dataset.copyTarget}"]`);
+      if (!target) return;
+      try {
+        const copied = await copyText(target.textContent.trim());
+        if (copied) {
+          if (copyStatus) copyStatus.textContent = 'Copied';
+          return;
+        }
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        if (copyStatus) copyStatus.textContent = 'Selected';
+      } catch (error) {
+        if (copyStatus) copyStatus.textContent = 'Select the text and copy manually';
+      }
+    });
   });
 })();
 </script>
@@ -1273,21 +1383,32 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         report_status = f"{pluralize(report_count, 'artifact')} · {pluralize(len(alerts), 'alert')}"
     learning_status = learning_summary(learning_items, today)
     learning_counts_value = learning_counts(learning_items, today)
-    repo_count = len(config.get("codeRepos", []) or [])
+    repos = [str(item).strip() for item in (config.get("codeRepos", []) or []) if str(item).strip()]
+    repo_count = len(repos)
 
-    help_commands = [(rule["label"], display_command(rule["command"])) for rule in cadence_rules] + [
-        ("Refresh Dashboard", 'dzcto refresh "<project folder>"'),
-        ("Serve Dashboard", 'dzcto serve "<project folder>"'),
-        *default_help_commands(company),
+    ai_prompts = [
+        (rule["label"], enrich_ai_prompt(rule["label"], exact_prompt(display_command(rule["command"]), project_folder, repos)))
+        for rule in cadence_rules
+        if display_command(rule["command"])
     ]
+    ai_prompts.extend(default_ai_prompts(company, project_folder, repos))
     seen: set[str] = set()
-    help_items = []
-    for label, command in help_commands:
-        normalized = command.lower()
-        if not command or normalized in seen:
+    seen_labels: set[str] = set()
+    ai_prompt_items = []
+    for index, (label, prompt) in enumerate(ai_prompts, start=1):
+        normalized = prompt.lower()
+        normalized_label = label.lower()
+        if not prompt or normalized in seen or normalized_label in seen_labels:
             continue
         seen.add(normalized)
-        help_items.append(f'<div class="help-command"><strong>{esc(label)}</strong><code>{esc(command)}</code></div>')
+        seen_labels.add(normalized_label)
+        ai_prompt_items.append(copy_card(f"ai-prompt-{index}-{slugify(label)}", label, prompt, "Prompt"))
+
+    local_command_items = [
+        copy_card(f"local-command-{index}-{slugify(label)}", label, command, "Command")
+        for index, (label, command) in enumerate(local_helper_commands(project_folder), start=1)
+    ]
+    command_card_count = len(ai_prompt_items) + len(local_command_items)
 
     learning_cards = f"""
 <a class="learning-card" href="learning/index.html">
@@ -1332,12 +1453,12 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     <div class="command-card">
       <strong>Primary command</strong>
       <p>Run the next operating review from your agent or terminal.</p>
-      <code>dzcto check-stale "&lt;project folder&gt;"</code>
+      <code>{esc(local_helper_commands(project_folder)[0][1])}</code>
     </div>
     <div class="command-card">
       <strong>Browser refresh</strong>
       <p>For the button to execute Python, open this wiki through the local server.</p>
-      <code>dzcto serve "&lt;project folder&gt;"</code>
+      <code>{esc(local_helper_commands(project_folder)[2][1])}</code>
     </div>
   </div>
   <details class="wiki-details" open>
@@ -1357,8 +1478,17 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     <div class="wiki-body learning-grid">{learning_cards}</div>
   </details>
   <details class="wiki-details">
-    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Commands</span><span class="wiki-meta">{pluralize(len(help_items), "command")}</span></summary>
-    <div class="wiki-body help-grid">{''.join(help_items)}</div>
+    <summary><span class="wiki-heading"><span class="wiki-chevron" aria-hidden="true"></span>Commands</span><span class="wiki-meta">{pluralize(command_card_count, "copy card")}</span></summary>
+    <div class="wiki-body command-groups">
+      <section class="command-group">
+        <h3>AI Prompts</h3>
+        <div class="copy-grid">{''.join(ai_prompt_items)}</div>
+      </section>
+      <section class="command-group">
+        <h3>Local Commands</h3>
+        <div class="copy-grid">{''.join(local_command_items)}</div>
+      </section>
+    </div>
   </details>
 </main>
 {refresh_script()}

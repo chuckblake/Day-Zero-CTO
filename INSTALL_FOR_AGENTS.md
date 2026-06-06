@@ -148,6 +148,8 @@ dzcto package-claude-desktop
 
 Use `--company-description "<summary>"` instead of `--company-url "<url>"` when the user provides the description directly. Repeat `--repo` for multiple read-only codebases.
 
+The generated wiki index has a Commands section with copy buttons. AI prompt cards copy exact prompts for Claude, Codex, or another agent with the project folder and configured read-only repo paths included. Local command cards copy deterministic `dzcto` commands.
+
 ## Verify
 
 Codex Desktop: ask for available Day Zero CTO skills or run:

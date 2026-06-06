@@ -24,7 +24,7 @@ This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, a
 - Keep the skill route primary for users. Add deterministic local helper behavior under `dzcto` before introducing provider-specific complexity.
 - Generated wiki HTML should be template-rendered by helpers, include embedded `dzcto-provenance` JSON, and update `knowledge/wiki/.dzcto/` sidecar metadata.
 - All user-facing wiki pages should be HTML. Core context Markdown files are editable source, then rendered to generated `core/*.html` pages.
-- The index should use the command-center sections: Cadence, Core Context, Reports, Learning, and Commands. Do not restore Misc, handoffs, or one-on-one sections.
+- The index should use the command-center sections: Cadence, Core Context, Reports, Learning, and Commands. Commands should provide copyable AI prompts with exact project/repo context plus copyable local helper commands. Do not restore Misc, handoffs, or one-on-one sections.
 - When adding or changing install behavior, update `README.md` and `INSTALL_FOR_AGENTS.md`.
 - When releasing plugin-facing changes, bump both `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`; if the Claude marketplace entry has a version, bump it too.
 - Do not add a root `CLAUDE.md` file to this plugin repo; Claude Code's plugin validator warns that it is not loaded as plugin context. Put Claude install instructions in `README.md` and `INSTALL_FOR_AGENTS.md`.

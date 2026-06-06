@@ -87,7 +87,7 @@ The index shows company information under the title, then collapsible command-ce
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: dated links to report artifacts.
 - `Learning`: spaced-repetition state and mastery progress.
-- `Commands`: useful Day Zero CTO prompts and helper commands.
+- `Commands`: copyable AI prompts and local helper commands with the exact project and repo context.
 
 The hidden `.dzcto/` directory is the local metadata sidecar. It stores project config, connected repo paths, artifact manifests, diagnostics, and latest helper logs. Generated HTML pages embed a `dzcto-provenance` JSON block with tool version, generation time, config hash, source hashes when available, and artifact ID.
 
@@ -112,6 +112,8 @@ dzcto serve "<project folder>"
 ```
 
 Open the printed local URL and click `Refresh Cadence`. A plain `file://` page cannot run Python directly, so the button will tell the user to use `dzcto serve`.
+
+The Commands section is the simple cross-agent bridge. AI prompt cards copy exact prompts for Claude, Codex, or another agent, including the project folder and configured read-only repo paths. Local command cards copy deterministic `dzcto` commands for refresh, stale checks, serving, diagnostics, and issue bundles.
 
 ## Install
 

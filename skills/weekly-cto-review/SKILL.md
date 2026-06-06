@@ -12,7 +12,7 @@ Turn scattered engineering activity into a clear operating picture and next-week
 1. Resolve the project folder. If unknown, ask for it and recommend `~/Documents/<Company>/`. Durable outputs live under `<project>/knowledge/wiki/`.
 2. Resolve one or more optional code repo pointers separately. Treat code repos as read-only evidence unless the user explicitly asks for code changes.
 3. Load context files from `<project>/knowledge/wiki/` if present: `core/STRATEGY.md`, `core/TEAM.md`, `core/OPERATING_CADENCE.md`, `core/DECISIONS.md`, `core/RISKS.md`, and recent reports.
-4. Gather current evidence from available read-only sources: recent commits, open diffs, test/CI status, issues, project docs, incidents, and user-provided notes.
+4. Gather current evidence from available read-only sources: recent commits, open diffs, test/CI status, issues, project docs, incidents, and user-provided notes. Prefer local read-only Git history when available.
 5. Compare progress against the company's current goals, not against generic engineering ideals.
 6. Identify the smallest useful set of decisions, risks, and next actions.
 7. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/weekly-reviews/` and regenerate `<project>/knowledge/wiki/index.html`.
@@ -27,6 +27,17 @@ Turn scattered engineering activity into a clear operating picture and next-week
 - `Team and process`: load, coordination, morale signals, review bottlenecks, hiring gaps, or meeting debt.
 - `Next-week focus`: 3-5 priorities with clear owners when known.
 - `CEO-update seeds`: bullets that can feed `write-ceo-update`.
+
+## Git Evidence
+
+For weekly reviews, repo access explains the system and Git history explains the week. Prefer read-only Git commands when available:
+
+- `git status --short`
+- `git log --since="<start date>" --date=short --pretty=format:"%h %ad %an %s"`
+- `git diff --stat <base>..HEAD` when a safe base is known
+- `git shortlog -sn --since="<start date>"` when contributor shape matters
+
+Do not run network or mutating Git commands such as `git pull`, `git push`, `git checkout`, `git reset`, or branch-changing commands unless the user explicitly asks. If Git history is unavailable, still run the review from the project wiki, prior reports, user notes, and code snapshot, but label delivery/progress conclusions as limited by missing Git history.
 
 ## Durable Artifact
 
