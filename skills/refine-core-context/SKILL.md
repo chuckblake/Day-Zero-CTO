@@ -31,16 +31,16 @@ Update the project wiki's core CTO context by interviewing the user, drafting co
 - `STRATEGY.md`: company stage, target customer and user, product thesis, current goals, constraints, non-goals, and the first real description paragraph used by the dashboard.
 - `TEAM.md`: people, roles, ownership, decision rights, communication preferences, working agreements, gaps, and open questions.
 - `OPERATING_CADENCE.md`: weekly review rhythm, CEO update rhythm, planning cycle, incident or reliability review rhythm, expected artifacts, and `## Index Cadence Rules` rows for dashboard due alerts, including weekday intent where a ritual has a normal day and optional `Prompt Context` for report-specific prompt steering.
-- `DECISIONS.md`: recorded decisions already taken, original or approximate decision date, context, options considered, past-tense rationale, owner, revisit trigger, and optional review history.
-- `RISKS.md`: risk, source, evidence, impact, likelihood or severity, owner, mitigation, calendar next review date, optional external trigger, and whether the risk should appear as high priority on the dashboard. External triggers do not replace calendar review dates. Report-specific risks are candidate signals until promoted into this file.
+- `DECISIONS.md`: recorded decisions already taken, original or approximate decision date, context, options considered, past-tense rationale, owner, revisit trigger, and optional review history. The generated `decisions/registry.json` is a stable-ID index and should not be edited.
+- `RISKS.md`: risk, source, evidence, impact, likelihood or severity, owner, mitigation, calendar next review date, optional external trigger, and whether the risk should appear as high priority on the dashboard. External triggers do not replace calendar review dates. Report-specific risks are candidate signals until promoted into this file. The generated `risks/registry.json` is a stable-ID index and should not be edited.
 
 ## Update Standards
 
 - For substantive updates, prefer the interview-and-approval loop over direct file edits.
 - For small typo or formatting fixes, direct edits to source Markdown are fine. Never edit generated `index.html` or `core/*.html` as the source of truth.
 - Prefer compact Markdown tables for decision logs, risk registers, and cadence rules.
-- Do not edit generated Current Read summaries in `core/decisions.html` or `core/risks.html`. Update `DECISIONS.md`, `RISKS.md`, or structured report data and run `dzcto refresh`; the helper regenerates the summaries from source rows.
-- Treat Tech Stack, Engineering Risk, Weekly Review, and CEO Update risk sections as candidate signals. Promote or merge actionable signals into `RISKS.md` with source, owner, mitigation, and a calendar next review date instead of letting them live only inside reports.
+- Do not edit generated Current Read summaries, registry JSON, or generated HTML. Update `DECISIONS.md`, `RISKS.md`, or structured report data and run `dzcto refresh`; the helper regenerates summaries and registries from source rows and report signals.
+- Treat Tech Stack, Engineering Risk, Weekly Review, and CEO Update risk sections as candidate signals. Promote or merge actionable signals into `RISKS.md` with source, owner, mitigation, and a calendar next review date instead of letting them live only inside reports. Treat report asks/decision fields the same way: promote only durable choices into `DECISIONS.md`.
 - Keep people context work-relevant and factual. Do not speculate about motives, health, or private personal matters.
 - Use evidence labels or file references when a claim comes from docs, code, Git history, or a generated report.
 - If a section is not ready, leave a clear question or `Unknown` rather than inventing an answer.

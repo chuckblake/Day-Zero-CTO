@@ -20,10 +20,18 @@ from typing import Any
 from dzcto_artifact import (
     CORE_DOCS,
     REPORT_FOLDERS,
+    active_registry_risks,
+    build_decision_registry,
+    build_risk_registry,
     cadence_alerts,
     core_doc_html_name,
     dates_in_text,
+    display_command,
+    due_decision_entries,
+    due_risk_entries,
     parse_cadence_rules,
+    registry_decisions,
+    read_learning_items,
     read_risk_entries,
 )
 from dzcto_common import (
@@ -100,6 +108,7 @@ def print_quickstart(project: Path | None = None) -> None:
                dzcto serve {project_arg}
 
             4. Check what needs attention
+               dzcto lfg {project_arg}
                dzcto status {project_arg}
                dzcto check-stale {project_arg}
 
@@ -128,8 +137,10 @@ def command_reference_text(project: Path | None = None) -> str:
         Start and help
           dzcto quickstart [--project <project>]
               Print the shortest self-serve setup path.
-          dzcto help [onboarding|editing|reports|commands|serve|troubleshooting|learning|artifacts] [--project <project>]
+          dzcto help [onboarding|editing|reports|commands|lfg|serve|troubleshooting|learning|artifacts] [--project <project>]
               Print workflow help. With no topic, prints this command reference.
+          dzcto lfg <project> [--json]
+              Pick the next best operating action: setup, cadence, risks, decisions, then learning.
           dzcto version
               Print the installed Day Zero CTO helper version.
 
@@ -152,7 +163,7 @@ def command_reference_text(project: Path | None = None) -> str:
               Create or refresh <project>/knowledge/wiki, sidecar metadata, generated core pages, search index, and dashboard.
           dzcto refresh {project_arg}
               Regenerate dashboard, core HTML pages, structured report pages, learning index, search index, cadence alerts, and provenance.
-              Decisions and Risks pages also regenerate short Current Read summaries from source rows and report risk signals.
+              Decisions and Risks pages also regenerate short Current Read summaries, stable registries, and report signal intake.
           dzcto serve {project_arg} [--host 127.0.0.1] [--port 8765]
               Serve the wiki locally so search JSON loads reliably and local refresh works.
           dzcto status {project_arg} [--json]
@@ -209,6 +220,17 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
     project_path = str(project) if project else "$HOME/Documents/Acme CTO"
     topics = {
         "commands": command_reference_text(project),
+        "lfg": f"""
+            LFG
+
+            Run:
+              dzcto lfg {project_arg}
+
+            The helper checks the project in this order:
+              setup readiness, cadence due items, risk reviews or risk intake, decision reviews or decision intake, then learning.
+
+            It prints the next concrete command or agent prompt to run. Use --json if another tool should consume the recommendation.
+        """,
         "onboarding": f"""
             Onboarding checklist
 
@@ -232,8 +254,11 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             For substantive changes, ask an agent to use day-zero-cto:refine-core-context.
             For recorded decision reviews, use day-zero-cto:review-decisions.
             For active risk-register reviews, use day-zero-cto:review-risks.
-            Risk cards and core/risks.html are generated from RISKS.md; edit RISKS.md as the source of truth.
-            Report risk sections are candidate signals; core/risks.html rolls them up under Risk Signals From Reports
+            Risk cards, core/risks.html, and risks/registry.json are generated from RISKS.md plus report signals;
+            edit RISKS.md as the source of truth.
+            Decision cards, core/decisions.html, and decisions/registry.json are generated from DECISIONS.md plus report signals;
+            edit DECISIONS.md as the source of truth.
+            Report risk and decision sections are candidate signals; the generated Risks and Decisions pages roll them up
             so they can be promoted, merged, or dismissed from one place.
             Every active risk needs a calendar Next Review date. External triggers can be included, but should not replace the date.
             For report prompt steering, add reportPromptContext to .dzcto/config.json or add a Prompt Context
@@ -446,6 +471,144 @@ def print_project_status(project: Path, *, as_json: bool = False) -> int:
     return 1 if failing else 0
 
 
+def project_repos(wiki_root: Path) -> list[str]:
+    config = read_json(sidecar_dir(wiki_root) / "config.json", {})
+    if not isinstance(config, dict):
+        return []
+    return [str(item).strip() for item in (config.get("codeRepos", []) or []) if str(item).strip()]
+
+
+def agent_context(project: Path, repos: list[str]) -> str:
+    if not repos:
+        return f"Use project folder `{project}`. No read-only code repo is configured; ask for repo access if code evidence is needed."
+    if len(repos) == 1:
+        return f"Use project folder `{project}`. Use read-only code repo `{repos[0]}`."
+    repo_list = ", ".join(f"`{repo}`" for repo in repos)
+    return f"Use project folder `{project}`. Use read-only code repos: {repo_list}."
+
+
+def print_lfg_action(action: dict[str, Any], *, as_json: bool = False) -> int:
+    if as_json:
+        print(json.dumps(action, indent=2, sort_keys=True))
+        return 0
+    print("Day Zero CTO LFG")
+    print()
+    print(f"Next best action: {action['label']}")
+    print(f"Why: {action['why']}")
+    if action.get("command"):
+        print()
+        print("Run:")
+        print(f"  {action['command']}")
+    if action.get("prompt"):
+        print()
+        print("Prompt:")
+        print(textwrap.indent(action["prompt"], "  "))
+    return 0
+
+
+def next_lfg_action(project: Path) -> dict[str, Any]:
+    wiki_root = wiki_root_for_project(project)
+    core_dir = wiki_root / "core"
+    reports_dir = wiki_root / "reports"
+    learning_dir = wiki_root / "learning"
+    today = dt.date.today()
+    repos = project_repos(wiki_root)
+    context = agent_context(project, repos)
+
+    checks = project_status_checks(project)
+    setup_issue = next((check for check in checks if check["status"] in {"fail", "warn"}), None)
+    if setup_issue:
+        return {
+            "kind": "setup",
+            "label": f"Setup: {setup_issue['label']}",
+            "why": setup_issue["detail"],
+            "command": setup_issue.get("command") or f"dzcto status {sh_quote(str(project))}",
+            "prompt": "",
+        }
+
+    cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
+    alerts = cadence_alerts(cadence_rules, reports_dir, today)
+    if alerts:
+        alert = alerts[0]
+        command = display_command(str(alert.get("command") or ""))
+        return {
+            "kind": "cadence",
+            "label": f"Run cadence: {alert['label']}",
+            "why": alert["reason"],
+            "command": command,
+            "prompt": f"{command} {context}".strip() if command else "",
+        }
+
+    risk_registry = build_risk_registry(wiki_root)
+    risks = active_registry_risks(risk_registry)
+    due_risks = due_risk_entries(risks, today)
+    intake_risk_signals = [signal for signal in risk_registry.get("signals", []) if isinstance(signal, dict) and signal.get("status") == "Intake"]
+    critical_risks = [risk for risk in risks if risk.get("severity") == "Critical"]
+    weak_risks = [
+        risk
+        for risk in risks
+        if not has_real_value(risk.get("mitigation")) or not has_real_value(risk.get("owner")) or not dates_in_text(risk.get("review", ""))
+    ]
+    risk_targets = due_risks or intake_risk_signals or critical_risks or weak_risks
+    if risk_targets:
+        target = risk_targets[0]
+        target_title = str(target.get("title") or target.get("risk") or "the highest priority risk")
+        reason = (
+            f"{len(due_risks)} risk review(s) due."
+            if due_risks
+            else f"{len(intake_risk_signals)} report risk signal(s) need promotion, merge, or dismissal."
+            if intake_risk_signals
+            else f"{len(critical_risks)} critical risk(s) need attention."
+            if critical_risks
+            else f"{len(weak_risks)} active risk(s) are missing mitigation, owner, or calendar review date."
+        )
+        return {
+            "kind": "risk",
+            "label": f"Review risks: {target_title}",
+            "why": reason,
+            "command": f"dzcto help reports --project {sh_quote(str(project))}",
+            "prompt": f"Use the Day Zero CTO review-risks workflow. Start with `{target_title}` and then continue through any due risks or intake signals. Let me keep active, update, close, punt, merge, dismiss, or mark evidence needed one item at a time. If a formal choice is made while addressing a risk, log it in core/DECISIONS.md. {context}",
+        }
+
+    decision_registry = build_decision_registry(wiki_root)
+    decisions = registry_decisions(decision_registry)
+    due_decisions = due_decision_entries(decisions, today)
+    intake_decision_signals = [signal for signal in decision_registry.get("signals", []) if isinstance(signal, dict) and signal.get("status") == "Intake"]
+    decision_targets = due_decisions or intake_decision_signals
+    if decision_targets:
+        target = decision_targets[0]
+        target_title = str(target.get("title") or target.get("decision") or "the highest priority decision")
+        reason = (
+            f"{len(due_decisions)} decision revisit trigger(s) are due or marked triggered."
+            if due_decisions
+            else f"{len(intake_decision_signals)} report decision signal(s) need promotion or dismissal."
+        )
+        return {
+            "kind": "decision",
+            "label": f"Review decisions: {target_title}",
+            "why": reason,
+            "command": f"dzcto help reports --project {sh_quote(str(project))}",
+            "prompt": f"Use the Day Zero CTO review-decisions workflow. Start with `{target_title}` and then continue through any due decision reviews or intake signals. Treat DECISIONS.md as the durable record of choices already taken; promote only durable decisions and dismiss ordinary asks or open questions. {context}",
+        }
+
+    learning_items = read_learning_items(learning_dir)
+    if learning_items:
+        return {
+            "kind": "learning",
+            "label": "Run learning",
+            "why": "Setup, cadence, risks, and decisions do not have urgent work queued.",
+            "command": f"dzcto learning --project {sh_quote(str(project))} --select",
+            "prompt": f"Run a Day Zero CTO learning prompt. {context}",
+        }
+    return {
+        "kind": "learning",
+        "label": "Seed learning",
+        "why": "Setup, cadence, risks, and decisions do not have urgent work queued, and no learning items exist yet.",
+        "command": f"dzcto help learning --project {sh_quote(str(project))}",
+        "prompt": f"Use the Day Zero CTO learning workflow to seed the first useful startup CTO system concepts, then teach one item. {context}",
+    }
+
+
 def command_shim_text(current_bin: Path) -> str:
     return f"""#!/usr/bin/env bash
 # {COMMAND_SHIM_MARKER}
@@ -583,6 +746,12 @@ def check_stale(project: Path) -> dict[str, Any]:
             add("pass", f"Core HTML {html_path.name}", "Generated core context page exists")
         else:
             add("stale", f"Core HTML {html_path.name}", f"Missing generated page for core/{doc}", f"dzcto refresh {project}")
+
+    for relative, label in [("risks/registry.json", "Risk registry"), ("decisions/registry.json", "Decision registry")]:
+        if (wiki_root / relative).exists():
+            add("pass", label, f"{relative} exists")
+        else:
+            add("stale", label, f"Missing generated {relative}", f"dzcto refresh {project}")
 
     config = read_json(sidecar / "config.json", None)
     manifest = read_json(sidecar / "manifest.json", None)
@@ -888,7 +1057,7 @@ def main(argv: list[str]) -> int:
     help_cmd.add_argument(
         "topic",
         nargs="?",
-        choices=["onboarding", "editing", "reports", "commands", "serve", "troubleshooting", "learning", "artifacts"],
+        choices=["onboarding", "editing", "reports", "commands", "lfg", "serve", "troubleshooting", "learning", "artifacts"],
         help="Optional help topic",
     )
     help_cmd.add_argument("--project", help="Optional project folder for command examples")
@@ -897,6 +1066,10 @@ def main(argv: list[str]) -> int:
     quickstart.add_argument("--project", help="Optional project folder for command examples")
 
     sub.add_parser("version", help="Print the Day Zero CTO helper version")
+
+    lfg = sub.add_parser("lfg", help="Pick the next best Day Zero CTO operating action")
+    lfg.add_argument("project", help="Project folder")
+    lfg.add_argument("--json", action="store_true", help="Print JSON")
 
     setup = sub.add_parser("setup", help="Install Day Zero CTO for Codex Desktop")
     setup.add_argument("--editable-skills", action="store_true", help="Also link skills into ~/.codex/skills for active Codex development")
@@ -998,6 +1171,9 @@ def main(argv: list[str]) -> int:
     if args.command == "version":
         print(TOOL_VERSION)
         return 0
+
+    if args.command == "lfg":
+        return print_lfg_action(next_lfg_action(resolve_project(args.project)), as_json=args.json)
 
     if args.command == "setup":
         total = 3 + (1 if args.editable_skills else 0) + (1 if args.wiki_project else 0)

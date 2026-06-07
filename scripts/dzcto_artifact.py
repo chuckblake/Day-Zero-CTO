@@ -20,6 +20,7 @@ from dzcto_common import (
     provenance_block,
     provenance_payload,
     read_json,
+    sha256_text,
     sidecar_dir,
     source_hashes as collect_source_hashes,
     update_manifest,
@@ -41,6 +42,19 @@ RISK_SIGNAL_REPORT_FIELDS = {
     "weekly-reviews": ("risks",),
     "ceo-updates": ("risks_blockers", "risks", "blockers"),
 }
+
+DECISION_SIGNAL_REPORT_FIELDS = {
+    "weekly-reviews": ("decisions_needed", "decisions"),
+    "ceo-updates": ("asks_decisions", "asks", "decisions"),
+    "engineering-risk": ("decisions", "decision_points"),
+    "tech-stack": ("decisions", "decision_points"),
+}
+
+RISK_REGISTRY_SCHEMA_VERSION = "1.0"
+RISK_REGISTRY_RELATIVE_PATH = "risks/registry.json"
+RISK_ACTIVE_STATUSES = {"active", "open", "monitoring", "needs_evidence", "punted"}
+DECISION_REGISTRY_SCHEMA_VERSION = "1.0"
+DECISION_REGISTRY_RELATIVE_PATH = "decisions/registry.json"
 
 THEME_PATTERNS = [
     ("AI accuracy", r"\b(ai|llm|model|claude|eval|accuracy|predicate|prompt)\b"),
@@ -582,6 +596,7 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
 
 def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
     return [
+        ("Next Best Action", f'dzcto lfg "{project_folder}"'),
         ("Project Status", f'dzcto status "{project_folder}"'),
         ("Check Stale", f'dzcto check-stale "{project_folder}"'),
         ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
@@ -760,8 +775,8 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
     help_cards = [
         (
             "Start",
-            "Run setup checks, open the served dashboard, and use the setup checklist until the project is ready.",
-            f'dzcto quickstart --project "{project}"',
+            "Ask the helper for the next best action, then use setup checks and the served dashboard when something looks off.",
+            f'dzcto lfg "{project}"',
         ),
         (
             "Edit",
@@ -782,6 +797,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
     command_rows = [
         ("quickstart", f'dzcto quickstart --project "{project}"', "Print the shortest self-serve setup path."),
         ("help", f'dzcto help commands --project "{project}"', "Show complete workflow and command help."),
+        ("lfg", f'dzcto lfg "{project}"', "Pick the next best action: setup, cadence, risks, decisions, then learning."),
         ("version", "dzcto version", "Print the installed helper version."),
         ("setup", 'dzcto setup --wiki-project "<project>" --company-name "<name>"', "Install the local Codex plugin entry and optionally initialize a wiki."),
         ("update", f'dzcto update --project "{project}"', "Pull or relink the local install and run doctor."),
@@ -1128,7 +1144,7 @@ def render_table_section(title: str, rows: Any, columns: list[tuple[str, str]]) 
 """
 
 
-def render_candidate_risk_section(title: str, rows: Any, source_label: str) -> str:
+def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk_registry: dict[str, Any] | None = None) -> str:
     values = []
     for row in array_value(rows):
         if isinstance(row, dict):
@@ -1141,17 +1157,28 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str) -> s
     if not values:
         return ""
 
-    headers = "".join(f"<th>{esc(label)}</th>" for label in ["Risk", "Evidence", "Impact", "Severity", "Mitigation", "Source"])
+    has_registry = bool(risk_registry)
+    header_labels = ["Risk", "Registry", "Evidence", "Impact", "Severity", "Mitigation", "Source"] if has_registry else ["Risk", "Evidence", "Impact", "Severity", "Mitigation", "Source"]
+    headers = "".join(f"<th>{esc(label)}</th>" for label in header_labels)
     table_rows = []
     for row in values:
         cells = []
-        for key in ["risk", "evidence", "impact", "severity", "mitigation", "source"]:
+        keys = ["risk", "registry", "evidence", "impact", "severity", "mitigation", "source"] if has_registry else ["risk", "evidence", "impact", "severity", "mitigation", "source"]
+        for key in keys:
             if key == "evidence":
                 value = value_at(row, "evidence", "detail", "details", "signal")
             elif key == "impact":
                 value = value_at(row, "impact", "business_impact", "why")
             elif key == "mitigation":
                 value = value_at(row, "mitigation", "recommendation", "next_step", "action", "plan")
+            elif key == "registry" and risk_registry:
+                match = match_risk_signal({"title": item_headline(row)}, active_registry_risks(risk_registry))
+                if match:
+                    cell = f'<a href="../../core/risks.html#{esc(match["id"])}"><code>{esc(match["id"])}</code></a>'
+                else:
+                    cell = '<a href="../../core/risks.html#risk-signals">Intake signal</a>'
+                cells.append(f"<td>{cell}</td>")
+                continue
             else:
                 value = value_at(row, key)
             if key == "severity" and present(value):
@@ -1288,7 +1315,7 @@ def render_engineering_risk(data: dict[str, Any]) -> str:
     )
 
 
-def render_tech_stack(data: dict[str, Any]) -> str:
+def render_tech_stack(data: dict[str, Any], risk_registry: dict[str, Any] | None = None) -> str:
     return "".join(
         [
             html_paragraph(value_at(data, "executive_read", "summary")),
@@ -1298,7 +1325,7 @@ def render_tech_stack(data: dict[str, Any]) -> str:
             render_list_section("Integrations", value_at(data, "integrations")),
             render_list_section("Infrastructure and Operations", value_at(data, "infrastructure_operations", "infrastructure", "operations")),
             render_list_section("Development Tooling", value_at(data, "development_tooling", "dev_tooling")),
-            render_candidate_risk_section("Candidate Risks and Watchpoints", value_at(data, "risks_watchpoints", "risks", "watchpoints"), "Tech Stack report"),
+            render_candidate_risk_section("Candidate Risks and Watchpoints", value_at(data, "risks_watchpoints", "risks", "watchpoints"), "Tech Stack report", risk_registry),
             render_list_section("Onboarding Notes", value_at(data, "onboarding_notes", "notes")),
             render_sources(data),
         ]
@@ -1318,14 +1345,16 @@ def render_generic_report(data: dict[str, Any]) -> str:
     return "".join([summary, *sections, render_sources(data)])
 
 
-def render_structured_report(kind: str, data: dict[str, Any]) -> str:
-    renderers = {
-        "tech-stack": render_tech_stack,
-        "weekly-reviews": render_weekly_review,
-        "ceo-updates": render_ceo_update,
-        "engineering-risk": render_engineering_risk,
-    }
-    body = renderers.get(kind, render_generic_report)(data)
+def render_structured_report(kind: str, data: dict[str, Any], risk_registry: dict[str, Any] | None = None, decision_registry: dict[str, Any] | None = None) -> str:
+    if kind == "tech-stack":
+        body = render_tech_stack(data, risk_registry)
+    else:
+        renderers = {
+            "weekly-reviews": render_weekly_review,
+            "ceo-updates": render_ceo_update,
+            "engineering-risk": render_engineering_risk,
+        }
+        body = renderers.get(kind, render_generic_report)(data)
     action_summary = render_action_summary(kind, data)
     if not action_summary:
         return body.strip() or render_generic_report(data)
@@ -1343,6 +1372,40 @@ def stable_anchor_id(prefix: str, value: str) -> str:
     return f"{prefix}-{slug or 'item'}"
 
 
+def short_hash(value: str, length: int = 10) -> str:
+    return sha256_text(value).split(":", 1)[1][:length]
+
+
+def risk_id_for_title(title: str) -> str:
+    return stable_anchor_id("risk", title)
+
+
+def decision_id_for_title(title: str) -> str:
+    return stable_anchor_id("decision", title)
+
+
+def risk_id_from_row(row: dict[str, str], title: str) -> str:
+    explicit = plain_markdown(value_from_row(row, "id", "risk_id"))
+    if explicit:
+        return slugify(explicit) if not explicit.lower().startswith("risk-") else slugify(explicit)
+    return risk_id_for_title(title)
+
+
+def decision_id_from_row(row: dict[str, str], title: str) -> str:
+    explicit = plain_markdown(value_from_row(row, "id", "decision_id"))
+    if explicit:
+        return slugify(explicit) if not explicit.lower().startswith("decision-") else slugify(explicit)
+    return decision_id_for_title(title)
+
+
+def signal_id_for(kind: str, href: str, title: str) -> str:
+    return f"signal-{short_hash('|'.join([kind, href, risk_match_text(title)]))}"
+
+
+def decision_signal_id_for(kind: str, href: str, title: str) -> str:
+    return f"decision-signal-{short_hash('|'.join([kind, href, decision_match_text(title)]))}"
+
+
 def unique_anchor_id(prefix: str, value: str, used_ids: set[str]) -> str:
     base = stable_anchor_id(prefix, value)
     anchor = base
@@ -1356,6 +1419,29 @@ def unique_anchor_id(prefix: str, value: str, used_ids: set[str]) -> str:
 
 def risk_anchor(value: str) -> str:
     return stable_anchor_id("risk", value)
+
+
+def markdown_links(value: str) -> list[dict[str, str]]:
+    links: list[dict[str, str]] = []
+    for match in re.finditer(r"\[([^\]]+)\]\(([^)]+)\)", value or ""):
+        label = plain_markdown(match.group(1))
+        href = match.group(2).strip()
+        if label or href:
+            links.append({"label": label or href, "href": href})
+    return links
+
+
+def reference_list(label: str, href: str = "", *, kind: str = "") -> list[dict[str, str]]:
+    label = plain_markdown(label)
+    href = href.strip()
+    if not label and not href:
+        return []
+    item = {"label": label or href}
+    if href:
+        item["href"] = href
+    if kind:
+        item["kind"] = kind
+    return [item]
 
 
 def inline_markdown(value: str) -> str:
@@ -1656,6 +1742,8 @@ def write_search_index(
     report_entries: list[tuple[str, str, list[Path]]],
     learning_items: list[dict[str, Any]],
     setup_items: list[dict[str, str]] | None = None,
+    risk_registry: dict[str, Any] | None = None,
+    decision_registry: dict[str, Any] | None = None,
 ) -> None:
     setup_items = setup_items or []
     setup_complete = sum(1 for item in setup_items if item.get("state") == "done")
@@ -1687,11 +1775,31 @@ def write_search_index(
         source_path = core_dir / page["doc"]
         source_text = source_path.read_text(encoding="utf-8", errors="replace")
         if page["doc"] == "RISKS.md":
-            signal_text = " ".join(
-                f"{signal['title']} {signal['severity']} {signal['source_label']} {signal['evidence']} {signal['impact']} {signal['mitigation']}"
-                for signal in read_report_risk_signals(wiki_root)
+            registry = risk_registry or build_risk_registry(wiki_root)
+            risk_text = " ".join(
+                f"{risk.get('id', '')} {risk.get('title', '')} {risk.get('status', '')} {risk.get('severity', '')} {risk.get('owner', '')} {risk.get('source', '')} {risk.get('evidence', '')} {risk.get('impact', '')} {risk.get('mitigation', '')}"
+                for risk in registry.get("risks", [])
+                if isinstance(risk, dict)
             )
-            source_text = f"{source_text}\n\nRisk Signals From Reports\n{signal_text}"
+            signal_text = " ".join(
+                f"{signal.get('title', '')} {signal.get('severity', '')} {signal.get('status', '')} {signal.get('source_label', '')} {signal.get('evidence', '')} {signal.get('impact', '')} {signal.get('mitigation', '')} {signal.get('matchedRiskId', '')}"
+                for signal in registry.get("signals", [])
+                if isinstance(signal, dict)
+            )
+            source_text = f"{source_text}\n\nCanonical Risk Registry\n{risk_text}\n\nRisk Signals From Reports\n{signal_text}"
+        elif page["doc"] == "DECISIONS.md":
+            registry = decision_registry or build_decision_registry(wiki_root)
+            decision_text = " ".join(
+                f"{decision.get('id', '')} {decision.get('title', '')} {decision.get('status', '')} {decision.get('date', '')} {decision.get('owner', '')} {decision.get('context', '')} {decision.get('options', '')} {decision.get('rationale', '')} {decision.get('revisitTrigger', '')}"
+                for decision in registry.get("decisions", [])
+                if isinstance(decision, dict)
+            )
+            signal_text = " ".join(
+                f"{signal.get('title', '')} {signal.get('status', '')} {signal.get('source_label', '')} {signal.get('context', '')} {signal.get('matchedDecisionId', '')}"
+                for signal in registry.get("signals", [])
+                if isinstance(signal, dict)
+            )
+            source_text = f"{source_text}\n\nCanonical Decision Registry\n{decision_text}\n\nDecision Signals From Reports\n{signal_text}"
         entries.append(
             search_entry(
                 title=page["title"],
@@ -1871,63 +1979,122 @@ def limit_entries(items: list[dict[str, str]], limit: int | None) -> list[dict[s
     return items if limit is None else items[:limit]
 
 
-def read_risk_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, str]]:
+def normalize_risk_status(value: str, *, default: str = "Active") -> str:
+    text = plain_markdown(value).lower()
+    if re.search(r"\b(closed|resolved|retired|accepted|absorbed)\b", text):
+        return "Closed"
+    if re.search(r"\b(needs evidence|evidence needed|needs_evidence)\b", text):
+        return "Needs evidence"
+    if re.search(r"\b(punted|deferred)\b", text):
+        return "Punted"
+    if re.search(r"\b(monitor|watch|monitoring)\b", text):
+        return "Monitoring"
+    if re.search(r"\b(active|open)\b", text):
+        return "Active"
+    return default
+
+
+def risk_status_key(value: str) -> str:
+    return normalize_key(value or "Active")
+
+
+def risk_is_active(risk: dict[str, Any]) -> bool:
+    return risk_status_key(str(risk.get("status") or "Active")) in RISK_ACTIVE_STATUSES
+
+
+def source_references_from_cell(value: str, fallback: str = "Risk register") -> list[dict[str, str]]:
+    links = markdown_links(value)
+    if links:
+        return links
+    label = plain_markdown(value) or fallback
+    return reference_list(label)
+
+
+def read_risk_source_entries(core_dir: Path, *, limit: int | None = None, include_closed: bool = True) -> list[dict[str, Any]]:
     path = core_dir / "RISKS.md"
-    risks: list[dict[str, str]] = []
-    ignored_sections = {"closed_risks", "review_history", "risk_review_history"}
+    risks: list[dict[str, Any]] = []
     for section, table in markdown_tables_with_sections(path):
-        if normalize_key(section) in ignored_sections:
+        section_key = normalize_key(section)
+        if section_key in {"review_history", "risk_review_history"}:
             continue
+        is_closed_section = section_key == "closed_risks"
         for row in table:
-            if "closed_date" in row or "prior_mitigation" in row:
+            is_closed_row = is_closed_section or "closed_date" in row or "prior_mitigation" in row
+            if is_closed_row and not include_closed:
                 continue
             title = value_from_row(row, "risk", "title", "finding", "issue", "name") or next(iter(row.values()), "")
             if not title:
                 continue
             severity_source = value_from_row(row, "severity", "priority", "status", "likelihood") or title
-            source = plain_markdown(value_from_row(row, "source", "sources", "origin", "report", "reported_from"))
+            source_cell = value_from_row(row, "source", "sources", "origin", "report", "reported_from")
+            source = plain_markdown(source_cell)
             evidence = value_from_row(row, "evidence", "signal")
             if not evidence and not source:
-                evidence = value_from_row(row, "source", "sources")
-            risks.append(
-                {
-                    "title": plain_markdown(title),
-                    "severity": normalize_severity(severity_source),
-                    "category": plain_markdown(value_from_row(row, "category", "area", "type")),
-                    "owner": plain_markdown(value_from_row(row, "owner", "responsible", "owner_horizon")) or "Unassigned",
-                    "review": plain_markdown(value_from_row(row, "review", "review_date", "next_review", "due", "horizon", "needed_by")) or "Unscheduled",
-                    "source": source or "Risk register",
-                    "evidence": plain_markdown(evidence),
-                    "impact": plain_markdown(value_from_row(row, "impact", "business_impact", "why")),
-                    "mitigation": plain_markdown(value_from_row(row, "mitigation", "next_step", "action", "plan")),
-                }
-            )
+                evidence = source_cell
+            status = "Closed" if is_closed_row else normalize_risk_status(value_from_row(row, "risk_status", "state", "status"))
+            review = plain_markdown(value_from_row(row, "review", "review_date", "next_review", "due", "horizon", "needed_by")) or "Unscheduled"
+            risk = {
+                "id": risk_id_from_row(row, title),
+                "title": plain_markdown(title),
+                "status": status,
+                "severity": normalize_severity(severity_source),
+                "category": plain_markdown(value_from_row(row, "category", "area", "type")),
+                "owner": plain_markdown(value_from_row(row, "owner", "responsible", "owner_horizon")) or "Unassigned",
+                "nextReview": review,
+                "review": review,
+                "source": source or "Risk register",
+                "sourceLinks": source_references_from_cell(source_cell),
+                "evidence": plain_markdown(evidence),
+                "impact": plain_markdown(value_from_row(row, "impact", "business_impact", "why")),
+                "mitigation": plain_markdown(value_from_row(row, "mitigation", "next_step", "action", "plan")),
+                "markdownAnchor": risk_anchor(title),
+                "sourceDocument": "core/RISKS.md",
+                "sourceSection": section,
+            }
+            closed_date = plain_markdown(value_from_row(row, "closed_date", "closed", "resolved"))
+            if closed_date:
+                risk["closedDate"] = closed_date
+            risks.append(risk)
     if risks:
-        return limit_entries(sorted(risks, key=lambda item: (severity_rank(item["severity"]), item["title"].lower())), limit)
+        return limit_entries(sorted(risks, key=lambda item: (risk_status_key(item["status"]) != "active", severity_rank(item["severity"]), item["title"].lower())), limit)
 
     fallback = []
     for item in markdown_heading_items(path):
         title = item["title"]
         fallback.append(
             {
+                "id": risk_id_for_title(title),
                 "title": title,
+                "status": "Active",
                 "severity": normalize_severity(title),
                 "category": "Core context",
                 "owner": "Unassigned",
+                "nextReview": "Unscheduled",
                 "review": "Unscheduled",
                 "source": "Risk register",
+                "sourceLinks": reference_list("Risk register"),
                 "evidence": item.get("summary", ""),
                 "impact": "",
                 "mitigation": "",
+                "markdownAnchor": risk_anchor(title),
+                "sourceDocument": "core/RISKS.md",
+                "sourceSection": "",
             }
         )
     return limit_entries(sorted(fallback, key=lambda item: (severity_rank(item["severity"]), item["title"].lower())), limit)
 
 
-def read_decision_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, str]]:
+def read_risk_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    risks = [risk for risk in read_risk_source_entries(core_dir, include_closed=False) if risk_is_active(risk)]
+    return limit_entries(sorted(risks, key=lambda item: (severity_rank(item["severity"]), item["title"].lower())), limit)
+
+
+def read_decision_source_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
     path = core_dir / "DECISIONS.md"
-    decisions: list[dict[str, str]] = []
-    for table in markdown_tables(path):
+    decisions: list[dict[str, Any]] = []
+    for section, table in markdown_tables_with_sections(path):
+        if normalize_key(section) in {"review_history", "decision_review_history"}:
+            continue
         for row in table:
             title = value_from_row(row, "decision", "title", "question", "ask", "name") or next(iter(row.values()), "")
             if not title:
@@ -1935,15 +2102,24 @@ def read_decision_entries(core_dir: Path, *, limit: int | None = None) -> list[d
             rationale = plain_markdown(value_from_row(row, "rationale", "why", "notes", "summary"))
             context = plain_markdown(value_from_row(row, "context", "problem", "background")) or rationale
             revisit = plain_markdown(value_from_row(row, "revisit_trigger", "revisit", "needed_by", "due", "status"))
+            source_cell = value_from_row(row, "source", "sources", "origin", "report", "reported_from")
             decisions.append(
                 {
+                    "id": decision_id_from_row(row, title),
                     "title": plain_markdown(title),
+                    "status": "Recorded",
                     "date": plain_markdown(value_from_row(row, "date", "decision_date", "decided", "when")) or "Unknown",
                     "owner": plain_markdown(value_from_row(row, "owner", "responsible")) or "Founder",
                     "when": revisit or "Review trigger",
+                    "revisitTrigger": revisit or "Review trigger",
                     "context": context,
                     "options": plain_markdown(value_from_row(row, "options_considered", "options", "alternatives")),
                     "rationale": rationale,
+                    "source": plain_markdown(source_cell) or "Decision log",
+                    "sourceLinks": source_references_from_cell(source_cell, fallback="Decision log"),
+                    "markdownAnchor": decision_id_for_title(title),
+                    "sourceDocument": "core/DECISIONS.md",
+                    "sourceSection": section,
                 }
             )
     if decisions:
@@ -1951,17 +2127,29 @@ def read_decision_entries(core_dir: Path, *, limit: int | None = None) -> list[d
 
     fallback = [
         {
+            "id": decision_id_for_title(item["title"]),
             "title": item["title"],
+            "status": "Recorded",
             "date": "Unknown",
             "owner": "Founder",
             "when": "Review",
+            "revisitTrigger": "Review",
             "context": item.get("summary", ""),
             "options": "",
             "rationale": item.get("summary", ""),
+            "source": "Decision log",
+            "sourceLinks": reference_list("Decision log"),
+            "markdownAnchor": decision_id_for_title(item["title"]),
+            "sourceDocument": "core/DECISIONS.md",
+            "sourceSection": "",
         }
         for item in markdown_heading_items(path, limit=8)
     ]
     return limit_entries(fallback, limit)
+
+
+def read_decision_entries(core_dir: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    return read_decision_source_entries(core_dir, limit=limit)
 
 
 def dates_in_text(value: str) -> list[dt.date]:
@@ -2088,17 +2276,39 @@ def risk_words(value: str) -> set[str]:
     return {word for word in risk_match_text(value).split() if len(word) > 2 and word not in stop}
 
 
+def decision_match_text(value: str) -> str:
+    text = plain_markdown(value).lower()
+    text = re.sub(r"\bpr\b", "pull request", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def decision_words(value: str) -> set[str]:
+    stop = {
+        "and",
+        "are",
+        "ask",
+        "asks",
+        "before",
+        "decide",
+        "decision",
+        "decisions",
+        "from",
+        "into",
+        "needed",
+        "needs",
+        "question",
+        "the",
+        "this",
+        "with",
+    }
+    return {word for word in decision_match_text(value).split() if len(word) > 2 and word not in stop}
+
+
 def risk_titles_by_status(core_dir: Path) -> tuple[list[str], list[str]]:
-    active: list[str] = []
-    closed: list[str] = []
-    path = core_dir / "RISKS.md"
-    for section, table in markdown_tables_with_sections(path):
-        is_closed = normalize_key(section) == "closed_risks" or any("closed_date" in row for row in table)
-        for row in table:
-            title = value_from_row(row, "risk", "title", "finding", "issue", "name") or next(iter(row.values()), "")
-            if not title:
-                continue
-            (closed if is_closed else active).append(plain_markdown(title))
+    risks = read_risk_source_entries(core_dir, include_closed=True)
+    active = [risk["title"] for risk in risks if risk_is_active(risk)]
+    closed = [risk["title"] for risk in risks if not risk_is_active(risk)]
     return active, closed
 
 
@@ -2112,6 +2322,26 @@ def risk_title_matches(title: str, candidates: list[str]) -> bool:
         if title_text == candidate_text or title_text in candidate_text or candidate_text in title_text:
             return True
         candidate_words = risk_words(candidate)
+        if not candidate_words:
+            continue
+        if candidate_words <= title_words or title_words <= candidate_words:
+            return True
+        overlap = len(title_words & candidate_words)
+        if overlap >= 2 and overlap / max(len(title_words), 1) >= 0.5:
+            return True
+    return False
+
+
+def decision_title_matches(title: str, candidates: list[str]) -> bool:
+    title_text = decision_match_text(title)
+    title_words = decision_words(title)
+    if not title_words:
+        return False
+    for candidate in candidates:
+        candidate_text = decision_match_text(candidate)
+        if title_text == candidate_text or title_text in candidate_text or candidate_text in title_text:
+            return True
+        candidate_words = decision_words(candidate)
         if not candidate_words:
             continue
         if candidate_words <= title_words or title_words <= candidate_words:
@@ -2149,7 +2379,7 @@ def report_risk_signal_items(kind: str, data: dict[str, Any]) -> list[Any]:
     return items
 
 
-def risk_signal_from_item(item: Any, *, kind: str, source_label: str, source_kind: str, href: str, date: str) -> dict[str, str] | None:
+def risk_signal_from_item(item: Any, *, kind: str, source_label: str, source_kind: str, href: str, date: str) -> dict[str, Any] | None:
     if isinstance(item, dict):
         title = item_headline(item)
         if not title:
@@ -2167,6 +2397,7 @@ def risk_signal_from_item(item: Any, *, kind: str, source_label: str, source_kin
         impact = ""
         mitigation = ""
     return {
+        "id": signal_id_for(kind, href, title),
         "title": plain_markdown(title),
         "severity": normalize_severity(severity_source),
         "evidence": plain_markdown(evidence),
@@ -2174,14 +2405,15 @@ def risk_signal_from_item(item: Any, *, kind: str, source_label: str, source_kin
         "mitigation": plain_markdown(mitigation),
         "source_label": source_label,
         "source_kind": source_kind,
+        "sourceLinks": reference_list(source_label, href, kind=source_kind),
         "href": href,
         "date": date,
         "kind": kind,
     }
 
 
-def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
-    signals: list[dict[str, str]] = []
+def read_report_risk_signals_raw(wiki_root: Path) -> list[dict[str, Any]]:
+    signals: list[dict[str, Any]] = []
     for json_path in report_risk_signal_json_paths(wiki_root):
         kind = json_path.parent.name
         label = REPORT_FOLDERS.get(kind, kind)
@@ -2196,8 +2428,11 @@ def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
             signal = risk_signal_from_item(item, kind=kind, source_label=source_label, source_kind=label, href=href, date=date)
             if signal:
                 signals.append(signal)
+    return signals
 
-    by_key: dict[str, dict[str, str]] = {}
+
+def dedupe_report_risk_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
     for signal in signals:
         key = risk_match_text(signal["title"])
         existing = by_key.get(key)
@@ -2209,6 +2444,7 @@ def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
         if signal["href"] and signal["href"] not in existing["href"].split(" | "):
             existing["href"] = " | ".join(filter(None, [existing["href"], signal["href"]]))
             existing["source_label"] = " | ".join(filter(None, [existing["source_label"], signal["source_label"]]))
+            existing["sourceLinks"] = [*existing.get("sourceLinks", []), *signal.get("sourceLinks", [])]
         if signal["source_kind"] and signal["source_kind"] not in existing["source_kind"].split(" | "):
             existing["source_kind"] = " | ".join(filter(None, [existing["source_kind"], signal["source_kind"]]))
         for field in ("evidence", "impact", "mitigation"):
@@ -2219,6 +2455,208 @@ def read_report_risk_signals(wiki_root: Path) -> list[dict[str, str]]:
         by_key.values(),
         key=lambda item: (severity_rank(item["severity"]), sortable_date_key(item["date"], 0)),
     )
+
+
+def read_report_risk_signals(wiki_root: Path) -> list[dict[str, Any]]:
+    return dedupe_report_risk_signals(read_report_risk_signals_raw(wiki_root))
+
+
+def report_decision_signal_json_paths(wiki_root: Path) -> list[Path]:
+    reports_dir = wiki_root / "reports"
+    paths: list[Path] = []
+    for kind in DECISION_SIGNAL_REPORT_FIELDS:
+        json_paths = sorted((reports_dir / kind).glob("*.json"), reverse=True)
+        if len(json_paths) > 1:
+            json_paths = [path for path in json_paths if path.name != "data.json"]
+        paths.extend(json_paths)
+    return paths
+
+
+def report_decision_signal_items(kind: str, data: dict[str, Any]) -> list[Any]:
+    items: list[Any] = []
+    for field in DECISION_SIGNAL_REPORT_FIELDS.get(kind, ()):
+        items.extend(array_value(value_at(data, field)))
+    return items
+
+
+def decision_signal_from_item(item: Any, *, kind: str, source_label: str, source_kind: str, href: str, date: str) -> dict[str, Any] | None:
+    if isinstance(item, dict):
+        title = item_headline(item)
+        if not title:
+            return None
+        context = text_value(value_at(item, "context", "detail", "details", "body", "summary", "why"))
+        owner = text_value(value_at(item, "owner", "responsible", "needed_by"))
+        options = text_value(value_at(item, "options", "options_considered", "alternatives"))
+    else:
+        title = text_value(item)
+        if not title:
+            return None
+        context = ""
+        owner = ""
+        options = ""
+    return {
+        "id": decision_signal_id_for(kind, href, title),
+        "title": plain_markdown(title),
+        "context": plain_markdown(context),
+        "owner": plain_markdown(owner),
+        "options": plain_markdown(options),
+        "source_label": source_label,
+        "source_kind": source_kind,
+        "sourceLinks": reference_list(source_label, href, kind=source_kind),
+        "href": href,
+        "date": date,
+        "kind": kind,
+    }
+
+
+def read_report_decision_signals_raw(wiki_root: Path) -> list[dict[str, Any]]:
+    signals: list[dict[str, Any]] = []
+    for json_path in report_decision_signal_json_paths(wiki_root):
+        kind = json_path.parent.name
+        label = REPORT_FOLDERS.get(kind, kind)
+        data = read_json_file(json_path, {})
+        if not isinstance(data, dict):
+            continue
+        html_path = matching_report_html(json_path)
+        date = report_run_date(html_path) if html_path else "Unknown date"
+        href = html_path.relative_to(wiki_root).as_posix() if html_path else ""
+        source_label = f"{label} / {date}"
+        for item in report_decision_signal_items(kind, data):
+            signal = decision_signal_from_item(item, kind=kind, source_label=source_label, source_kind=label, href=href, date=date)
+            if signal:
+                signals.append(signal)
+    return signals
+
+
+def dedupe_report_decision_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for signal in signals:
+        key = decision_match_text(signal["title"])
+        existing = by_key.get(key)
+        if not existing:
+            by_key[key] = signal
+            continue
+        if signal["href"] and signal["href"] not in existing["href"].split(" | "):
+            existing["href"] = " | ".join(filter(None, [existing["href"], signal["href"]]))
+            existing["source_label"] = " | ".join(filter(None, [existing["source_label"], signal["source_label"]]))
+            existing["sourceLinks"] = [*existing.get("sourceLinks", []), *signal.get("sourceLinks", [])]
+        if signal["source_kind"] and signal["source_kind"] not in existing["source_kind"].split(" | "):
+            existing["source_kind"] = " | ".join(filter(None, [existing["source_kind"], signal["source_kind"]]))
+        for field in ("context", "owner", "options"):
+            if signal[field] and signal[field] not in existing[field]:
+                existing[field] = " ".join(filter(None, [existing[field], signal[field]])).strip()
+
+    return sorted(by_key.values(), key=lambda item: (sortable_date_key(item["date"], 0), item["title"].lower()))
+
+
+def read_report_decision_signals(wiki_root: Path) -> list[dict[str, Any]]:
+    return dedupe_report_decision_signals(read_report_decision_signals_raw(wiki_root))
+
+
+def match_risk_signal(signal: dict[str, Any], risks: list[dict[str, Any]]) -> dict[str, str]:
+    for risk in risks:
+        if risk_title_matches(signal.get("title", ""), [risk.get("title", "")]):
+            return {"id": risk["id"], "title": risk["title"], "status": risk.get("status", "Active")}
+    return {}
+
+
+def match_decision_signal(signal: dict[str, Any], decisions: list[dict[str, Any]]) -> dict[str, str]:
+    for decision in decisions:
+        if decision_title_matches(signal.get("title", ""), [decision.get("title", "")]):
+            return {"id": decision["id"], "title": decision["title"], "status": decision.get("status", "Recorded")}
+    return {}
+
+
+def build_risk_registry(wiki_root: Path) -> dict[str, Any]:
+    core_dir = wiki_root / "core"
+    risks = read_risk_source_entries(core_dir, include_closed=True)
+    signals = read_report_risk_signals_raw(wiki_root)
+    for signal in signals:
+        match = match_risk_signal(signal, risks)
+        if match:
+            signal["status"] = "Matched"
+            signal["matchedRiskId"] = match["id"]
+            signal["matchedRiskTitle"] = match["title"]
+            signal["matchedRiskStatus"] = match["status"]
+        else:
+            signal["status"] = "Intake"
+            signal["matchedRiskId"] = ""
+            signal["matchedRiskTitle"] = ""
+            signal["matchedRiskStatus"] = ""
+    return {
+        "schemaVersion": RISK_REGISTRY_SCHEMA_VERSION,
+        "generatedAt": utc_now(),
+        "source": "core/RISKS.md",
+        "risks": risks,
+        "signals": sorted(signals, key=lambda item: (item.get("status") != "Intake", severity_rank(item.get("severity", "")), item.get("title", "").lower())),
+    }
+
+
+def build_decision_registry(wiki_root: Path) -> dict[str, Any]:
+    core_dir = wiki_root / "core"
+    decisions = read_decision_source_entries(core_dir)
+    signals = read_report_decision_signals_raw(wiki_root)
+    for signal in signals:
+        match = match_decision_signal(signal, decisions)
+        if match:
+            signal["status"] = "Matched"
+            signal["matchedDecisionId"] = match["id"]
+            signal["matchedDecisionTitle"] = match["title"]
+            signal["matchedDecisionStatus"] = match["status"]
+        else:
+            signal["status"] = "Intake"
+            signal["matchedDecisionId"] = ""
+            signal["matchedDecisionTitle"] = ""
+            signal["matchedDecisionStatus"] = ""
+    return {
+        "schemaVersion": DECISION_REGISTRY_SCHEMA_VERSION,
+        "generatedAt": utc_now(),
+        "source": "core/DECISIONS.md",
+        "decisions": decisions,
+        "signals": sorted(signals, key=lambda item: (item.get("status") != "Intake", sortable_date_key(item.get("date", ""), 0), item.get("title", "").lower())),
+    }
+
+
+def write_risk_registry(wiki_root: Path, project_folder: Path) -> dict[str, Any]:
+    registry = build_risk_registry(wiki_root)
+    write_json(wiki_root / RISK_REGISTRY_RELATIVE_PATH, registry)
+    provenance = provenance_payload(
+        wiki_root,
+        artifact_id="risk-registry",
+        artifact_kind="risk-registry",
+        relative_path=RISK_REGISTRY_RELATIVE_PATH,
+        title="Risk Registry",
+        generated_at=registry["generatedAt"],
+        source_hashes=collect_source_hashes([wiki_root / "core" / "RISKS.md", *report_risk_signal_json_paths(wiki_root)]),
+    )
+    update_manifest(wiki_root, provenance)
+    return registry
+
+
+def write_decision_registry(wiki_root: Path, project_folder: Path) -> dict[str, Any]:
+    registry = build_decision_registry(wiki_root)
+    write_json(wiki_root / DECISION_REGISTRY_RELATIVE_PATH, registry)
+    provenance = provenance_payload(
+        wiki_root,
+        artifact_id="decision-registry",
+        artifact_kind="decision-registry",
+        relative_path=DECISION_REGISTRY_RELATIVE_PATH,
+        title="Decision Registry",
+        generated_at=registry["generatedAt"],
+        source_hashes=collect_source_hashes([wiki_root / "core" / "DECISIONS.md", *report_decision_signal_json_paths(wiki_root)]),
+    )
+    update_manifest(wiki_root, provenance)
+    return registry
+
+
+def active_registry_risks(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    risks = [risk for risk in registry.get("risks", []) if isinstance(risk, dict) and risk_is_active(risk)]
+    return sorted(risks, key=lambda item: (severity_rank(item.get("severity", "")), item.get("title", "").lower()))
+
+
+def registry_decisions(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    decisions = [decision for decision in registry.get("decisions", []) if isinstance(decision, dict)]
+    return sorted(decisions, key=lambda item: sortable_date_key(item.get("date", ""), 0))
 
 
 def risk_signal_status(signal: dict[str, str], active_titles: list[str], closed_titles: list[str]) -> str:
@@ -2240,9 +2678,53 @@ def core_current_read_html(title: str, summary: str) -> str:
 """
 
 
-def decisions_current_read(core_dir: Path) -> str:
-    decisions = read_decision_entries(core_dir, limit=None)
+def source_href(href: str, prefix: str) -> str:
+    href = (href or "").strip()
+    if not href:
+        return ""
+    if re.match(r"^(https?://|mailto:|#|/)", href) or href.startswith(("../", "./")):
+        return href
+    return prefix + href
+
+
+def source_links_html(links: Any, *, prefix: str = "../", fallback: str = "") -> str:
+    values = []
+    seen: set[tuple[str, str]] = set()
+    for link in array_value(links):
+        if isinstance(link, dict):
+            label = text_value(link.get("label") or link.get("title") or link.get("href"))
+            href = text_value(link.get("href") or link.get("url"))
+        else:
+            label = text_value(link)
+            href = ""
+        if not label and not href:
+            continue
+        key = (label, href)
+        if key in seen:
+            continue
+        seen.add(key)
+        if href:
+            values.append(f'<a href="{esc(source_href(href, prefix))}">{esc(label or href)}</a>')
+        else:
+            values.append(esc(label))
+    if not values and fallback:
+        values.append(esc(fallback))
+    return " / ".join(values)
+
+
+def registry_filter_controls(table_id: str, rows: list[dict[str, str]], columns: list[dict[str, str]]) -> str:
+    filter_rows = [[row.get(column["key"], "") for column in columns] for row in rows]
+    control_columns = [{"key": column["key"], "label": column["label"], "index": index} for index, column in enumerate(columns)]
+    return table_filter_controls(table_id, filter_rows, control_columns)
+
+
+def decisions_current_read(registry: dict[str, Any]) -> str:
+    decisions = registry_decisions(registry)
+    signals = [signal for signal in registry.get("signals", []) if isinstance(signal, dict)]
+    intake = [signal for signal in signals if signal.get("status") == "Intake"]
     if not decisions:
+        if intake:
+            return f"No recorded decisions are captured yet, but {len(intake)} report signal(s) may need promotion into DECISIONS.md. Review the intake queue below and record only durable choices with date, rationale, owner, and revisit trigger."
         return "No recorded decisions are captured yet. Add dated decision rows to DECISIONS.md so future reviews can distinguish durable choices from open questions."
 
     ordered = sorted(enumerate(decisions), key=lambda item: sortable_date_key(item[1].get("date", ""), item[0]))
@@ -2258,17 +2740,17 @@ def decisions_current_read(core_dir: Path) -> str:
         [
             f"The decision log has {len(decisions)} recorded choices, with recurring themes around {phrase_list(themes)}.",
             f"The newest entries are {phrase_list([decision['title'] for decision in recent], fallback='the latest recorded choices')}.",
+            f"Reports add {len(signals)} decision signal(s), with {len(intake)} still in intake and not yet recorded as durable choices.",
             f"Revisit pressure is mostly tied to {phrase_list(trigger_examples, fallback='explicit trigger conditions')}, so rows should read as historical decisions unless a trigger is due or marked met.",
             "Use the log below as the durable history; when a review reaffirms, supersedes, or punts a choice, update the source Markdown and regenerate this read.",
         ]
     )
 
 
-def risks_current_read(core_dir: Path, wiki_root: Path) -> str:
-    risks = read_risk_entries(core_dir, limit=None)
-    signals = read_report_risk_signals(wiki_root)
-    active_titles, closed_titles = risk_titles_by_status(core_dir)
-    unpromoted = [signal for signal in signals if risk_signal_status(signal, active_titles, closed_titles) == "Needs promotion"]
+def risks_current_read(registry: dict[str, Any]) -> str:
+    risks = active_registry_risks(registry)
+    signals = [signal for signal in registry.get("signals", []) if isinstance(signal, dict)]
+    unpromoted = [signal for signal in signals if signal.get("status") == "Intake"]
 
     if not risks and not signals:
         return "No active risks or report risk signals are captured yet. Add rows to RISKS.md or run a Tech Stack or Engineering Risk report so the register can become the operating source of truth."
@@ -2294,47 +2776,153 @@ def risks_current_read(core_dir: Path, wiki_root: Path) -> str:
     )
 
 
-def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "../") -> str:
-    signals = read_report_risk_signals(wiki_root)
+def risk_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
+    risks = [risk for risk in registry.get("risks", []) if isinstance(risk, dict)]
+    if not risks:
+        return ""
+
+    rows = []
+    filter_rows: list[dict[str, str]] = []
+    for risk in risks:
+        risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+        status = text_value(risk.get("status") or "Active")
+        severity = text_value(risk.get("severity") or "Low")
+        owner = text_value(risk.get("owner") or "Unassigned")
+        source = text_value(risk.get("source") or "Risk register")
+        review = text_value(risk.get("review") or risk.get("nextReview") or "Unscheduled")
+        source_html = source_links_html(risk.get("sourceLinks"), prefix=prefix, fallback=source)
+        filter_rows.append({"status": status, "severity": severity, "owner": owner, "source": source, "review": review})
+        rows.append(
+            f"""<tr id="{esc(risk_id)}" data-filter-text="{search_text_attr(risk_id, risk.get("title"), status, severity, owner, source, review, risk.get("evidence"), risk.get("impact"), risk.get("mitigation"))}" data-filter-status="{esc(status)}" data-filter-severity="{esc(severity)}" data-filter-owner="{esc(owner)}" data-filter-source="{esc(source)}" data-filter-review="{esc(review)}">
+  <td><code>{esc(risk_id)}</code></td>
+  <td><strong>{esc(risk.get("title", ""))}</strong><br><span>{esc(risk.get("category", ""))}</span></td>
+  <td><span class="tag {severity_class(severity)}">{esc(status)}</span></td>
+  <td><span class="sev-badge b-{severity_token(severity)}">{esc(severity)}</span></td>
+  <td>{esc(owner)}</td>
+  <td>{source_html}</td>
+  <td>{esc(review)}</td>
+  <td>{esc(risk.get("mitigation", ""))}</td>
+</tr>"""
+        )
+
+    table_id = "canonical-risk-registry"
+    controls = registry_filter_controls(
+        table_id,
+        filter_rows,
+        [
+            {"key": "status", "label": "Status"},
+            {"key": "severity", "label": "Severity"},
+            {"key": "owner", "label": "Owner"},
+            {"key": "source", "label": "Source"},
+            {"key": "review", "label": "Review"},
+        ],
+    )
+    return f"""
+  <section class="artifact-section" id="canonical-risks">
+    <h2>Canonical Risk Registry</h2>
+    <p class="artifact-note">Generated from <code>core/RISKS.md</code>. Each row has a stable ID for links from dashboards and report evidence; edit the Markdown source, then run <code>dzcto refresh</code>.</p>
+    {controls}
+    <div class="markdown-table" id="{esc(table_id)}" data-filterable-table>
+      <table>
+        <thead><tr><th>ID</th><th>Risk</th><th>Status</th><th>Severity</th><th>Owner</th><th>Source</th><th>Next Review</th><th>Mitigation</th></tr></thead>
+        <tbody>{''.join(rows)}</tbody>
+      </table>
+    </div>
+  </section>
+"""
+
+
+def decision_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
+    decisions = registry_decisions(registry)
+    if not decisions:
+        return ""
+
+    rows = []
+    filter_rows: list[dict[str, str]] = []
+    for decision in decisions:
+        decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+        status = text_value(decision.get("status") or "Recorded")
+        owner = text_value(decision.get("owner") or "Founder")
+        date = text_value(decision.get("date") or "Unknown")
+        revisit = text_value(decision.get("revisitTrigger") or decision.get("when") or "Review trigger")
+        source = text_value(decision.get("source") or "Decision log")
+        source_html = source_links_html(decision.get("sourceLinks"), prefix=prefix, fallback=source)
+        filter_rows.append({"status": status, "owner": owner, "date": date, "source": source})
+        rows.append(
+            f"""<tr id="{esc(decision_id)}" data-filter-text="{search_text_attr(decision_id, decision.get("title"), status, owner, date, source, decision.get("context"), decision.get("options"), decision.get("rationale"), revisit)}" data-filter-status="{esc(status)}" data-filter-owner="{esc(owner)}" data-filter-date="{esc(date)}" data-filter-source="{esc(source)}">
+  <td><code>{esc(decision_id)}</code></td>
+  <td>{esc(date)}</td>
+  <td><strong>{esc(decision.get("title", ""))}</strong><br><span>{esc(decision.get("context", ""))}</span></td>
+  <td>{esc(decision.get("options", ""))}</td>
+  <td>{esc(decision.get("rationale", ""))}</td>
+  <td>{esc(owner)}</td>
+  <td>{esc(revisit)}</td>
+  <td>{source_html}</td>
+</tr>"""
+        )
+
+    table_id = "canonical-decision-registry"
+    controls = registry_filter_controls(
+        table_id,
+        filter_rows,
+        [
+            {"key": "status", "label": "Status"},
+            {"key": "owner", "label": "Owner"},
+            {"key": "date", "label": "Date"},
+            {"key": "source", "label": "Source"},
+        ],
+    )
+    return f"""
+  <section class="artifact-section" id="canonical-decisions">
+    <h2>Canonical Decision Registry</h2>
+    <p class="artifact-note">Generated from <code>core/DECISIONS.md</code>. This is the durable decision history; report signals below are intake until promoted into the Markdown source.</p>
+    {controls}
+    <div class="markdown-table" id="{esc(table_id)}" data-filterable-table>
+      <table>
+        <thead><tr><th>ID</th><th>Date</th><th>Decision</th><th>Options</th><th>Rationale</th><th>Owner</th><th>Revisit Trigger</th><th>Source</th></tr></thead>
+        <tbody>{''.join(rows)}</tbody>
+      </table>
+    </div>
+  </section>
+"""
+
+
+def report_risk_signals_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
+    signals = [signal for signal in registry.get("signals", []) if isinstance(signal, dict)]
     if not signals:
         return ""
 
-    active_titles, closed_titles = risk_titles_by_status(core_dir)
     rows = []
-    filter_rows: list[list[str]] = []
+    filter_rows: list[dict[str, str]] = []
     for signal in signals[:24]:
-        status = risk_signal_status(signal, active_titles, closed_titles)
-        tone = "ready" if status == "In active register" else "low" if status == "Closed or accepted" else "medium"
-        filter_rows.append([signal["severity"], status, signal["source_kind"]])
-        source_links = []
-        hrefs = signal["href"].split(" | ") if signal["href"] else []
-        labels = signal["source_label"].split(" | ")
-        for index, label in enumerate(labels):
-            href = hrefs[index] if index < len(hrefs) else ""
-            if href:
-                source_links.append(f'<a href="{esc(prefix + href)}">{esc(label)}</a>')
-            else:
-                source_links.append(esc(label))
+        status = text_value(signal.get("status") or "Intake")
+        tone = "ready" if status == "Matched" else "medium"
+        source_kind = text_value(signal.get("source_kind"))
+        filter_rows.append({"severity": signal.get("severity", ""), "status": status, "source": source_kind})
+        source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
         detail = signal["evidence"] or signal["impact"] or "No detail captured in the structured report data."
-        action = signal["mitigation"] or ("Promote into RISKS.md with owner, mitigation, source, and next review date." if status == "Needs promotion" else "Keep source link for traceability.")
+        if signal.get("matchedRiskId"):
+            action = f"""Linked to <a href="#{esc(signal["matchedRiskId"])}"><code>{esc(signal["matchedRiskId"])}</code></a>."""
+        else:
+            action = esc(signal["mitigation"] or "Promote into RISKS.md with owner, mitigation, source, and next review date.")
         rows.append(
-            f"""<tr data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], signal["source_kind"], detail, action)}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(signal["source_kind"])}">
+            f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], source_kind, detail, signal.get("mitigation", ""), signal.get("matchedRiskId", ""))}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(source_kind)}">
   <td><strong>{esc(signal["title"])}</strong><br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
   <td><span class="tag {tone}">{esc(status)}</span></td>
-  <td>{' / '.join(source_links)}</td>
+  <td>{source_html}</td>
   <td>{esc(detail)}</td>
-  <td>{esc(action)}</td>
+  <td>{action}</td>
 </tr>"""
         )
 
     table_id = "risk-signal-table"
-    controls = table_filter_controls(
+    controls = registry_filter_controls(
         table_id,
         filter_rows,
         [
-            {"key": "severity", "label": "Severity", "index": 0},
-            {"key": "status", "label": "Status", "index": 1},
-            {"key": "source", "label": "Source", "index": 2},
+            {"key": "severity", "label": "Severity"},
+            {"key": "status", "label": "Status"},
+            {"key": "source", "label": "Source"},
         ],
     )
 
@@ -2346,6 +2934,57 @@ def report_risk_signals_html(wiki_root: Path, core_dir: Path, *, prefix: str = "
     <div class="markdown-table" id="{esc(table_id)}" data-filterable-table>
       <table>
         <thead><tr><th>Signal</th><th>Status</th><th>Source</th><th>Evidence</th><th>Action</th></tr></thead>
+        <tbody>{''.join(rows)}</tbody>
+      </table>
+    </div>
+  </section>
+"""
+
+
+def report_decision_signals_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
+    signals = [signal for signal in registry.get("signals", []) if isinstance(signal, dict)]
+    if not signals:
+        return ""
+
+    rows = []
+    filter_rows: list[dict[str, str]] = []
+    for signal in signals[:24]:
+        status = text_value(signal.get("status") or "Intake")
+        source_kind = text_value(signal.get("source_kind"))
+        filter_rows.append({"status": status, "source": source_kind, "date": text_value(signal.get("date"))})
+        source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
+        if signal.get("matchedDecisionId"):
+            action = f"""Linked to <a href="#{esc(signal["matchedDecisionId"])}"><code>{esc(signal["matchedDecisionId"])}</code></a>."""
+        else:
+            action = "Promote into DECISIONS.md when this is a durable choice, not merely an ask or open question."
+        rows.append(
+            f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal.get("title"), status, source_kind, signal.get("date"), signal.get("context"), signal.get("owner"), signal.get("matchedDecisionId", ""))}" data-filter-status="{esc(status)}" data-filter-source="{esc(source_kind)}" data-filter-date="{esc(signal.get("date", ""))}">
+  <td><strong>{esc(signal.get("title", ""))}</strong></td>
+  <td><span class="tag {'ready' if status == 'Matched' else 'medium'}">{esc(status)}</span></td>
+  <td>{source_html}</td>
+  <td>{esc(signal.get("context", "") or signal.get("options", "") or "No detail captured in the structured report data.")}</td>
+  <td>{action}</td>
+</tr>"""
+        )
+
+    table_id = "decision-signal-table"
+    controls = registry_filter_controls(
+        table_id,
+        filter_rows,
+        [
+            {"key": "status", "label": "Status"},
+            {"key": "source", "label": "Source"},
+            {"key": "date", "label": "Date"},
+        ],
+    )
+    return f"""
+  <section class="artifact-section" id="decision-signals">
+    <h2>Decision Signals From Reports</h2>
+    <p class="artifact-note">Generated from structured report asks and decision fields. Use this as an intake queue; record only durable choices in <code>DECISIONS.md</code>.</p>
+    {controls}
+    <div class="markdown-table" id="{esc(table_id)}" data-filterable-table>
+      <table>
+        <thead><tr><th>Signal</th><th>Status</th><th>Source</th><th>Context</th><th>Action</th></tr></thead>
         <tbody>{''.join(rows)}</tbody>
       </table>
     </div>
@@ -3604,7 +4243,14 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
 """
 
 
-def refresh_structured_report_pages(wiki_root: Path, project_folder: Path, sticky_title: str) -> None:
+def refresh_structured_report_pages(
+    wiki_root: Path,
+    project_folder: Path,
+    sticky_title: str,
+    *,
+    risk_registry: dict[str, Any] | None = None,
+    decision_registry: dict[str, Any] | None = None,
+) -> None:
     reports_dir = wiki_root / "reports"
     for kind in REPORT_FOLDERS:
         report_dir = reports_dir / kind
@@ -3621,7 +4267,7 @@ def refresh_structured_report_pages(wiki_root: Path, project_folder: Path, stick
                 continue
             title = html_title(report_path) or report_name(report_path)
             date = report_run_date(report_path)
-            body = render_structured_report(kind, data)
+            body = render_structured_report(kind, data, risk_registry=risk_registry, decision_registry=decision_registry)
             provenance = provenance_payload(
                 wiki_root,
                 artifact_id=f"{kind}:{report_path.stem}",
@@ -3680,10 +4326,43 @@ def write_setup_page(wiki_root: Path, project_folder: Path, company: str, setup_
     update_manifest(wiki_root, provenance)
 
 
-def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, Any]]:
+def prune_manifest_report_artifacts(wiki_root: Path) -> None:
+    manifest_path = sidecar_dir(wiki_root) / "manifest.json"
+    manifest = read_json(manifest_path, {})
+    artifacts = manifest.get("artifacts") if isinstance(manifest, dict) else None
+    if not isinstance(artifacts, list):
+        return
+    pruned = []
+    changed = False
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            pruned.append(artifact)
+            continue
+        relative = str(artifact.get("relativePath") or "")
+        if relative.startswith("reports/"):
+            parts = relative.split("/")
+            if len(parts) > 1 and parts[1] not in REPORT_FOLDERS:
+                changed = True
+                continue
+        pruned.append(artifact)
+    if changed:
+        manifest["artifacts"] = pruned
+        manifest["updatedAt"] = utc_now()
+        write_json(manifest_path, manifest)
+
+
+def write_core_pages(
+    wiki_root: Path,
+    project_folder: Path,
+    *,
+    risk_registry: dict[str, Any] | None = None,
+    decision_registry: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     core_dir = wiki_root / "core"
     core_dir.mkdir(parents=True, exist_ok=True)
     stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
+    risk_registry = risk_registry or build_risk_registry(wiki_root)
+    decision_registry = decision_registry or build_decision_registry(wiki_root)
     pages: list[dict[str, Any]] = []
     for doc in CORE_DOCS:
         title, description = CORE_DOC_META.get(doc, (doc, "Core CTO context."))
@@ -3691,23 +4370,36 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         relative_path = f"core/{core_doc_html_name(doc)}"
         if source_path.exists():
             source_text = source_path.read_text(encoding="utf-8")
-            table_filter_profile = "risks" if doc == "RISKS.md" else "decisions" if doc == "DECISIONS.md" else None
-            content_html = markdown_to_html(source_text, table_anchor_prefix="risk" if doc == "RISKS.md" else None, table_filter_profile=table_filter_profile)
             source_paths = [source_path]
             if doc == "RISKS.md":
                 source_paths.extend(report_risk_signal_json_paths(wiki_root))
+                content_html = risk_registry_html(risk_registry, prefix="../")
+            elif doc == "DECISIONS.md":
+                source_paths.extend(report_decision_signal_json_paths(wiki_root))
+                content_html = decision_registry_html(decision_registry, prefix="../")
+            else:
+                content_html = f"""
+  <section class="artifact-section prose">
+    {markdown_to_html(source_text)}
+  </section>
+"""
             source_hash = collect_source_hashes(source_paths)
         else:
-            content_html = f'<p class="empty-item">{esc(doc)} has not been created yet.</p>'
+            content_html = f"""
+  <section class="artifact-section prose">
+    <p class="empty-item">{esc(doc)} has not been created yet.</p>
+  </section>
+"""
             source_hash = {}
 
         current_read_html = ""
         extra_core_html = ""
         if source_path.exists() and doc == "DECISIONS.md":
-            current_read_html = core_current_read_html(title, decisions_current_read(core_dir))
+            current_read_html = core_current_read_html(title, decisions_current_read(decision_registry))
+            extra_core_html = report_decision_signals_html(decision_registry, prefix="../")
         elif source_path.exists() and doc == "RISKS.md":
-            current_read_html = core_current_read_html(title, risks_current_read(core_dir, wiki_root))
-            extra_core_html = report_risk_signals_html(wiki_root, core_dir, prefix="../")
+            current_read_html = core_current_read_html(title, risks_current_read(risk_registry))
+            extra_core_html = report_risk_signals_html(risk_registry, prefix="../")
 
         provenance = provenance_payload(
             wiki_root,
@@ -3721,11 +4413,9 @@ def write_core_pages(wiki_root: Path, project_folder: Path) -> list[dict[str, An
         content = f"""
   {current_read_html}
   {extra_core_html}
-  <section class="artifact-section prose">
-    {content_html}
-  </section>
+  {content_html}
   <div class="source-footnote">
-    <span>Source <code>{esc(doc)}</code></span>
+    <span>Source <code>{esc(doc)}</code>{' / generated registry' if doc in {'RISKS.md', 'DECISIONS.md'} else ''}</span>
     <span>Updated {esc(dt.date.today().isoformat())}</span>
   </div>
 """
@@ -3756,8 +4446,11 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     company = company_name(strategy_path, project_folder, config)
     description = company_description(strategy_path, config)
     stable_title = dashboard_title(company)
-    refresh_structured_report_pages(wiki_root, project_folder, stable_title)
-    core_pages = write_core_pages(wiki_root, project_folder)
+    prune_manifest_report_artifacts(wiki_root)
+    risk_registry = write_risk_registry(wiki_root, project_folder)
+    decision_registry = write_decision_registry(wiki_root, project_folder)
+    refresh_structured_report_pages(wiki_root, project_folder, stable_title, risk_registry=risk_registry, decision_registry=decision_registry)
+    core_pages = write_core_pages(wiki_root, project_folder, risk_registry=risk_registry, decision_registry=decision_registry)
     core_ready = sum(1 for page in core_pages if page["source_exists"])
 
     report_entries = [(folder, label, sorted((reports_dir / folder).glob("*.html"), reverse=True)) for folder, label in REPORT_FOLDERS.items()]
@@ -3826,8 +4519,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
     alerts = cadence_alerts(cadence_rules, reports_dir, today)
-    risks = read_risk_entries(core_dir)
-    decisions = read_decision_entries(core_dir)
+    risks = active_registry_risks(risk_registry)
+    decisions = registry_decisions(decision_registry)
     due_decisions = due_decision_entries(decisions, today)
     due_risks = due_risk_entries(risks, today)
     critical_risks = sum(1 for risk in risks if risk["severity"] == "Critical")
@@ -3893,6 +4586,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         report_entries=report_entries,
         learning_items=learning_items,
         setup_items=setup_items,
+        risk_registry=risk_registry,
+        decision_registry=decision_registry,
     )
 
     report_prompt_context = configured_report_prompt_context(config)
@@ -3944,7 +4639,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     decision_rows = (
         "\n".join(
-            f"""<a class="dec" href="core/decisions.html" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
+            f"""<a class="dec" href="core/decisions.html#{esc(decision.get("id") or decision_id_for_title(decision["title"]))}" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
   <span class="idx">{index}</span>
   <div class="d-body">
     <div class="d-title">{esc(decision["title"])}</div>
@@ -3959,7 +4654,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     due_risk_rows = (
         "\n".join(
-            f"""<a class="mini-risk" href="core/risks.html#{esc(risk_anchor(risk["title"]))}">
+            f"""<a class="mini-risk" href="core/risks.html#{esc(risk.get("id") or risk_id_for_title(risk["title"]))}">
   <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
   <div class="mr-body">
     <div class="mr-title">{esc(risk["title"])}</div>

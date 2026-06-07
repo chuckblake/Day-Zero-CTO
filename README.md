@@ -72,6 +72,10 @@ Recommended folder shape:
         decisions.html
         RISKS.md
         risks.html
+      decisions/
+        registry.json
+      risks/
+        registry.json
       reports/
         tech-stack/
         engineering-risk/
@@ -91,8 +95,10 @@ Generated wiki pages use a compact command-center interface:
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages. Incomplete setup appears as a top dashboard alert; complete setup moves into a collapsed Setup reference section.
 - A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
 - Generated "Current Read" summaries on the Decisions and Risks core pages. These are regenerated from source rows on every refresh and stay short: one paragraph that emphasizes frequent and newer themes.
-- Filterable Decisions and Risks pages for narrowing the source logs by owner, date/review timing, source, severity, likelihood, options, or revisit fields when those columns exist.
-- A canonical Risks page with the active `core/RISKS.md` log plus a generated `Risk Signals From Reports` intake queue with source links back to Tech Stack, Engineering Risk, Weekly Review, and CEO Update artifacts.
+- Filterable Decisions and Risks pages rendered from generated registries, with stable IDs for deep links from the dashboard and reports.
+- Canonical `risks/registry.json` and `decisions/registry.json` files generated from `core/RISKS.md`, `core/DECISIONS.md`, and structured report signals. These are machine-facing indexes, not the hand-editing source.
+- A canonical Risks page with report-derived `Risk Signals From Reports` intake plus the generated risk registry. Signals link to existing risk IDs when matched; unmatched signals remain intake until promoted, merged, or dismissed.
+- A canonical Decisions page with report-derived `Decision Signals From Reports` intake plus the generated decision registry. Signals link to existing decision IDs when matched; unmatched asks or proposed choices stay intake until they become durable decisions.
 - Report cards show factual artifact counts and, when a report folder has multiple artifacts, a compact previous-run list under the latest report.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
@@ -105,7 +111,9 @@ The dashboard description under the title comes from the first real paragraph in
 
 For substantive core context updates, ask an agent to use the `refine-core-context` skill. It runs a short interview, drafts section-level Markdown updates, asks for approval or edits, writes only the source Markdown under `knowledge/wiki/core/`, and refreshes the generated HTML. Direct file edits are still fine for small typo, formatting, or copy fixes; the source files are `STRATEGY.md`, `TEAM.md`, `OPERATING_CADENCE.md`, `DECISIONS.md`, and `RISKS.md`.
 
-Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The dashboard risk KPI, today-panel risk links, and `core/risks.html` are generated renderings from that Markdown and should be refreshed, not hand-edited. Use a `Source` column when possible so promoted risks can point back to a tech-stack report, engineering-risk review, audit, code evidence, customer signal, or founder judgment.
+Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md`. The helper generates `knowledge/wiki/risks/registry.json` from that Markdown plus report signals so dashboards and reports can link to stable risk IDs. Do not hand-edit the registry or generated HTML. Use a `Source` column when possible so promoted risks can point back to a tech-stack report, engineering-risk review, audit, code evidence, customer signal, or founder judgment.
+
+Decision information follows the same pattern: `knowledge/wiki/core/DECISIONS.md` is the editable decision log, while `knowledge/wiki/decisions/registry.json` is generated for stable IDs, filtering, report-signal matching, and search. Report asks or proposed choices are not recorded decisions until they are promoted into `DECISIONS.md` with date, rationale, owner, and revisit trigger.
 
 Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. The generated Risks page rolls structured report signals into `Risk Signals From Reports` so the user can promote, merge, or dismiss them from one place. Promote actionable items into `core/RISKS.md` with owner, mitigation, source, and review date before relying on them in the command center.
 
@@ -116,6 +124,7 @@ Every active risk should carry a calendar date in its `Next Review` field. Exter
 The index shows company information under the title, then a dashboard workspace:
 
 - `What needs you today`: only items requiring action today: due or triggered decision reviews, risk reviews due today or overdue, and cadence items due today or overdue.
+- `dzcto lfg`: a local command that picks the next best action in order: setup, cadence, risks, decisions, then learning.
 - `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it moves to the bottom of the page as a quieter reference link to `setup/index.html`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
 - `Reports`: latest report cards for each artifact kind.
@@ -347,7 +356,8 @@ dzcto <command> -h
 | Command | Use when | Key options |
 | --- | --- | --- |
 | `dzcto quickstart` | Print the shortest self-serve setup path. | `--project <project>` for project-specific examples. |
-| `dzcto help` | Print Day Zero CTO workflow help. With no topic, prints the command reference. | Topics: `onboarding`, `editing`, `reports`, `commands`, `serve`, `troubleshooting`, `learning`, `artifacts`; optional `--project <project>`. |
+| `dzcto help` | Print Day Zero CTO workflow help. With no topic, prints the command reference. | Topics: `onboarding`, `editing`, `reports`, `commands`, `lfg`, `serve`, `troubleshooting`, `learning`, `artifacts`; optional `--project <project>`. |
+| `dzcto lfg "<project folder>"` | Pick the next best operating action in priority order: setup, cadence, risks, decisions, then learning. | `--json` for machine-readable output. |
 | `dzcto version` | Print the installed helper version. | None. |
 
 ### Install and Update
@@ -419,6 +429,8 @@ Optional `metrics` are rendered as summary cards when present.
 
 For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. The helper stores structured report JSON next to generated report HTML, and `core/risks.html` reads that data into `Risk Signals From Reports` with links back to the source report. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
 
+Report risk and decision fields are treated as signals. When a signal matches a canonical risk or decision title, generated pages link it to the stable registry ID. When it does not match, it remains intake until an agent or user promotes it into the source Markdown or dismisses it as non-durable.
+
 ## Repo Structure
 
 ```text
@@ -455,7 +467,7 @@ day-zero-cto/
 └── README.md
 ```
 
-`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
+`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `lfg`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
 
 `scripts/dzcto_artifact.py` owns HTML generation, sidecar metadata, generated core HTML pages, report templates, learning index rendering, cadence alerts, and the command-center index.
 
