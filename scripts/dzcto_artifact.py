@@ -904,6 +904,7 @@ def page_shell(
     eyebrow: str = "Command Center - Day Zero CTO",
     title: str = "Knowledge Wiki",
     subtitle: str = "",
+    stamp: str = "",
     crumbs: list[tuple[str, str | None]] | None = None,
     sticky_title: str | None = None,
 ) -> str:
@@ -928,6 +929,7 @@ def page_shell(
         <span class="eyebrow">{esc(eyebrow)}</span>
         <h1 class="title">{esc(title)}</h1>
       </a>
+      {f'<p class="masthead-stamp">{esc(stamp)}</p>' if stamp else ''}
       {f'<p class="lede">{esc(subtitle)}</p>' if subtitle else ''}
     </div>
     <div class="masthead-side masthead-mobile-tools">
@@ -1278,6 +1280,18 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
     if not groups:
         return ""
 
+    # Suppress the card when it would merely restate the sections directly below.
+    # It is pure duplication only when no group is truncated by the items[:2] slice
+    # (max_group <= 2, so the card shows each group in full, not a condensed subset)
+    # AND the body is short (total_items <= 3 signal rows across its sections, so
+    # those rows are already visible without the top block). A >2-item group makes
+    # the card a real triage subset; 4+ items total makes it useful navigation across
+    # scattered section leads. In both of those cases the card stays.
+    total_items = sum(len(items) for _, items in groups)
+    max_group = max(len(items) for _, items in groups)
+    if max_group <= 2 and total_items <= 3:
+        return ""
+
     rows = []
     for label, items in groups:
         for item in items[:2]:
@@ -1294,9 +1308,9 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
 
 
 def render_weekly_review(data: dict[str, Any]) -> str:
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     return "".join(
         [
-            html_paragraph(value_at(data, "executive_read", "summary")),
             render_metrics(value_at(data, "metrics")),
             render_list_section("Shipped / Learned", value_at(data, "shipped_learned", "shipped", "learned")),
             render_table_section("Risks", value_at(data, "risks"), [("Risk", "risk"), ("Evidence", "evidence"), ("Business Impact", "impact"), ("Severity", "severity"), ("Mitigation", "mitigation")]),
@@ -1310,9 +1324,9 @@ def render_weekly_review(data: dict[str, Any]) -> str:
 
 
 def render_ceo_update(data: dict[str, Any]) -> str:
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     return "".join(
         [
-            html_paragraph(value_at(data, "headline", "summary")),
             render_metrics(value_at(data, "metrics")),
             render_list_section("Progress", value_at(data, "progress")),
             render_list_section("Risks / Blockers", value_at(data, "risks_blockers", "risks", "blockers")),
@@ -1324,9 +1338,9 @@ def render_ceo_update(data: dict[str, Any]) -> str:
 
 
 def render_engineering_risk(data: dict[str, Any]) -> str:
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     return "".join(
         [
-            html_paragraph(value_at(data, "executive_read", "summary")),
             render_metrics(value_at(data, "metrics")),
             render_table_section("Top Risks", value_at(data, "top_risks", "risks"), [("Risk", "risk"), ("Evidence", "evidence"), ("Business Impact", "impact"), ("Likelihood", "likelihood"), ("Severity", "severity"), ("Mitigation", "mitigation"), ("Owner / Horizon", "owner_horizon")]),
             render_list_section("Mitigations", value_at(data, "mitigations")),
@@ -1337,9 +1351,9 @@ def render_engineering_risk(data: dict[str, Any]) -> str:
 
 
 def render_tech_stack(data: dict[str, Any], risk_registry: dict[str, Any] | None = None) -> str:
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     return "".join(
         [
-            html_paragraph(value_at(data, "executive_read", "summary")),
             render_table_section("Stack Components", value_at(data, "stack_components", "components"), [("Layer", "layer"), ("Technology", "technology"), ("Evidence", "evidence"), ("Notes", "notes")]),
             render_text_section("Architecture Shape", value_at(data, "architecture_shape", "architecture")),
             render_list_section("Data and Storage", value_at(data, "data_storage", "data_and_storage")),
@@ -1354,7 +1368,7 @@ def render_tech_stack(data: dict[str, Any], risk_registry: dict[str, Any] | None
 
 
 def render_generic_report(data: dict[str, Any]) -> str:
-    summary = html_paragraph(value_at(data, "summary", "executive_read", "headline"))
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     sections = []
     for section in array_value(value_at(data, "sections")):
         if not isinstance(section, dict):
@@ -1363,7 +1377,7 @@ def render_generic_report(data: dict[str, Any]) -> str:
         title = text_value(value_at(section, "title", "name"))
         content = value_at(section, "items", "body", "content", "details")
         sections.append(render_list_section(title, content) if isinstance(content, list) else render_text_section(title, content))
-    return "".join([summary, *sections, render_sources(data)])
+    return "".join([*sections, render_sources(data)])
 
 
 def render_structured_report(kind: str, data: dict[str, Any], risk_registry: dict[str, Any] | None = None, decision_registry: dict[str, Any] | None = None) -> str:
@@ -1376,12 +1390,15 @@ def render_structured_report(kind: str, data: dict[str, Any], risk_registry: dic
             "engineering-risk": render_engineering_risk,
         }
         body = renderers.get(kind, render_generic_report)(data)
+    # The lead summary now lives in the masthead, so the follow-up-signals card
+    # anchors deterministically at the top of the body for every kind.
     action_summary = render_action_summary(kind, data)
-    if not action_summary:
-        return body.strip() or render_generic_report(data)
-    if match := re.match(r"(\s*<p\b[^>]*>.*?</p>)", body, re.S):
-        return f"{match.group(1)}{action_summary}{body[match.end():]}".strip()
-    return f"{action_summary}{body}".strip() or render_generic_report(data)
+    rendered = f"{action_summary}{body}".strip() or render_generic_report(data)
+    # A blank body is legitimate when the lead summary carries the report in the
+    # masthead deck. Only surface a placeholder when nothing at all was captured.
+    if not rendered.strip() and not report_lead_summary(data):
+        return '<p class="empty-item">No content yet.</p>'
+    return rendered
 
 
 def core_doc_html_name(doc: str) -> str:
@@ -1473,11 +1490,46 @@ def reference_list(label: str, href: str = "", *, kind: str = "") -> list[dict[s
     return [item]
 
 
+ALLOWED_LINK_SCHEMES = {"http", "https", "mailto"}
+
+
+def href_scheme_allowed(href: str) -> bool:
+    """Return True for relative/anchor hrefs and http(s)/mailto schemes.
+
+    Used to keep operator-authored Markdown links (core/RISKS.md, DECISIONS.md)
+    from emitting javascript:/data:/vbscript: hrefs. This is a robustness guard
+    on the operator's own content, not a remote-attacker defense.
+    """
+    href = (href or "").strip()
+    if not href:
+        return False
+    # Reject the control chars browsers strip from inside URLs and that hide a
+    # scheme (e.g. "java\tscript:alert(1)"). A regular space (0x20) is a valid
+    # href character, so it is intentionally not in this range.
+    if re.search(r"[\x00-\x1f\x7f]", href):
+        return False
+    match = re.match(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):", href)
+    if not match:
+        # No scheme: relative path, ./, ../, #anchor, or //host. Allowed.
+        return True
+    return match.group(1).lower() in ALLOWED_LINK_SCHEMES
+
+
 def inline_markdown(value: str) -> str:
     text = esc(value)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+
+    def _link(match: re.Match[str]) -> str:
+        # value was already esc()'d above, so the captured href is single-escaped;
+        # emit it raw (re-escaping would turn & into &amp;amp;). The guard only
+        # decides whether to keep the <a>, dropping disallowed-scheme links to text.
+        label, href = match.group(1), match.group(2)
+        if href_scheme_allowed(href):
+            return f'<a href="{href}">{label}</a>'
+        return label
+
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _link, text)
     return text
 
 
@@ -1739,6 +1791,32 @@ def report_summary(path: Path, limit: int = 190) -> str:
     return snippet(plain_html(text), limit)
 
 
+def report_lead_summary(data: Any, limit: int | None = None) -> str:
+    """Lead one-line summary a report renders as its masthead deck.
+
+    Reads the structured fields the body renderers lead with (executive_read,
+    headline, summary) so previews and the masthead reuse the same sentence
+    instead of re-parsing emitted HTML.
+    """
+    if not isinstance(data, dict):
+        return ""
+    text = text_value(value_at(data, "executive_read", "headline", "summary"))
+    if not text:
+        return ""
+    return snippet(text, limit) if limit else text
+
+
+def report_summary_for_path(path: Path, limit: int = 190) -> str:
+    """Prefer the structured report summary; fall back to stripped HTML.
+
+    Structured reports persist their source JSON next to the HTML, so the clean
+    lead summary is read straight from it. Legacy --body-file reports without a
+    sibling JSON fall back to the stripped-HTML snippet.
+    """
+    lead = report_lead_summary(read_json_file(path.with_suffix(".json"), None), limit)
+    return lead or report_summary(path, limit)
+
+
 def search_entry(
     *,
     title: str,
@@ -1889,7 +1967,7 @@ def write_search_index(
                     kind=label,
                     url=path.relative_to(wiki_root).as_posix(),
                     text=html_text,
-                    summary=plain_html(html_text),
+                    summary=report_summary_for_path(path) or plain_html(html_text),
                     date=report_run_date(path),
                     section=folder,
                 )
@@ -2775,6 +2853,8 @@ def source_href(href: str, prefix: str) -> str:
     href = (href or "").strip()
     if not href:
         return ""
+    if not href_scheme_allowed(href):
+        return ""
     if re.match(r"^(https?://|mailto:|#|/)", href) or href.startswith(("../", "./")):
         return href
     return prefix + href
@@ -2796,10 +2876,13 @@ def source_links_html(links: Any, *, prefix: str = "../", fallback: str = "") ->
         if key in seen:
             continue
         seen.add(key)
-        if href:
-            values.append(f'<a href="{esc(source_href(href, prefix))}">{esc(label or href)}</a>')
+        resolved = source_href(href, prefix) if href else ""
+        if resolved:
+            values.append(f'<a href="{esc(resolved)}">{esc(label or href)}</a>')
         else:
-            values.append(esc(label))
+            # No href, or a disallowed scheme that source_href rejected: render
+            # the label as plain text rather than a dead <a href="">.
+            values.append(esc(label or href))
     if not values and fallback:
         values.append(esc(fallback))
     return " / ".join(values)
@@ -3493,6 +3576,7 @@ button { cursor: pointer; }
 h1.title { font-size: 38px; font-weight: 800; }
 .title .light { color: var(--muted); font-weight: 500; }
 .lede { max-width: 680px; margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
+.masthead-stamp { margin-top: 8px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .masthead-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: min(300px, 100%); }
 .masthead-mobile-tools { display: none; }
 .util { display: flex; gap: 8px; justify-content: flex-end; }
@@ -4614,8 +4698,13 @@ def write_learning_index(wiki_root: Path, project_folder: Path, company: str, it
     update_manifest(wiki_root, provenance)
 
 
-def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any], sticky_title: str) -> str:
+def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any], sticky_title: str, lede: str = "") -> str:
     safe_title = esc(title)
+    # When the report carries a lead summary, it becomes the masthead deck and the
+    # date drops to a small stamp; otherwise the date stays as the lede (legacy).
+    lede_text = (lede or "").strip()
+    subtitle = lede_text or date
+    stamp = date if lede_text else ""
     content = f"""
     <div class="report-body">
       {body}
@@ -4630,7 +4719,7 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
     <style>{base_css()}</style>
   </head>
   <body>
-    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=date, crumbs=[("Reports", "index.html#sec-reports"), (REPORT_FOLDERS[kind], None)], sticky_title=sticky_title)}
+    {page_shell(content, prefix="../../", eyebrow=f"{REPORT_FOLDERS[kind]} - Day Zero CTO", title=title, subtitle=subtitle, stamp=stamp, crumbs=[("Reports", "index.html#sec-reports"), (REPORT_FOLDERS[kind], None)], sticky_title=sticky_title)}
     {provenance_block(provenance)}
     {refresh_script()}
   </body>
@@ -4673,7 +4762,7 @@ def refresh_structured_report_pages(
                 source_hashes=collect_source_hashes([json_path]),
                 extra={"reportDate": date},
             )
-            report_path.write_text(render_report_page(title, date, kind, body, provenance, sticky_title), encoding="utf-8")
+            report_path.write_text(render_report_page(title, date, kind, body, provenance, sticky_title, lede=report_lead_summary(data)), encoding="utf-8")
             update_manifest(wiki_root, provenance)
 
 
@@ -4971,7 +5060,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         if links:
             latest_path = links[0]
             href = latest_path.relative_to(wiki_root).as_posix()
-            preview = report_summary(latest_path) or "Generated report artifact."
+            preview = report_summary_for_path(latest_path) or "Generated report artifact."
             history_items = []
             history_search = []
             for path in links[1:4]:
@@ -5421,7 +5510,7 @@ def main(argv: list[str]) -> int:
             source_hashes=collect_source_hashes(report_sources),
             extra={"reportDate": args.date},
         )
-        report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance, stable_title), encoding="utf-8")
+        report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance, stable_title, lede=report_lead_summary(structured_data)), encoding="utf-8")
         if structured_data is not None:
             write_json(report_path.with_suffix(".json"), structured_data)
             write_json(reports_dir / args.kind / "data.json", structured_data)
