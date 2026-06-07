@@ -1,6 +1,6 @@
 ---
 name: learning
-description: "Teach the user one focused piece of startup system knowledge and log their self-rating into the Day Zero CTO spaced-repetition learning area. Use when the user asks for learning, wants to learn the system, asks to be taught one thing, asks for a spaced repetition review, asks to seed initial learning items, or responds to a prior Day Zero CTO learning prompt with a rating such as Needs Work, Familiar, Confident, not, neutral, know, 0, 1, or 2."
+description: "Teach one Day Zero CTO startup-system concept and log a spaced-repetition rating. Use for learning sessions, reviews, seeding learning items, or ratings like Needs Work, Familiar, Confident, 0, 1, or 2."
 ---
 
 # Learning

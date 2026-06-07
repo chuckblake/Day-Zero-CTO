@@ -1,6 +1,6 @@
 ---
 name: review-decisions
-description: "Review the Day Zero CTO decision log by walking the user through recorded decisions whose revisit triggers are due, unclear, or selected for review. Use when the user asks to review decisions, resolve open decision reviews, formalize a decision, punt a decision to a later date, revisit architectural choices, clean up pending-looking decisions, or work through DECISIONS.md one row at a time."
+description: "Review the Day Zero CTO decision log. Use for due, unclear, or selected revisit triggers; formalizing or punting decisions; revisiting architecture; cleaning pending-looking rows; or walking DECISIONS.md one row at a time."
 ---
 
 # Review Decisions

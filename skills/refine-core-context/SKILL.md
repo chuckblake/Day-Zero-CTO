@@ -1,6 +1,6 @@
 ---
 name: refine-core-context
-description: "Refine, review, complete, or update Day Zero CTO core context after onboarding through a guided interview and approval loop. Use when the user wants to improve or correct STRATEGY.md, TEAM.md, OPERATING_CADENCE.md, DECISIONS.md, RISKS.md, the dashboard description, cadence rules, the risk register, the decision log, team context, operating rituals, or asks how to keep core wiki documents accurate without manually editing generated HTML."
+description: "Refine Day Zero CTO core context via guided interview and approved Markdown edits. Use to update STRATEGY.md, TEAM.md, OPERATING_CADENCE.md, DECISIONS.md, RISKS.md, dashboard description, cadence, risks, decisions, or team/process context."
 ---
 
 # Refine Core Context

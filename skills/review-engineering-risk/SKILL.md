@@ -1,6 +1,6 @@
 ---
 name: review-engineering-risk
-description: "Produce a fresh engineering-risk assessment for an early-stage startup as a durable HTML report in the project knowledge wiki. This creates a new report from current evidence; it does not maintain the existing risk register row by row (use review-risks for that). Use when the user asks for a risk review, tech debt assessment, launch readiness check, fundraise readiness check, architecture risk review, security/reliability concern, scaling concern, or a CTO view of what could threaten product, customers, delivery, trust, or runway."
+description: "Produce a fresh Day Zero CTO engineering-risk HTML report from current evidence. Use for risk review, tech debt, launch or fundraise readiness, architecture, security, reliability, scaling, trust, runway, or delivery threats."
 ---
 
 # Review Engineering Risk

@@ -1,6 +1,6 @@
 ---
 name: write-ceo-update
-description: "Write CEO-facing engineering updates for an early-stage startup and create a durable HTML CEO update in the project knowledge wiki. Use when the user asks for a CEO report, founder update, executive recap, weekly update, board-input draft, investor-friendly engineering summary, or help translating engineering work, risks, and decisions into business-facing language."
+description: "Write a Day Zero CTO CEO-facing engineering update and durable HTML report. Use for CEO report, founder update, executive recap, weekly update, board/investor summary, or translating engineering work, risks, decisions, and asks into business language."
 ---
 
 # Write CEO Update

@@ -1,6 +1,6 @@
 ---
 name: bootstrap-cto-context
-description: "Onboard Day Zero CTO for a startup by asking for project/company name first, generating sensible default project knowledge directory options, creating or refreshing the project knowledge wiki, capturing company description or website URL, connecting optional read-only codebase locations, setting up core CTO context, offering to run initial reports, and optionally seeding the first 25 spaced-repetition learning items. Use when setting up the CTO operating system, onboarding the agent to company strategy/team/process context, starting a new startup workspace, choosing where durable CTO artifacts should live, connecting read-only codebase evidence sources, or repairing missing core context, generated HTML core pages, and knowledge/wiki/index.html files."
+description: "Onboard Day Zero CTO: choose project/company name, create or refresh knowledge/wiki, connect read-only repos, seed core context, reports, learning, setup checklist, and index. Use for setup, new startup workspace, missing wiki, or repair."
 ---
 
 # Onboard Day Zero CTO

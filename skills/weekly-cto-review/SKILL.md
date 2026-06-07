@@ -1,6 +1,6 @@
 ---
 name: weekly-cto-review
-description: "Run a recurring startup CTO review and create a durable HTML weekly review in the project knowledge wiki. Use when the user asks for a weekly CTO review, engineering health check, startup operating review, leadership recap, next-week technical priorities, or a regular ceremony that summarizes delivery, risk, decisions, team/process health, and CEO-update material."
+description: "Run the recurring Day Zero CTO weekly review and durable HTML report. Use for weekly CTO review, engineering health, startup operating review, leadership recap, next-week priorities, delivery, risks, decisions, team/process, or CEO-update seeds."
 ---
 
 # Weekly CTO Review

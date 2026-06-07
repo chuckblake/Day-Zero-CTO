@@ -1,6 +1,6 @@
 ---
 name: tech-stack
-description: "Review one or more startup codebases or technical workspaces and create a durable HTML Tech Stack report in the project knowledge wiki. Use when the user asks what stack is being used, wants codebase onboarding, needs a technology inventory, wants architecture/system context, or asks for a stack review across frameworks, languages, infrastructure, data stores, integrations, tooling, and operational risks."
+description: "Review startup codebases and create a durable Day Zero CTO Tech Stack report. Use for stack review, codebase onboarding, technology inventory, architecture/system context, frameworks, languages, infra, data stores, integrations, tooling, and operational risks."
 ---
 
 # Tech Stack
