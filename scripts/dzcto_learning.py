@@ -377,6 +377,17 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     project = Path(args.project).expanduser().resolve()
+    # Operating on a project whose wiki does not exist is almost always an agent
+    # passing the company NAME instead of the project FOLDER path; fail loudly
+    # rather than silently creating a stray directory. (Onboarding runs `dzcto
+    # init` first, so the wiki already exists by the time learning items are seeded.)
+    if not wiki_root(project).exists():
+        raise SystemExit(
+            f"No Day Zero CTO wiki found at {wiki_root(project)}.\n"
+            f"--project must be the project FOLDER path (for example ~/Documents/Acme CTO), "
+            f"not a company name.\n"
+            f"If this project has not been set up yet, run `dzcto init` on the project folder first."
+        )
     today = dt.date.fromisoformat(args.date)
     ensure_learning_dir(project)
 
