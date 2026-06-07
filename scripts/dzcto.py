@@ -667,6 +667,12 @@ if [ -n "${{DZCTO_HOME:-}}" ]; then
   try_exec "$DZCTO_HOME/bin/dzcto" "$@"
 fi
 
+SOURCE_BIN={sh_quote(str(current_bin))}
+case "$SOURCE_BIN" in
+  *"/.claude/plugins/cache/"*|*"/.codex/plugins/cache/"*) ;;
+  *) try_exec "$SOURCE_BIN" "$@" ;;
+esac
+
 try_exec "$HOME/plugins/day-zero-cto/bin/dzcto" "$@"
 
 if command -v python3 >/dev/null 2>&1; then
@@ -706,7 +712,7 @@ PY
   try_exec "$latest" "$@"
 fi
 
-try_exec {sh_quote(str(current_bin))} "$@"
+try_exec "$SOURCE_BIN" "$@"
 
 cat >&2 <<'EOF'
 Could not find a Day Zero CTO dzcto helper.
