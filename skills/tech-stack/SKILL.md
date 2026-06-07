@@ -32,7 +32,7 @@ Create a grounded technology inventory and system map from one or more codebases
 - `Integrations`: third-party APIs, auth, payments, messaging, AI, email, monitoring, and customer-facing dependencies.
 - `Infrastructure and operations`: hosting, deploy path, CI, background jobs, observability, secrets, and environments.
 - `Development tooling`: local setup, tests, linting, formatting, code generation, and developer workflow.
-- `Risks and watchpoints`: candidate stack risk signals that matter to delivery, reliability, trust, or onboarding. These are not the operating risk register until promoted into `core/RISKS.md`; after refresh they appear on `core/risks.html#risk-signals` with a link back to the Tech Stack report and, when matched, a stable risk ID from `risks/registry.json`.
+- `Risks and watchpoints`: candidate stack risk signals that matter to delivery, reliability, trust, or onboarding. These are not the operating risk register until promoted into `core/RISKS.md`; after refresh they appear on `core/risks.html#risk-signals` with a link back to the Tech Stack report and, when matched, a stable risk detail page from `risks/registry.json`.
 - `Onboarding notes`: what a new technical leader or agent should read first.
 
 ## Durable Artifact
@@ -54,5 +54,5 @@ The helper owns the HTML template; the agent owns the evidence and structured co
 - Cite concrete files or directories as evidence.
 - Do not expose secrets; mention only the existence or pattern of secret management.
 - Prioritize technologies that affect onboarding, product delivery, reliability, security, cost, or vendor risk.
-- Treat Tech Stack risks as candidate signals. If the user wants them tracked operationally, promote them into `<project>/knowledge/wiki/core/RISKS.md` with owner, mitigation, source, and calendar next review date. Do not maintain a second risk list in the report; the generated risk registry handles matching and intake.
+- Treat Tech Stack risks as candidate signals. If the user wants them tracked operationally, promote them into `<project>/knowledge/wiki/core/RISKS.md` with owner, mitigation, source, and calendar next review date. Do not maintain a second risk list in the report; the generated risk registry and risk detail pages handle matching, intake, and references.
 - Treat generated report content as a map for future agents, not a comprehensive API reference.

@@ -5,11 +5,11 @@ description: "Review the Day Zero CTO risk register by walking the user through 
 
 # Review Risks
 
-Run a risk-register review ritual over `RISKS.md`. This is different from `review-engineering-risk`: that skill creates a fresh risk assessment report; this skill maintains the canonical risk register. The generated `risks/registry.json` and `core/risks.html` page are indexes over the Markdown source plus report signals; do not edit them directly.
+Run a risk-register review ritual over `RISKS.md`. This is different from `review-engineering-risk`: that skill creates a fresh risk assessment report; this skill maintains the canonical risk register. The generated `risks/registry.json`, `risks/risk-*.html` detail pages, and `core/risks.html` page are indexes/views over the Markdown source plus report signals; do not edit them directly.
 
 ## Workflow
 
-1. Resolve the Day Zero CTO project folder. Read `<project>/knowledge/wiki/core/RISKS.md`, `<project>/knowledge/wiki/core/DECISIONS.md`, plus `STRATEGY.md`, recent relevant reports, and read-only repo evidence only as needed. If `<project>/knowledge/wiki/risks/registry.json` exists, use it for stable risk IDs and matched report-signal context, but treat `RISKS.md` as the editable source.
+1. Resolve the Day Zero CTO project folder. Read `<project>/knowledge/wiki/core/RISKS.md`, `<project>/knowledge/wiki/core/DECISIONS.md`, plus `STRATEGY.md`, recent relevant reports, and read-only repo evidence only as needed. If `<project>/knowledge/wiki/risks/registry.json` or a matching `<project>/knowledge/wiki/risks/risk-*.html` page exists, use it for stable risk IDs and matched report-signal context, but treat `RISKS.md` as the editable source.
 2. Build the review queue from risks whose next review appears due, stale, unclear, high/critical, blocked, missing mitigation, missing owner, or selected by the user. If the user says "all risks", walk every row.
 3. For each queued risk, show a compact brief:
    - Risk and current severity or likelihood.
@@ -61,7 +61,7 @@ Run a risk-register review ritual over `RISKS.md`. This is different from `revie
 
 - Treat risks as operating objects, not prose. Every active risk needs an owner, source, mitigation, and a calendar next review date.
 - Use `core/risks.html#risk-signals` as an intake view for report-derived risk candidates, but manage real operating risks in `RISKS.md`.
-- Do not hand-edit generated Current Read summaries, registry JSON, or generated HTML; they regenerate from `RISKS.md` and structured report risk signals on refresh.
+- Do not hand-edit generated Current Read summaries, registry JSON, risk detail pages, or generated HTML; they regenerate from `RISKS.md` and structured report risk signals on refresh.
 - External triggers are useful context, but they do not replace a calendar review date because Day Zero CTO cannot observe most external events by itself.
 - Favor a clear punt over fake certainty: punt only with a date, and optionally an event, owner, or evidence trigger.
 - Use evidence labels when a risk is based on code, docs, reports, incidents, customer feedback, compliance requirements, or user judgment.

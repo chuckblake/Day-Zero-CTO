@@ -1136,10 +1136,12 @@ def render_table_section(title: str, rows: Any, columns: list[tuple[str, str]]) 
     return f"""
 <section class="artifact-section">
   <h2>{esc(title)}</h2>
-  <table>
-    <thead><tr>{headers}</tr></thead>
-    <tbody>{''.join(table_rows)}</tbody>
-  </table>
+  <div class="markdown-table">
+    <table>
+      <thead><tr>{headers}</tr></thead>
+      <tbody>{''.join(table_rows)}</tbody>
+    </table>
+  </div>
 </section>
 """
 
@@ -1161,7 +1163,9 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk
     header_labels = ["Risk", "Registry", "Evidence", "Impact", "Severity", "Mitigation", "Source"] if has_registry else ["Risk", "Evidence", "Impact", "Severity", "Mitigation", "Source"]
     headers = "".join(f"<th>{esc(label)}</th>" for label in header_labels)
     table_rows = []
+    registry_risks = [risk for risk in (risk_registry or {}).get("risks", []) if isinstance(risk, dict)]
     for row in values:
+        match = match_risk_signal({"title": item_headline(row)}, registry_risks) if risk_registry else {}
         cells = []
         keys = ["risk", "registry", "evidence", "impact", "severity", "mitigation", "source"] if has_registry else ["risk", "evidence", "impact", "severity", "mitigation", "source"]
         for key in keys:
@@ -1172,13 +1176,18 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk
             elif key == "mitigation":
                 value = value_at(row, "mitigation", "recommendation", "next_step", "action", "plan")
             elif key == "registry" and risk_registry:
-                match = match_risk_signal({"title": item_headline(row)}, active_registry_risks(risk_registry))
                 if match:
-                    cell = f'<a href="../../core/risks.html#{esc(match["id"])}"><code>{esc(match["id"])}</code></a>'
+                    cell = f'<a href="{esc(source_href(match["detailPath"], "../../"))}"><code>{esc(match["id"])}</code></a>'
                 else:
                     cell = '<a href="../../core/risks.html#risk-signals">Intake signal</a>'
                 cells.append(f"<td>{cell}</td>")
                 continue
+            elif key == "risk":
+                value = item_headline(row)
+                if match:
+                    cell = f'<a class="registry-title-link" href="{esc(source_href(match["detailPath"], "../../"))}">{esc(text_value(value))}</a>'
+                    cells.append(f"<td>{cell}</td>")
+                    continue
             else:
                 value = value_at(row, key)
             if key == "severity" and present(value):
@@ -1192,10 +1201,12 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk
 <section class="artifact-section">
   <h2>{esc(title)}</h2>
   <p class="artifact-note">Candidate signals from this report. Manage the operating risk register on the <a href="../../core/risks.html#risk-signals">Risks page</a>; promote actionable items into <code>core/RISKS.md</code> with an owner, mitigation, review date, and source before relying on them in the command center.</p>
-  <table>
-    <thead><tr>{headers}</tr></thead>
-    <tbody>{''.join(table_rows)}</tbody>
-  </table>
+  <div class="markdown-table">
+    <table>
+      <thead><tr>{headers}</tr></thead>
+      <tbody>{''.join(table_rows)}</tbody>
+    </table>
+  </div>
 </section>
 """
 
@@ -1382,6 +1393,14 @@ def risk_id_for_title(title: str) -> str:
 
 def decision_id_for_title(title: str) -> str:
     return stable_anchor_id("decision", title)
+
+
+def risk_detail_relative_path(risk_id: str) -> str:
+    return f"risks/{slugify(risk_id)}.html"
+
+
+def decision_detail_relative_path(decision_id: str) -> str:
+    return f"decisions/{slugify(decision_id)}.html"
 
 
 def risk_id_from_row(row: dict[str, str], title: str) -> str:
@@ -1810,6 +1829,46 @@ def write_search_index(
                 section=page["doc"],
             )
         )
+
+    if risk_registry:
+        for risk in risk_registry.get("risks", []):
+            if not isinstance(risk, dict):
+                continue
+            risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+            entries.append(
+                search_entry(
+                    title=text_value(risk.get("title")) or risk_id,
+                    kind="Risk",
+                    url=text_value(risk.get("detailPath")) or risk_detail_relative_path(risk_id),
+                    text=" ".join(
+                        text_value(risk.get(field))
+                        for field in ("id", "title", "status", "severity", "owner", "source", "review", "evidence", "impact", "mitigation", "category")
+                    ),
+                    summary=text_value(risk.get("impact") or risk.get("evidence") or risk.get("mitigation")),
+                    date=text_value(risk.get("review")),
+                    section="risks",
+                )
+            )
+
+    if decision_registry:
+        for decision in decision_registry.get("decisions", []):
+            if not isinstance(decision, dict):
+                continue
+            decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+            entries.append(
+                search_entry(
+                    title=text_value(decision.get("title")) or decision_id,
+                    kind="Decision",
+                    url=text_value(decision.get("detailPath")) or decision_detail_relative_path(decision_id),
+                    text=" ".join(
+                        text_value(decision.get(field))
+                        for field in ("id", "title", "status", "date", "owner", "source", "context", "options", "rationale", "revisitTrigger")
+                    ),
+                    summary=text_value(decision.get("rationale") or decision.get("context")),
+                    date=text_value(decision.get("date")),
+                    section="decisions",
+                )
+            )
 
     for folder, label, links in report_entries:
         for path in links:
@@ -2556,20 +2615,36 @@ def read_report_decision_signals(wiki_root: Path) -> list[dict[str, Any]]:
 def match_risk_signal(signal: dict[str, Any], risks: list[dict[str, Any]]) -> dict[str, str]:
     for risk in risks:
         if risk_title_matches(signal.get("title", ""), [risk.get("title", "")]):
-            return {"id": risk["id"], "title": risk["title"], "status": risk.get("status", "Active")}
+            risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+            return {
+                "id": risk_id,
+                "title": risk["title"],
+                "status": risk.get("status", "Active"),
+                "detailPath": text_value(risk.get("detailPath")) or risk_detail_relative_path(risk_id),
+            }
     return {}
 
 
 def match_decision_signal(signal: dict[str, Any], decisions: list[dict[str, Any]]) -> dict[str, str]:
     for decision in decisions:
         if decision_title_matches(signal.get("title", ""), [decision.get("title", "")]):
-            return {"id": decision["id"], "title": decision["title"], "status": decision.get("status", "Recorded")}
+            decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+            return {
+                "id": decision_id,
+                "title": decision["title"],
+                "status": decision.get("status", "Recorded"),
+                "detailPath": text_value(decision.get("detailPath")) or decision_detail_relative_path(decision_id),
+            }
     return {}
 
 
 def build_risk_registry(wiki_root: Path) -> dict[str, Any]:
     core_dir = wiki_root / "core"
     risks = read_risk_source_entries(core_dir, include_closed=True)
+    for risk in risks:
+        risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+        risk["id"] = risk_id
+        risk["detailPath"] = risk_detail_relative_path(risk_id)
     signals = read_report_risk_signals_raw(wiki_root)
     for signal in signals:
         match = match_risk_signal(signal, risks)
@@ -2578,11 +2653,13 @@ def build_risk_registry(wiki_root: Path) -> dict[str, Any]:
             signal["matchedRiskId"] = match["id"]
             signal["matchedRiskTitle"] = match["title"]
             signal["matchedRiskStatus"] = match["status"]
+            signal["matchedRiskPath"] = match["detailPath"]
         else:
             signal["status"] = "Intake"
             signal["matchedRiskId"] = ""
             signal["matchedRiskTitle"] = ""
             signal["matchedRiskStatus"] = ""
+            signal["matchedRiskPath"] = ""
     return {
         "schemaVersion": RISK_REGISTRY_SCHEMA_VERSION,
         "generatedAt": utc_now(),
@@ -2595,6 +2672,10 @@ def build_risk_registry(wiki_root: Path) -> dict[str, Any]:
 def build_decision_registry(wiki_root: Path) -> dict[str, Any]:
     core_dir = wiki_root / "core"
     decisions = read_decision_source_entries(core_dir)
+    for decision in decisions:
+        decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+        decision["id"] = decision_id
+        decision["detailPath"] = decision_detail_relative_path(decision_id)
     signals = read_report_decision_signals_raw(wiki_root)
     for signal in signals:
         match = match_decision_signal(signal, decisions)
@@ -2603,11 +2684,13 @@ def build_decision_registry(wiki_root: Path) -> dict[str, Any]:
             signal["matchedDecisionId"] = match["id"]
             signal["matchedDecisionTitle"] = match["title"]
             signal["matchedDecisionStatus"] = match["status"]
+            signal["matchedDecisionPath"] = match["detailPath"]
         else:
             signal["status"] = "Intake"
             signal["matchedDecisionId"] = ""
             signal["matchedDecisionTitle"] = ""
             signal["matchedDecisionStatus"] = ""
+            signal["matchedDecisionPath"] = ""
     return {
         "schemaVersion": DECISION_REGISTRY_SCHEMA_VERSION,
         "generatedAt": utc_now(),
@@ -2785,6 +2868,7 @@ def risk_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
     filter_rows: list[dict[str, str]] = []
     for risk in risks:
         risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+        detail_href = source_href(text_value(risk.get("detailPath")) or risk_detail_relative_path(risk_id), prefix)
         status = text_value(risk.get("status") or "Active")
         severity = text_value(risk.get("severity") or "Low")
         owner = text_value(risk.get("owner") or "Unassigned")
@@ -2794,8 +2878,8 @@ def risk_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
         filter_rows.append({"status": status, "severity": severity, "owner": owner, "source": source, "review": review})
         rows.append(
             f"""<tr id="{esc(risk_id)}" data-filter-text="{search_text_attr(risk_id, risk.get("title"), status, severity, owner, source, review, risk.get("evidence"), risk.get("impact"), risk.get("mitigation"))}" data-filter-status="{esc(status)}" data-filter-severity="{esc(severity)}" data-filter-owner="{esc(owner)}" data-filter-source="{esc(source)}" data-filter-review="{esc(review)}">
-  <td><code>{esc(risk_id)}</code></td>
-  <td><strong>{esc(risk.get("title", ""))}</strong><br><span>{esc(risk.get("category", ""))}</span></td>
+  <td><a href="{esc(detail_href)}"><code>{esc(risk_id)}</code></a></td>
+  <td><a class="registry-title-link" href="{esc(detail_href)}"><strong>{esc(risk.get("title", ""))}</strong></a><br><span>{esc(risk.get("category", ""))}</span></td>
   <td><span class="tag {severity_class(severity)}">{esc(status)}</span></td>
   <td><span class="sev-badge b-{severity_token(severity)}">{esc(severity)}</span></td>
   <td>{esc(owner)}</td>
@@ -2841,6 +2925,7 @@ def decision_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> 
     filter_rows: list[dict[str, str]] = []
     for decision in decisions:
         decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+        detail_href = source_href(text_value(decision.get("detailPath")) or decision_detail_relative_path(decision_id), prefix)
         status = text_value(decision.get("status") or "Recorded")
         owner = text_value(decision.get("owner") or "Founder")
         date = text_value(decision.get("date") or "Unknown")
@@ -2850,9 +2935,9 @@ def decision_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> 
         filter_rows.append({"status": status, "owner": owner, "date": date, "source": source})
         rows.append(
             f"""<tr id="{esc(decision_id)}" data-filter-text="{search_text_attr(decision_id, decision.get("title"), status, owner, date, source, decision.get("context"), decision.get("options"), decision.get("rationale"), revisit)}" data-filter-status="{esc(status)}" data-filter-owner="{esc(owner)}" data-filter-date="{esc(date)}" data-filter-source="{esc(source)}">
-  <td><code>{esc(decision_id)}</code></td>
+  <td><a href="{esc(detail_href)}"><code>{esc(decision_id)}</code></a></td>
   <td>{esc(date)}</td>
-  <td><strong>{esc(decision.get("title", ""))}</strong><br><span>{esc(decision.get("context", ""))}</span></td>
+  <td><a class="registry-title-link" href="{esc(detail_href)}"><strong>{esc(decision.get("title", ""))}</strong></a><br><span>{esc(decision.get("context", ""))}</span></td>
   <td>{esc(decision.get("options", ""))}</td>
   <td>{esc(decision.get("rationale", ""))}</td>
   <td>{esc(owner)}</td>
@@ -2902,12 +2987,15 @@ def report_risk_signals_html(registry: dict[str, Any], *, prefix: str = "../") -
         source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
         detail = signal["evidence"] or signal["impact"] or "No detail captured in the structured report data."
         if signal.get("matchedRiskId"):
-            action = f"""Linked to <a href="#{esc(signal["matchedRiskId"])}"><code>{esc(signal["matchedRiskId"])}</code></a>."""
+            matched_path = text_value(signal.get("matchedRiskPath")) or risk_detail_relative_path(text_value(signal.get("matchedRiskId")))
+            action = f"""Linked to <a href="{esc(source_href(matched_path, prefix))}"><code>{esc(signal["matchedRiskId"])}</code></a>."""
+            title_html = f"""<a class="registry-title-link" href="{esc(source_href(matched_path, prefix))}"><strong>{esc(signal["title"])}</strong></a>"""
         else:
             action = esc(signal["mitigation"] or "Promote into RISKS.md with owner, mitigation, source, and next review date.")
+            title_html = f"""<strong>{esc(signal["title"])}</strong>"""
         rows.append(
             f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], source_kind, detail, signal.get("mitigation", ""), signal.get("matchedRiskId", ""))}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(source_kind)}">
-  <td><strong>{esc(signal["title"])}</strong><br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
+  <td>{title_html}<br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
   <td><span class="tag {tone}">{esc(status)}</span></td>
   <td>{source_html}</td>
   <td>{esc(detail)}</td>
@@ -2954,12 +3042,15 @@ def report_decision_signals_html(registry: dict[str, Any], *, prefix: str = "../
         filter_rows.append({"status": status, "source": source_kind, "date": text_value(signal.get("date"))})
         source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
         if signal.get("matchedDecisionId"):
-            action = f"""Linked to <a href="#{esc(signal["matchedDecisionId"])}"><code>{esc(signal["matchedDecisionId"])}</code></a>."""
+            matched_path = text_value(signal.get("matchedDecisionPath")) or decision_detail_relative_path(text_value(signal.get("matchedDecisionId")))
+            action = f"""Linked to <a href="{esc(source_href(matched_path, prefix))}"><code>{esc(signal["matchedDecisionId"])}</code></a>."""
+            title_html = f"""<a class="registry-title-link" href="{esc(source_href(matched_path, prefix))}"><strong>{esc(signal.get("title", ""))}</strong></a>"""
         else:
             action = "Promote into DECISIONS.md when this is a durable choice, not merely an ask or open question."
+            title_html = f"""<strong>{esc(signal.get("title", ""))}</strong>"""
         rows.append(
             f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal.get("title"), status, source_kind, signal.get("date"), signal.get("context"), signal.get("owner"), signal.get("matchedDecisionId", ""))}" data-filter-status="{esc(status)}" data-filter-source="{esc(source_kind)}" data-filter-date="{esc(signal.get("date", ""))}">
-  <td><strong>{esc(signal.get("title", ""))}</strong></td>
+  <td>{title_html}</td>
   <td><span class="tag {'ready' if status == 'Matched' else 'medium'}">{esc(status)}</span></td>
   <td>{source_html}</td>
   <td>{esc(signal.get("context", "") or signal.get("options", "") or "No detail captured in the structured report data.")}</td>
@@ -2989,6 +3080,216 @@ def report_decision_signals_html(registry: dict[str, Any], *, prefix: str = "../
       </table>
     </div>
   </section>
+"""
+
+
+def item_value_html(value: Any, fallback: str = "Not captured") -> str:
+    text = text_value(value)
+    if not has_real_value(text):
+        return f'<span class="empty-item">{esc(fallback)}</span>'
+    return inline_markdown(text)
+
+
+def item_meta_card(label: str, value: Any, *, value_is_html: bool = False) -> str:
+    value_html = str(value) if value_is_html else item_value_html(value)
+    return f"""<div class="item-meta">
+  <span>{esc(label)}</span>
+  <strong>{value_html}</strong>
+</div>"""
+
+
+def item_field_html(label: str, value: Any, *, required: bool = False, fallback: str = "Not captured") -> str:
+    if not required and not has_real_value(text_value(value)):
+        return ""
+    return f"""<section class="item-field">
+  <h2>{esc(label)}</h2>
+  <p>{item_value_html(value, fallback)}</p>
+</section>"""
+
+
+def registry_source_card(
+    *,
+    item_id: str,
+    title: str,
+    source_document: str,
+    source_section: str,
+    source_links: Any,
+    prefix: str,
+    table_href: str,
+) -> str:
+    source_links = source_links_html(source_links, prefix=prefix, fallback=source_document)
+    section_html = f"<p><strong>Section</strong> {esc(source_section)}</p>" if has_real_value(source_section) else ""
+    return f"""<article class="reference-card">
+  <div class="reference-top">
+    <div>
+      <h3>{esc(title)}</h3>
+      <p>{source_links}</p>
+    </div>
+    <a class="reference-link" href="{esc(source_href(table_href, prefix))}"><code>{esc(item_id)}</code></a>
+  </div>
+  {section_html}
+</article>"""
+
+
+def item_reference_card(signal: dict[str, Any], *, prefix: str, item_kind: str) -> str:
+    source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
+    source_kind = text_value(signal.get("source_kind") or signal.get("kind") or "Report")
+    date = text_value(signal.get("date"))
+    if item_kind == "risk":
+        badge = f'<span class="sev-badge b-{severity_token(text_value(signal.get("severity")))}">{esc(signal.get("severity") or "Low")}</span>'
+        fields = [
+            ("Evidence", signal.get("evidence")),
+            ("Impact", signal.get("impact")),
+            ("Mitigation", signal.get("mitigation")),
+        ]
+    else:
+        badge = f'<span class="tag ready">{esc(signal.get("status") or "Matched")}</span>'
+        fields = [
+            ("Context", signal.get("context")),
+            ("Options", signal.get("options")),
+            ("Owner", signal.get("owner")),
+        ]
+    field_html = "\n".join(
+        f'<p><strong>{esc(label)}</strong> {item_value_html(value)}</p>'
+        for label, value in fields
+        if has_real_value(text_value(value))
+    )
+    if not field_html:
+        field_html = '<p class="empty-item">No additional structured detail was captured in this report signal.</p>'
+    return f"""<article class="reference-card" id="{esc(signal.get("id", ""))}">
+  <div class="reference-top">
+    <div>
+      <h3>{esc(signal.get("title", ""))}</h3>
+      <p>{source_html}</p>
+    </div>
+    {badge}
+  </div>
+  <div class="reference-meta">
+    <span>{esc(source_kind)}</span>
+    {f'<span>{esc(date)}</span>' if date else ''}
+  </div>
+  {field_html}
+</article>"""
+
+
+def item_references_html(
+    *,
+    item_id: str,
+    canonical_card: str,
+    signals: list[dict[str, Any]],
+    prefix: str,
+    item_kind: str,
+) -> str:
+    signal_cards = "\n".join(item_reference_card(signal, prefix=prefix, item_kind=item_kind) for signal in signals)
+    count = len(signals) + 1
+    return f"""
+  <section class="artifact-section item-references" id="references">
+    <div class="section-heading-line">
+      <h2>Referenced By</h2>
+      <span>{esc(pluralize(count, "reference"))}</span>
+    </div>
+    <div class="reference-list">
+      {canonical_card}
+      {signal_cards if signal_cards else '<p class="empty-item">No report signals currently reference this item.</p>'}
+    </div>
+  </section>
+"""
+
+
+def risk_detail_html(risk: dict[str, Any], registry: dict[str, Any], *, prefix: str = "../") -> str:
+    risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+    status = text_value(risk.get("status") or "Active")
+    severity = text_value(risk.get("severity") or "Low")
+    owner = text_value(risk.get("owner") or "Unassigned")
+    review = text_value(risk.get("review") or risk.get("nextReview") or "Unscheduled")
+    source = text_value(risk.get("source") or "Risk register")
+    source_html = source_links_html(risk.get("sourceLinks"), prefix=prefix, fallback=source)
+    source_doc = text_value(risk.get("sourceDocument") or "core/RISKS.md")
+    signals = [
+        signal
+        for signal in registry.get("signals", [])
+        if isinstance(signal, dict) and text_value(signal.get("matchedRiskId")) == risk_id
+    ]
+    canonical_card = registry_source_card(
+        item_id=risk_id,
+        title="Canonical risk row",
+        source_document=source_doc,
+        source_section=text_value(risk.get("sourceSection")),
+        source_links=risk.get("sourceLinks"),
+        prefix=prefix,
+        table_href=f"core/risks.html#{risk_id}",
+    )
+    return f"""
+  <section class="item-summary">
+    <div class="item-id"><code>{esc(risk_id)}</code></div>
+    <p>{esc(risk.get("impact") or risk.get("evidence") or risk.get("mitigation") or "Canonical operating risk.")}</p>
+  </section>
+  <div class="item-meta-grid">
+    {item_meta_card("Status", f'<span class="tag {severity_class(status)}">{esc(status)}</span>', value_is_html=True)}
+    {item_meta_card("Severity", f'<span class="sev-badge b-{severity_token(severity)}">{esc(severity)}</span>', value_is_html=True)}
+    {item_meta_card("Owner", owner)}
+    {item_meta_card("Next Review", review)}
+    {item_meta_card("Source", source_html, value_is_html=True)}
+  </div>
+  <div class="item-field-grid">
+    {item_field_html("Evidence", risk.get("evidence"), required=True)}
+    {item_field_html("Business Impact", risk.get("impact"), required=True)}
+    {item_field_html("Mitigation", risk.get("mitigation"), required=True)}
+    {item_field_html("Category", risk.get("category"))}
+  </div>
+  {item_references_html(item_id=risk_id, canonical_card=canonical_card, signals=signals, prefix=prefix, item_kind="risk")}
+  <div class="source-footnote">
+    <span>Source <code>{esc(source_doc)}</code> / generated risk detail</span>
+    <span>Updated {esc(dt.date.today().isoformat())}</span>
+  </div>
+"""
+
+
+def decision_detail_html(decision: dict[str, Any], registry: dict[str, Any], *, prefix: str = "../") -> str:
+    decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+    status = text_value(decision.get("status") or "Recorded")
+    owner = text_value(decision.get("owner") or "Founder")
+    date = text_value(decision.get("date") or "Unknown")
+    revisit = text_value(decision.get("revisitTrigger") or decision.get("when") or "Review trigger")
+    source = text_value(decision.get("source") or "Decision log")
+    source_html = source_links_html(decision.get("sourceLinks"), prefix=prefix, fallback=source)
+    source_doc = text_value(decision.get("sourceDocument") or "core/DECISIONS.md")
+    signals = [
+        signal
+        for signal in registry.get("signals", [])
+        if isinstance(signal, dict) and text_value(signal.get("matchedDecisionId")) == decision_id
+    ]
+    canonical_card = registry_source_card(
+        item_id=decision_id,
+        title="Canonical decision row",
+        source_document=source_doc,
+        source_section=text_value(decision.get("sourceSection")),
+        source_links=decision.get("sourceLinks"),
+        prefix=prefix,
+        table_href=f"core/decisions.html#{decision_id}",
+    )
+    return f"""
+  <section class="item-summary">
+    <div class="item-id"><code>{esc(decision_id)}</code></div>
+    <p>{esc(decision.get("rationale") or decision.get("context") or "Canonical recorded decision.")}</p>
+  </section>
+  <div class="item-meta-grid">
+    {item_meta_card("Status", f'<span class="tag ready">{esc(status)}</span>', value_is_html=True)}
+    {item_meta_card("Date", date)}
+    {item_meta_card("Owner", owner)}
+    {item_meta_card("Revisit Trigger", revisit)}
+    {item_meta_card("Source", source_html, value_is_html=True)}
+  </div>
+  <div class="item-field-grid">
+    {item_field_html("Context", decision.get("context"), required=True)}
+    {item_field_html("Options Considered", decision.get("options"), required=True)}
+    {item_field_html("Rationale", decision.get("rationale"), required=True)}
+  </div>
+  {item_references_html(item_id=decision_id, canonical_card=canonical_card, signals=signals, prefix=prefix, item_kind="decision")}
+  <div class="source-footnote">
+    <span>Source <code>{esc(source_doc)}</code> / generated decision detail</span>
+    <span>Updated {esc(dt.date.today().isoformat())}</span>
+  </div>
 """
 
 
@@ -3730,6 +4031,86 @@ h1.title { font-size: 38px; font-weight: 800; }
 .markdown-table tr[id] { scroll-margin-top: 24px; }
 .markdown-table tr:target { outline: 3px solid var(--accent); outline-offset: -3px; box-shadow: inset 4px 0 0 var(--accent); }
 .markdown-table tr:target td { background: var(--accent-soft); }
+.registry-title-link { color: var(--ink); text-decoration: none; }
+.registry-title-link:hover { color: var(--accent); text-decoration: none; }
+.item-summary {
+  display: grid;
+  gap: 9px;
+  max-width: 980px;
+  margin: 2px 0 18px;
+  border-left: 4px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: 14px 16px;
+}
+.item-summary p { color: var(--ink-2); font-size: 14px; line-height: 1.55; }
+.item-id { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.item-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--gap);
+  margin: 0 0 22px;
+}
+.item-meta {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 13px 14px;
+}
+.item-meta > span:first-child {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.item-meta strong { display: block; color: var(--ink); font-size: 13.5px; line-height: 1.35; }
+.item-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
+.item-field {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.item-field h2 { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.item-field p { margin-top: 6px; color: var(--ink-2); font-size: 14px; line-height: 1.55; }
+.section-heading-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+.section-heading-line h2 { font-size: 20px; }
+.section-heading-line span { color: var(--muted); font-size: 12px; font-weight: 800; }
+.reference-list { display: grid; gap: 10px; margin-top: 14px; }
+.reference-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 15px;
+}
+.reference-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.reference-top h3 { color: var(--ink); font-size: 14px; font-weight: 800; }
+.reference-top p, .reference-card p { margin-top: 4px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.reference-card p strong { color: var(--muted); font-size: 10.5px; text-transform: uppercase; }
+.reference-link { flex: 0 0 auto; }
+.reference-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 8px 0 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
 .source-footnote {
   display: flex;
   justify-content: flex-end;
@@ -3762,6 +4143,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .setup-item { border-bottom: 1px solid var(--line); }
   .core { grid-template-columns: repeat(3, 1fr); }
   .status-grid { grid-template-columns: repeat(2, 1fr); }
+  .item-meta-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 860px) {
   .sticky-nav { grid-template-columns: minmax(0, 1fr) auto; padding: 8px 16px; }
@@ -3780,11 +4162,12 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .report-attention li { grid-template-columns: 1fr; gap: 2px; }
   .help-guide { grid-template-columns: 1fr; }
   .help-guide-row { grid-template-columns: 1fr; gap: 6px; }
+  .item-field-grid { grid-template-columns: 1fr; }
   h1.title { font-size: 30px; }
 }
 @media (max-width: 560px) {
   .app { padding: 24px 16px 70px; }
-  .kpis, .core, .status-grid, .summary, .grid { grid-template-columns: 1fr 1fr; }
+  .kpis, .core, .status-grid, .summary, .grid, .item-meta-grid { grid-template-columns: 1fr 1fr; }
   .setup-list { grid-template-columns: 1fr; }
   .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .setup-page-list .setup-item { grid-template-columns: auto minmax(0, 1fr); }
@@ -3797,6 +4180,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .r-right { grid-column: 2; justify-content: space-between; }
   .sec-title { white-space: normal; }
   .learn-items { columns: 1; }
+  .reference-top { flex-direction: column; }
 }
 @media print {
   .sticky-nav, .masthead-side, .toolbar { display: none !important; }
@@ -4351,6 +4735,116 @@ def prune_manifest_report_artifacts(wiki_root: Path) -> None:
         write_json(manifest_path, manifest)
 
 
+def remove_manifest_artifacts(wiki_root: Path, relative_paths: set[str]) -> None:
+    if not relative_paths:
+        return
+    manifest_path = sidecar_dir(wiki_root) / "manifest.json"
+    manifest = read_json(manifest_path, {})
+    artifacts = manifest.get("artifacts") if isinstance(manifest, dict) else None
+    if not isinstance(artifacts, list):
+        return
+    kept = [artifact for artifact in artifacts if not isinstance(artifact, dict) or str(artifact.get("relativePath") or "") not in relative_paths]
+    if len(kept) != len(artifacts):
+        manifest["artifacts"] = kept
+        manifest["updatedAt"] = utc_now()
+        write_json(manifest_path, manifest)
+
+
+def prune_detail_pages(wiki_root: Path, directory_name: str, valid_relative_paths: set[str], artifact_kind: str) -> None:
+    detail_dir = wiki_root / directory_name
+    if not detail_dir.exists():
+        return
+    valid_names = {Path(relative).name for relative in valid_relative_paths}
+    removed: set[str] = set()
+    marker = f'"artifactKind": "{artifact_kind}"'
+    for path in detail_dir.glob("*.html"):
+        if path.name in valid_names:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        if marker not in text:
+            continue
+        path.unlink()
+        removed.add(path.relative_to(wiki_root).as_posix())
+    remove_manifest_artifacts(wiki_root, removed)
+
+
+def write_risk_detail_pages(wiki_root: Path, project_folder: Path, registry: dict[str, Any], sticky_title: str) -> None:
+    risk_dir = wiki_root / "risks"
+    risk_dir.mkdir(parents=True, exist_ok=True)
+    source_hashes = collect_source_hashes([wiki_root / "core" / "RISKS.md", *report_risk_signal_json_paths(wiki_root)])
+    valid_paths: set[str] = set()
+    for risk in registry.get("risks", []):
+        if not isinstance(risk, dict):
+            continue
+        risk_id = text_value(risk.get("id")) or risk_id_for_title(text_value(risk.get("title")))
+        relative_path = text_value(risk.get("detailPath")) or risk_detail_relative_path(risk_id)
+        risk["detailPath"] = relative_path
+        valid_paths.add(relative_path)
+        generated_at = utc_now()
+        provenance = provenance_payload(
+            wiki_root,
+            artifact_id=f"risk:{risk_id}",
+            artifact_kind="risk-detail",
+            relative_path=relative_path,
+            title=text_value(risk.get("title")) or risk_id,
+            generated_at=generated_at,
+            source_hashes=source_hashes,
+            extra={"registryId": risk_id, "sourceDocument": "core/RISKS.md"},
+        )
+        body = page_shell(
+            risk_detail_html(risk, registry, prefix="../"),
+            prefix="../",
+            eyebrow="Risk - Day Zero CTO",
+            title=text_value(risk.get("title")) or risk_id,
+            subtitle="Canonical risk detail, source fields, and report references.",
+            crumbs=[("Core", "core/risks.html"), ("Risks", "core/risks.html"), (risk_id, None)],
+            sticky_title=sticky_title,
+        )
+        write_html_page(wiki_root / relative_path, text_value(risk.get("title")) or risk_id, body, provenance)
+        update_manifest(wiki_root, provenance)
+    prune_detail_pages(wiki_root, "risks", valid_paths, "risk-detail")
+
+
+def write_decision_detail_pages(wiki_root: Path, project_folder: Path, registry: dict[str, Any], sticky_title: str) -> None:
+    decision_dir = wiki_root / "decisions"
+    decision_dir.mkdir(parents=True, exist_ok=True)
+    source_hashes = collect_source_hashes([wiki_root / "core" / "DECISIONS.md", *report_decision_signal_json_paths(wiki_root)])
+    valid_paths: set[str] = set()
+    for decision in registry.get("decisions", []):
+        if not isinstance(decision, dict):
+            continue
+        decision_id = text_value(decision.get("id")) or decision_id_for_title(text_value(decision.get("title")))
+        relative_path = text_value(decision.get("detailPath")) or decision_detail_relative_path(decision_id)
+        decision["detailPath"] = relative_path
+        valid_paths.add(relative_path)
+        generated_at = utc_now()
+        provenance = provenance_payload(
+            wiki_root,
+            artifact_id=f"decision:{decision_id}",
+            artifact_kind="decision-detail",
+            relative_path=relative_path,
+            title=text_value(decision.get("title")) or decision_id,
+            generated_at=generated_at,
+            source_hashes=source_hashes,
+            extra={"registryId": decision_id, "sourceDocument": "core/DECISIONS.md"},
+        )
+        body = page_shell(
+            decision_detail_html(decision, registry, prefix="../"),
+            prefix="../",
+            eyebrow="Decision - Day Zero CTO",
+            title=text_value(decision.get("title")) or decision_id,
+            subtitle="Canonical decision detail, source fields, and report references.",
+            crumbs=[("Core", "core/decisions.html"), ("Decisions", "core/decisions.html"), (decision_id, None)],
+            sticky_title=sticky_title,
+        )
+        write_html_page(wiki_root / relative_path, text_value(decision.get("title")) or decision_id, body, provenance)
+        update_manifest(wiki_root, provenance)
+    prune_detail_pages(wiki_root, "decisions", valid_paths, "decision-detail")
+
+
 def write_core_pages(
     wiki_root: Path,
     project_folder: Path,
@@ -4449,6 +4943,8 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     prune_manifest_report_artifacts(wiki_root)
     risk_registry = write_risk_registry(wiki_root, project_folder)
     decision_registry = write_decision_registry(wiki_root, project_folder)
+    write_risk_detail_pages(wiki_root, project_folder, risk_registry, stable_title)
+    write_decision_detail_pages(wiki_root, project_folder, decision_registry, stable_title)
     refresh_structured_report_pages(wiki_root, project_folder, stable_title, risk_registry=risk_registry, decision_registry=decision_registry)
     core_pages = write_core_pages(wiki_root, project_folder, risk_registry=risk_registry, decision_registry=decision_registry)
     core_ready = sum(1 for page in core_pages if page["source_exists"])
@@ -4639,7 +5135,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     decision_rows = (
         "\n".join(
-            f"""<a class="dec" href="core/decisions.html#{esc(decision.get("id") or decision_id_for_title(decision["title"]))}" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
+            f"""<a class="dec" href="{esc(text_value(decision.get("detailPath")) or decision_detail_relative_path(text_value(decision.get("id")) or decision_id_for_title(decision["title"])))}" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
   <span class="idx">{index}</span>
   <div class="d-body">
     <div class="d-title">{esc(decision["title"])}</div>
@@ -4654,7 +5150,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 
     due_risk_rows = (
         "\n".join(
-            f"""<a class="mini-risk" href="core/risks.html#{esc(risk.get("id") or risk_id_for_title(risk["title"]))}">
+            f"""<a class="mini-risk" href="{esc(text_value(risk.get("detailPath")) or risk_detail_relative_path(text_value(risk.get("id")) or risk_id_for_title(risk["title"])))}">
   <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
   <div class="mr-body">
     <div class="mr-title">{esc(risk["title"])}</div>

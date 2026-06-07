@@ -5,11 +5,11 @@ description: "Review the Day Zero CTO decision log by walking the user through r
 
 # Review Decisions
 
-Run a decision-review ritual over the project decision log. `DECISIONS.md` is a record of decisions already taken; `Revisit Trigger` is what makes a row worth reviewing again. The generated `decisions/registry.json` and `core/decisions.html` page are indexes over the Markdown source plus report decision signals; do not edit them directly.
+Run a decision-review ritual over the project decision log. `DECISIONS.md` is a record of decisions already taken; `Revisit Trigger` is what makes a row worth reviewing again. The generated `decisions/registry.json`, `decisions/decision-*.html` detail pages, and `core/decisions.html` page are indexes/views over the Markdown source plus report decision signals; do not edit them directly.
 
 ## Workflow
 
-1. Resolve the Day Zero CTO project folder. Read `<project>/knowledge/wiki/core/DECISIONS.md`, plus `STRATEGY.md`, `RISKS.md`, recent relevant reports, and read-only repo evidence only as needed. If `<project>/knowledge/wiki/decisions/registry.json` exists, use it for stable decision IDs and matched report-signal context, but treat `DECISIONS.md` as the editable source.
+1. Resolve the Day Zero CTO project folder. Read `<project>/knowledge/wiki/core/DECISIONS.md`, plus `STRATEGY.md`, `RISKS.md`, recent relevant reports, and read-only repo evidence only as needed. If `<project>/knowledge/wiki/decisions/registry.json` or a matching `<project>/knowledge/wiki/decisions/decision-*.html` page exists, use it for stable decision IDs and matched report-signal context, but treat `DECISIONS.md` as the editable source.
 2. Build the review queue from rows whose `Revisit Trigger` appears due, stale, unclear, blocked, or selected by the user. Also inspect unmatched report decision signals and promote only durable choices into `DECISIONS.md`; dismiss ordinary asks or open questions. If the user says "all decisions", walk every row. Do not describe every recorded row as pending.
 3. For each queued decision, show a compact brief:
    - Original decision and date.
@@ -39,7 +39,7 @@ Run a decision-review ritual over the project decision log. `DECISIONS.md` is a 
 ## Standards
 
 - Be explicit about "recorded decision" versus "decision needing review."
-- Do not hand-edit generated Current Read summaries, registry JSON, or generated HTML; they regenerate from `DECISIONS.md` and structured report decision signals on refresh.
+- Do not hand-edit generated Current Read summaries, registry JSON, decision detail pages, or generated HTML; they regenerate from `DECISIONS.md` and structured report decision signals on refresh.
 - Favor a clear punt over fake certainty: punt only with a date, event, owner, or evidence trigger.
 - For architectural decisions already taken, make rationale read as historical explanation, not future justification.
 - If the user makes a new decision in chat, capture the decision, rationale, owner, and revisit trigger before moving to the next item.

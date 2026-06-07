@@ -64,8 +64,8 @@ Use these files under `<project>/knowledge/wiki/core/` unless the user chooses a
 - Treat code repos as read-only by default.
 - Keep files short enough that future agents will actually read them.
 - Prefer plain markdown tables for decision and risk registers.
-- Generated Decisions and Risks pages include short regenerated Current Read summaries, signal intake sections, and canonical registries built from source Markdown. Do not hand-edit summaries, registry JSON, or generated HTML; update source Markdown or structured report data, then refresh.
-- Tech Stack, Engineering Risk, Weekly Review, and CEO Update report risks are candidate signals. They roll up to `core/risks.html#risk-signals` and match to stable risk IDs when possible; promote actionable items into `core/RISKS.md` with source, owner, mitigation, and a calendar next review date.
+- Generated Decisions and Risks pages include short regenerated Current Read summaries, signal intake sections, canonical registries, and per-item detail pages built from source Markdown. Do not hand-edit summaries, registry JSON, detail pages, or generated HTML; update source Markdown or structured report data, then refresh.
+- Tech Stack, Engineering Risk, Weekly Review, and CEO Update report risks are candidate signals. They roll up to `core/risks.html#risk-signals` and match to stable risk detail pages when possible; promote actionable items into `core/RISKS.md` with source, owner, mitigation, and a calendar next review date.
 - Report asks and decision fields are candidate decision signals until promoted into `core/DECISIONS.md`.
 - Treat private people context carefully. Record work-relevant observations, not speculation about motives, health, or personal circumstances.
 - Use file references that make the source clear. For code evidence, use paths relative to the relevant code repo. For Day Zero CTO artifacts, use paths relative to `<project>/knowledge/wiki/`.

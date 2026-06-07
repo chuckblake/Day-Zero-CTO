@@ -26,6 +26,7 @@ from dzcto_artifact import (
     cadence_alerts,
     core_doc_html_name,
     dates_in_text,
+    decision_detail_relative_path,
     display_command,
     due_decision_entries,
     due_risk_entries,
@@ -33,6 +34,7 @@ from dzcto_artifact import (
     registry_decisions,
     read_learning_items,
     read_risk_entries,
+    risk_detail_relative_path,
 )
 from dzcto_common import (
     TOOL_NAME,
@@ -254,12 +256,13 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             For substantive changes, ask an agent to use day-zero-cto:refine-core-context.
             For recorded decision reviews, use day-zero-cto:review-decisions.
             For active risk-register reviews, use day-zero-cto:review-risks.
-            Risk cards, core/risks.html, and risks/registry.json are generated from RISKS.md plus report signals;
+            Risk cards, core/risks.html, risks/registry.json, and risks/risk-*.html detail pages are generated from RISKS.md plus report signals;
             edit RISKS.md as the source of truth.
-            Decision cards, core/decisions.html, and decisions/registry.json are generated from DECISIONS.md plus report signals;
+            Decision cards, core/decisions.html, decisions/registry.json, and decisions/decision-*.html detail pages are generated from DECISIONS.md plus report signals;
             edit DECISIONS.md as the source of truth.
             Report risk and decision sections are candidate signals; the generated Risks and Decisions pages roll them up
-            so they can be promoted, merged, or dismissed from one place.
+            so they can be promoted, merged, or dismissed from one place. Matched signals link to focused item pages
+            that list every report/source reference pointing at the risk or decision.
             Every active risk needs a calendar Next Review date. External triggers can be included, but should not replace the date.
             For report prompt steering, add reportPromptContext to .dzcto/config.json or add a Prompt Context
             column to the Index Cadence Rules table in OPERATING_CADENCE.md.
@@ -752,6 +755,38 @@ def check_stale(project: Path) -> dict[str, Any]:
             add("pass", label, f"{relative} exists")
         else:
             add("stale", label, f"Missing generated {relative}", f"dzcto refresh {project}")
+
+    risk_registry = build_risk_registry(wiki_root)
+    missing_risk_pages = []
+    risk_count = 0
+    for risk in risk_registry.get("risks", []):
+        if not isinstance(risk, dict):
+            continue
+        risk_count += 1
+        risk_id = str(risk.get("id") or risk.get("title") or "")
+        relative = str(risk.get("detailPath") or risk_detail_relative_path(risk_id))
+        if not (wiki_root / relative).exists():
+            missing_risk_pages.append(relative)
+    if missing_risk_pages:
+        add("stale", "Risk detail pages", f"Missing {len(missing_risk_pages)} of {risk_count}: {', '.join(missing_risk_pages[:3])}", f"dzcto refresh {project}")
+    elif risk_count:
+        add("pass", "Risk detail pages", f"All {risk_count} generated risk detail pages exist")
+
+    decision_registry = build_decision_registry(wiki_root)
+    missing_decision_pages = []
+    decision_count = 0
+    for decision in decision_registry.get("decisions", []):
+        if not isinstance(decision, dict):
+            continue
+        decision_count += 1
+        decision_id = str(decision.get("id") or decision.get("title") or "")
+        relative = str(decision.get("detailPath") or decision_detail_relative_path(decision_id))
+        if not (wiki_root / relative).exists():
+            missing_decision_pages.append(relative)
+    if missing_decision_pages:
+        add("stale", "Decision detail pages", f"Missing {len(missing_decision_pages)} of {decision_count}: {', '.join(missing_decision_pages[:3])}", f"dzcto refresh {project}")
+    elif decision_count:
+        add("pass", "Decision detail pages", f"All {decision_count} generated decision detail pages exist")
 
     config = read_json(sidecar / "config.json", None)
     manifest = read_json(sidecar / "manifest.json", None)
