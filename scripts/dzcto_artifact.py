@@ -5453,6 +5453,20 @@ def main(argv: list[str]) -> int:
 
     wiki_root = Path(args.project).expanduser().resolve() / "knowledge" / "wiki" if args.project else Path(args.home).expanduser().resolve()
     project_folder = Path(args.project).expanduser().resolve() if args.project else (wiki_root / ".." / "..").resolve()
+
+    # Generating a report (non-init) into a project whose wiki does not exist is
+    # almost always an agent passing the company NAME instead of the project FOLDER
+    # path: that name resolves to a stray relative dir and we would silently create
+    # it. Fail loudly instead of writing to the wrong place. (--init legitimately
+    # creates the wiki, so it is exempt.)
+    if not args.init and not wiki_root.exists():
+        raise SystemExit(
+            f"No Day Zero CTO wiki found at {wiki_root}.\n"
+            f"--project must be the project FOLDER path (for example ~/Documents/Acme CTO), "
+            f"not a company name.\n"
+            f"If that resolved path is correct and the project is new, run `dzcto init` on it first."
+        )
+
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
     learning_dir = wiki_root / "learning"

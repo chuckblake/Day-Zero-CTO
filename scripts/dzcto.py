@@ -81,6 +81,21 @@ def resolve_project(path: str) -> Path:
     return Path(path).expanduser().resolve()
 
 
+def require_existing_wiki(project: Path) -> None:
+    """Stop commands that operate on an existing project from silently creating
+    the wrong directory when an agent passes a company NAME instead of the
+    project FOLDER path."""
+    wiki = wiki_root_for_project(project)
+    if not wiki.exists():
+        sys.stderr.write(
+            f"No Day Zero CTO wiki found at {wiki}.\n"
+            f'Pass the project FOLDER path (for example "$HOME/Documents/Acme CTO"), '
+            f"not the company name.\n"
+            f"If that resolved path is correct and the project is new, run `dzcto init` on it first.\n"
+        )
+        raise SystemExit(2)
+
+
 def refresh_project(project: Path) -> int:
     return run_script("dzcto_artifact.py", ["--project", str(project), "--init"])
 
@@ -1293,10 +1308,14 @@ def main(argv: list[str]) -> int:
         return run_script("dzcto_artifact.py", init_args)
 
     if args.command == "refresh":
-        return refresh_project(resolve_project(args.project))
+        project = resolve_project(args.project)
+        require_existing_wiki(project)
+        return refresh_project(project)
 
     if args.command == "serve":
-        return serve_project(resolve_project(args.project), args.host, args.port)
+        project = resolve_project(args.project)
+        require_existing_wiki(project)
+        return serve_project(project, args.host, args.port)
 
     if args.command == "install-command":
         progress = Progress(2)
