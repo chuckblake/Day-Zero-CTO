@@ -1,11 +1,13 @@
 ---
 name: review-engineering-risk
-description: "Review engineering risk for an early-stage startup and create a durable HTML risk review in the project knowledge wiki. Use when the user asks for a risk review, tech debt assessment, launch readiness check, fundraise readiness check, architecture risk review, security/reliability concern, scaling concern, or a CTO view of what could threaten product, customers, delivery, trust, or runway."
+description: "Produce a fresh engineering-risk assessment for an early-stage startup as a durable HTML report in the project knowledge wiki. This creates a new report from current evidence; it does not maintain the existing risk register row by row (use review-risks for that). Use when the user asks for a risk review, tech debt assessment, launch readiness check, fundraise readiness check, architecture risk review, security/reliability concern, scaling concern, or a CTO view of what could threaten product, customers, delivery, trust, or runway."
 ---
 
 # Review Engineering Risk
 
 Find the engineering risks that could realistically hurt the startup's current goals.
+
+This skill creates a fresh risk assessment report. To walk the existing canonical risk register one row at a time and keep, update, close, or punt risks, use `review-risks` instead.
 
 ## Workflow
 
@@ -16,7 +18,7 @@ Find the engineering risks that could realistically hurt the startup's current g
 5. Inspect evidence before asserting risk. Use code, docs, incidents, tests, CI, architecture notes, and user-provided context.
 6. Group risks by business impact rather than by technical subsystem.
 7. Recommend mitigations sized to the company's stage and runway.
-8. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/engineering-risk/` and regenerate `<project>/knowledge/wiki/index.html`.
+8. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/engineering-risk/`. The artifact command refreshes the dashboard automatically.
 9. Update `core/RISKS.md` only when the user asks or when the workflow is explicitly maintaining the risk register. Otherwise, structured report risk rows remain candidate signals and will roll up to `core/risks.html#risk-signals` after refresh, matched to stable risk IDs when possible.
 10. Summarize the top risks in chat and link to the generated artifact.
 

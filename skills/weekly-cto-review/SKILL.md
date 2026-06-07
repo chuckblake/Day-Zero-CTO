@@ -15,7 +15,7 @@ Turn scattered engineering activity into a clear operating picture and next-week
 4. Gather current evidence from available read-only sources: recent commits, open diffs, test/CI status, issues, project docs, incidents, and user-provided notes. Prefer local read-only Git history when available.
 5. Compare progress against the company's current goals, not against generic engineering ideals.
 6. Identify the smallest useful set of decisions, risks, and next actions.
-7. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/weekly-reviews/` and regenerate `<project>/knowledge/wiki/index.html`.
+7. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/weekly-reviews/`. The artifact command refreshes the dashboard automatically.
 8. Summarize the review in chat and link to the generated artifact.
 
 ## Review Sections

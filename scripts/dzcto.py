@@ -100,11 +100,16 @@ def print_quickstart(project: Path | None = None) -> None:
             f"""
             Day Zero CTO quickstart
 
+            First make sure `dzcto` is on PATH. In Claude Code, run `dzcto install-command`
+            once to create ~/.local/bin/dzcto so you do not need versioned cache paths.
+
             1. Check the install
                dzcto doctor
 
-            2. Create or refresh a startup wiki
-               dzcto init {project_arg} --company-name "Acme" --company-description "Short company summary" --repo "$HOME/code/acme-app"
+            2. Create or refresh a startup wiki (do this before serving)
+               Primary: ask your agent to use day-zero-cto:bootstrap-cto-context for guided onboarding
+                        (company context, core files, first reports, learning seed).
+               Manual:  dzcto init {project_arg} --company-name "Acme" --company-description "Short company summary" --repo "$HOME/code/acme-app"
 
             3. Open the command center
                dzcto serve {project_arg}
@@ -142,7 +147,7 @@ def command_reference_text(project: Path | None = None) -> str:
           dzcto help [onboarding|editing|reports|commands|lfg|serve|troubleshooting|learning|artifacts] [--project <project>]
               Print workflow help. With no topic, prints this command reference.
           dzcto lfg <project> [--json]
-              Pick the next best operating action: setup, cadence, risks, decisions, then learning.
+              LFG (pick the next best action): setup, cadence, risks, decisions, then learning.
           dzcto version
               Print the installed Day Zero CTO helper version.
 
@@ -178,7 +183,8 @@ def command_reference_text(project: Path | None = None) -> str:
         Reports and artifacts
           dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
-              Kinds: tech-stack, engineering-risk, weekly-reviews, ceo-updates.
+              Kinds (token -> skill): tech-stack -> tech-stack, engineering-risk -> review-engineering-risk,
+              weekly-reviews -> weekly-cto-review, ceo-updates -> write-ceo-update.
           dzcto collect-issue-bundle <project> [--output <zip>] [--no-redact]
               Create a troubleshooting bundle with redacted sidecar metadata and stale checks.
 
@@ -223,7 +229,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
     topics = {
         "commands": command_reference_text(project),
         "lfg": f"""
-            LFG
+            LFG (pick the next best action)
 
             Run:
               dzcto lfg {project_arg}
@@ -236,11 +242,13 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
         "onboarding": f"""
             Onboarding checklist
 
-            1. Choose a project folder outside the code repo.
-            2. Capture company name and a short company description.
-            3. Add one or more read-only repo paths with --repo when code evidence exists.
-            4. Run dzcto init {project_arg}.
-            5. Open dzcto serve {project_arg}.
+            1. Decide the company name and a short company description first; folder options follow from the name.
+            2. Choose a project folder outside the code repo, such as ~/Documents/<Company> CTO.
+            3. Note any read-only code repo paths to add with --repo when code evidence exists.
+            4. Primary path: ask your agent to use day-zero-cto:bootstrap-cto-context for guided setup
+               (company context, core files, first reports, learning seed).
+               Manual equivalent: dzcto init {project_arg} --company-name "<name>" --company-description "<summary>".
+            5. Open the command center: dzcto serve {project_arg}.
             6. Use the dashboard setup checklist to finish core context, cadence rules, first reports, and learning seed.
         """,
         "editing": f"""
@@ -335,8 +343,11 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             Generate structured reports with JSON data:
               dzcto artifact --project {project_arg} --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json
 
-            Supported kinds:
-              tech-stack, engineering-risk, weekly-reviews, ceo-updates
+            Supported kinds (note the --kind token differs from the skill name):
+              tech-stack        from the tech-stack skill
+              engineering-risk  from the review-engineering-risk skill
+              weekly-reviews    from the weekly-cto-review skill
+              ceo-updates       from the write-ceo-update skill
 
             Prefer --data-file so reports get structured sections and action summaries. Use --body-file only for legacy raw HTML.
         """,
@@ -1130,13 +1141,18 @@ def main(argv: list[str]) -> int:
     doctor = sub.add_parser("doctor", help="Check install and optional project health")
     doctor.add_argument("--project", help="Optional project folder")
 
-    init = sub.add_parser("init", help="Create or refresh a project knowledge wiki")
+    init = sub.add_parser(
+        "init",
+        help="Create or refresh a project knowledge wiki",
+        epilog="--company-name, --company-url, --company-description, --report-prompt-context, and --repo are saved to "
+        "<project>/knowledge/wiki/.dzcto/config.json and persist across refreshes. You can also edit that file by hand.",
+    )
     init.add_argument("project", help="Project folder, such as ~/Documents/Acme")
-    init.add_argument("--company-name")
-    init.add_argument("--company-description")
-    init.add_argument("--company-url")
-    init.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards")
-    init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
+    init.add_argument("--company-name", help="Company name; persisted as companyName in .dzcto/config.json")
+    init.add_argument("--company-description", help="Short company summary; persisted as companyDescription in .dzcto/config.json")
+    init.add_argument("--company-url", help="Company URL; persisted as companyUrl in .dzcto/config.json")
+    init.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards; persisted as reportPromptContext in .dzcto/config.json")
+    init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated. Persisted as codeRepos in .dzcto/config.json")
 
     refresh = sub.add_parser("refresh", help="Refresh wiki indexes, core HTML pages, and cadence alerts")
     refresh.add_argument("project", help="Project folder")

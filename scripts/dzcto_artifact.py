@@ -101,6 +101,12 @@ CORE_DOC_META = {
     "RISKS.md": ("Risks", "Risk register, mitigations, owners, and review dates."),
 }
 
+# Skill an agent should run to populate each core doc when it is still empty.
+CORE_DOC_EMPTY_ACTION = {
+    "DECISIONS.md": "day-zero-cto:review-decisions",
+    "RISKS.md": "day-zero-cto:review-risks",
+}
+
 
 CORE_DOC_HTML = {
     "STRATEGY.md": "strategy.html",
@@ -1129,8 +1135,10 @@ def render_table_section(title: str, rows: Any, columns: list[tuple[str, str]]) 
             value = table_value(row, key)
             if re.search(r"severity|likelihood|status", key, re.I) and present(value):
                 cell = f'<span class="tag {severity_class(value)}">{esc(text_value(value))}</span>'
-            else:
+            elif present(value):
                 cell = esc(text_value(value))
+            else:
+                cell = '<span class="cell-empty" title="Not captured">&mdash;</span>'
             cells.append(f"<td>{cell}</td>")
         table_rows.append(f"<tr>{''.join(cells)}</tr>")
     return f"""
@@ -1192,8 +1200,10 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk
                 value = value_at(row, key)
             if key == "severity" and present(value):
                 cell = f'<span class="tag {severity_class(value)}">{esc(text_value(value))}</span>'
-            else:
+            elif present(value):
                 cell = esc(text_value(value))
+            else:
+                cell = '<span class="cell-empty" title="Not captured">&mdash;</span>'
             cells.append(f"<td>{cell}</td>")
         table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
@@ -4025,6 +4035,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .prose h2, .prose h3, .prose h4 { margin-top: 28px; }
 .prose p, .prose ul { max-width: 900px; margin-top: 12px; }
 .empty-item, .no-results { color: var(--faint); font-size: 13px; }
+.cell-empty { color: var(--faint); }
 .no-results { border: 1px dashed var(--line-2); border-radius: var(--r-md); padding: 22px; text-align: center; }
 .markdown-table { width: 100%; overflow-x: auto; }
 .markdown-table table { min-width: 100%; }
@@ -4879,9 +4890,10 @@ def write_core_pages(
 """
             source_hash = collect_source_hashes(source_paths)
         else:
+            action = CORE_DOC_EMPTY_ACTION.get(doc, "day-zero-cto:refine-core-context")
             content_html = f"""
   <section class="artifact-section prose">
-    <p class="empty-item">{esc(doc)} has not been created yet.</p>
+    <p class="empty-item">No {esc(title.lower())} context captured yet. Ask your agent to use <code>{esc(action)}</code> to set it up, then run <code>dzcto refresh</code>.</p>
   </section>
 """
             source_hash = {}

@@ -1,4 +1,4 @@
 interface:
   display_name: "Review Risks"
-  short_description: "Walk risks and log decisions made."
-  default_prompt: "Review the Day Zero CTO risk register and log any decisions made while addressing risks."
+  short_description: "Maintain the risk register row by row; log decisions."
+  default_prompt: "Walk the canonical Day Zero CTO risk register in RISKS.md one risk at a time to keep, update, close, or punt each, and log any decisions made. This is register maintenance, not a fresh assessment."

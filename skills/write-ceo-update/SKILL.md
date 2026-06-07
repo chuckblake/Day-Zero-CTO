@@ -16,7 +16,7 @@ Translate engineering reality into concise business signal for the CEO or foundi
 5. Extract only the information that changes business judgment: progress, blocked outcomes, customer impact, risk, asks, and upcoming decisions.
 6. Draft the update in the requested tone. If no tone is specified, use direct, calm, non-defensive language.
 7. Flag unsupported claims and missing evidence instead of smoothing over them.
-8. Write the canonical update as an HTML artifact under `<project>/knowledge/wiki/reports/ceo-updates/` and regenerate `<project>/knowledge/wiki/index.html`.
+8. Write the canonical update as an HTML artifact under `<project>/knowledge/wiki/reports/ceo-updates/`. The artifact command refreshes the dashboard automatically.
 9. Summarize the update in chat and link to the generated artifact.
 
 ## Default Structure
