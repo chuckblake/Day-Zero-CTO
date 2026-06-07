@@ -12,7 +12,7 @@ Ask the user for these values before running Day Zero CTO work:
 - Company description or company website URL.
 - Optional read-only codebase paths. Multiple codebases are allowed.
 
-Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, dedicated setup checklist page, dashboard setup alert/reference, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
+Day Zero CTO writes user-facing HTML to `<project>/knowledge/wiki/` and metadata to `<project>/knowledge/wiki/.dzcto/`. Project config — company name, description, URL, report prompt context, and read-only repo paths — lives in `<project>/knowledge/wiki/.dzcto/config.json` (set via `dzcto init` flags or by hand; see the README config-key table). Code repos are evidence sources, not the documentation destination, unless the user explicitly says otherwise. Generated wiki pages include an Arwen-style command center, KPI strip, dedicated setup checklist page, dashboard setup alert/reference, today panel, risk register, report cards, top search, breadcrumbs, table-of-contents links, light/dark theme, and a local search index at `<project>/knowledge/wiki/search-index.json`.
 
 Dashboard description note: edit the first real paragraph in `<project>/knowledge/wiki/core/STRATEGY.md` under `Product Thesis`, `Company`, or `Stage`. Do not edit generated `index.html` directly.
 
@@ -245,5 +245,5 @@ Claude Code:
 ## First Useful Prompt
 
 ```text
-Onboard Day Zero CTO for this startup. Ask for the project folder, company name, company description or website URL, and one or more optional read-only codebase paths. Ask whether to complete onboarding now, including Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, Review Risks, Review Decisions, and seeding the first 25 learning items.
+Onboard Day Zero CTO for this startup. Ask for the company name first, then the project/engagement name, then a company description or website URL, then the project folder (suggest options derived from the name), then one or more optional read-only codebase paths. Ask whether to complete onboarding now, including Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, Review Risks, Review Decisions, and seeding up to 25 learning items.
 ```

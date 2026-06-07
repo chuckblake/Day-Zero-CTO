@@ -136,6 +136,18 @@ The index shows company information under the title, then a dashboard workspace:
 
 The hidden `.dzcto/` directory is the local metadata sidecar. It stores project config, connected repo paths, artifact manifests, diagnostics, and latest helper logs. Generated HTML pages embed a `dzcto-provenance` JSON block with tool version, generation time, config hash, source hashes when available, and artifact ID.
 
+Your project config lives at `<project>/knowledge/wiki/.dzcto/config.json`. You can set these values with `dzcto init` flags or by editing the file directly:
+
+| Key | Set via flag | Meaning |
+| --- | --- | --- |
+| `companyName` | `--company-name` | Company name shown across the wiki. |
+| `companyDescription` | `--company-description` | Short company summary used as initial context. |
+| `companyUrl` | `--company-url` | Company website URL kept as evidence. |
+| `reportPromptContext` | `--report-prompt-context` | Global steering text appended to report and operating prompt cards. |
+| `codeRepos` | `--repo` (repeatable) | Read-only code repository paths used as evidence. |
+
+The file also records generated bookkeeping (`toolVersion`, `wikiRoot`, timestamps); edit the keys above and leave the rest to the helper. Run `dzcto refresh "<project folder>"` after hand-editing so generated pages pick up the change.
+
 ## Cadence Rules
 
 `OPERATING_CADENCE.md` may include an `Index Cadence Rules` section. The helper reads this table whenever it regenerates the index and shows an alert when a scheduled Day Zero CTO report has never run or is due:
@@ -286,9 +298,17 @@ Claude Code stores installed plugins under versioned cache folders. To avoid typ
 ~/.claude/plugins/cache/day-zero-cto/day-zero-cto/<version>/bin/dzcto install-command
 ```
 
-After that, use:
+After that, onboard a project before serving it. The primary path is the guided
+skill — in Claude Code, ask the agent to use `day-zero-cto:bootstrap-cto-context`,
+which captures company context, creates the core files, and offers first reports and
+a learning seed. The manual equivalent is `dzcto init`:
 
 ```bash
+# Guided (recommended): ask your agent to use day-zero-cto:bootstrap-cto-context
+# Manual equivalent:
+dzcto init "$HOME/Documents/Acme CTO" --company-name "Acme" --company-description "Short company summary"
+
+# Then open the command center:
 dzcto serve "$HOME/Documents/Acme CTO"
 ```
 

@@ -21,7 +21,7 @@ Create a grounded technology inventory and system map from one or more codebases
    - Runtime service docs, environment examples, queue/cache/search/storage integrations, and API clients.
    - Test, lint, formatting, observability, error reporting, analytics, and security tooling.
 6. Separate facts from inferences. Use `Assumption:` where evidence is partial. When multiple repos are involved, make the source repo clear in evidence and sources.
-7. Write structured JSON report data and render the canonical HTML artifact under `<project>/knowledge/wiki/reports/tech-stack/`.
+7. Write structured JSON report data and render the canonical HTML artifact under `<project>/knowledge/wiki/reports/tech-stack/`. The artifact command refreshes the dashboard automatically.
 8. Summarize the stack shape, biggest onboarding clues, and any stack risks in chat.
 
 ## Output Shape

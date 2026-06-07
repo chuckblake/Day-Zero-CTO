@@ -25,7 +25,7 @@ Establish the project `knowledge/wiki` workspace, connect read-only codebase evi
 10. Create or update the source core files below inside `<project>/knowledge/wiki/core/`. Preserve useful existing content; do not erase user notes. The helper renders user-facing `core/*.html` pages from these sources.
 11. Regenerate `<project>/knowledge/wiki/index.html` with `dzcto refresh "<project folder>"` or `python3 scripts/dzcto.py refresh "<project folder>"`. The generated index should identify the company, show only company context under the title, and present a command-center dashboard with setup alert/reference, Cadence, Core Context, Reports, Learning, and one expandable Help document. The full setup checklist should live on `setup/index.html`; the dashboard should highlight setup only when incomplete and become a quiet reference once complete. The risk KPI should link to `core/risks.html`; do not duplicate the full risk register on the homepage. Help should include the project-specific command reference, copyable AI prompts with the exact project folder and read-only repo paths, plus copyable local helper commands. New report artifacts should use structured JSON via `--data-file`; raw `--body-file` HTML is only a legacy fallback.
 12. Ask: `Do you want to complete onboarding now?` If yes, offer these run-now options: Tech Stack, Engineering Risk Review, Weekly CTO Review, CEO Update, Review Risks, Review Decisions, and Initial Learning Seed.
-13. If the user chooses Initial Learning Seed, create exactly 25 evidence-backed learning items when enough evidence exists. Write them to a JSON array and run:
+13. If the user chooses Initial Learning Seed, create up to 25 evidence-backed learning items (usually 25 when evidence is rich). Write them to a JSON array and run:
 
    ```bash
    dzcto learning --project "<project folder>" --seed-file "<json learning seed file>"
@@ -55,7 +55,7 @@ Use these files under `<project>/knowledge/wiki/core/` unless the user chooses a
 - `Review Decisions`: useful when the user wants to revisit recorded decisions one at a time; updates `core/DECISIONS.md`.
 - `Weekly CTO Review`: useful when there is enough recent work signal; creates `reports/weekly-reviews/`.
 - `CEO Update`: useful when the user wants an executive-facing summary; creates `reports/ceo-updates/`.
-- `Initial Learning Seed`: create 25 learning items from company context, Tech Stack findings, risk register, decisions, docs, and codebase evidence. Do not invent items just to reach 25; if evidence is thin, explain how many were safely created.
+- `Initial Learning Seed`: create up to 25 learning items from company context, Tech Stack findings, risk register, decisions, docs, and codebase evidence. Do not invent items just to reach 25; if evidence is thin, explain how many were safely created.
 
 ## Standards
 

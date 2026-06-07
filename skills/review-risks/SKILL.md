@@ -1,6 +1,6 @@
 ---
 name: review-risks
-description: "Review the Day Zero CTO risk register by walking the user through active risks whose next review is due, severity is high, mitigation is unclear, or the user selected them, and log formal decisions made while addressing those risks. Use when the user asks to review risks, resolve the risk register, close a risk, update risk severity, choose or accept a mitigation, punt risk review to a later date, mark missing evidence, log decisions from risk review, or work through RISKS.md one row at a time."
+description: "Maintain the canonical Day Zero CTO risk register by walking the user through existing active risks in RISKS.md one row at a time to keep, update, close, or punt them, and log formal decisions made while addressing those risks. This is register maintenance, not a fresh assessment; use review-engineering-risk to produce a new risk report. Use when the user asks to review risks, resolve the risk register, close a risk, update risk severity, choose or accept a mitigation, punt risk review to a later date, mark missing evidence, log decisions from risk review, or work through RISKS.md one row at a time."
 ---
 
 # Review Risks
