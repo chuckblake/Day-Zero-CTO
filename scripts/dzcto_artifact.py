@@ -1280,6 +1280,18 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
     if not groups:
         return ""
 
+    # Suppress the card when it would merely restate the sections directly below.
+    # It is pure duplication only when no group is truncated by the items[:2] slice
+    # (max_group <= 2, so the card shows each group in full, not a condensed subset)
+    # AND the body is short (total_items <= 3 signal rows across its sections, so
+    # those rows are already visible without the top block). A >2-item group makes
+    # the card a real triage subset; 4+ items total makes it useful navigation across
+    # scattered section leads. In both of those cases the card stays.
+    total_items = sum(len(items) for _, items in groups)
+    max_group = max(len(items) for _, items in groups)
+    if max_group <= 2 and total_items <= 3:
+        return ""
+
     rows = []
     for label, items in groups:
         for item in items[:2]:
@@ -1381,7 +1393,12 @@ def render_structured_report(kind: str, data: dict[str, Any], risk_registry: dic
     # The lead summary now lives in the masthead, so the follow-up-signals card
     # anchors deterministically at the top of the body for every kind.
     action_summary = render_action_summary(kind, data)
-    return f"{action_summary}{body}".strip() or render_generic_report(data)
+    rendered = f"{action_summary}{body}".strip() or render_generic_report(data)
+    # A blank body is legitimate when the lead summary carries the report in the
+    # masthead deck. Only surface a placeholder when nothing at all was captured.
+    if not rendered.strip() and not report_lead_summary(data):
+        return '<p class="empty-item">No content yet.</p>'
+    return rendered
 
 
 def core_doc_html_name(doc: str) -> str:
@@ -1473,11 +1490,46 @@ def reference_list(label: str, href: str = "", *, kind: str = "") -> list[dict[s
     return [item]
 
 
+ALLOWED_LINK_SCHEMES = {"http", "https", "mailto"}
+
+
+def href_scheme_allowed(href: str) -> bool:
+    """Return True for relative/anchor hrefs and http(s)/mailto schemes.
+
+    Used to keep operator-authored Markdown links (core/RISKS.md, DECISIONS.md)
+    from emitting javascript:/data:/vbscript: hrefs. This is a robustness guard
+    on the operator's own content, not a remote-attacker defense.
+    """
+    href = (href or "").strip()
+    if not href:
+        return False
+    # Reject the control chars browsers strip from inside URLs and that hide a
+    # scheme (e.g. "java\tscript:alert(1)"). A regular space (0x20) is a valid
+    # href character, so it is intentionally not in this range.
+    if re.search(r"[\x00-\x1f\x7f]", href):
+        return False
+    match = re.match(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):", href)
+    if not match:
+        # No scheme: relative path, ./, ../, #anchor, or //host. Allowed.
+        return True
+    return match.group(1).lower() in ALLOWED_LINK_SCHEMES
+
+
 def inline_markdown(value: str) -> str:
     text = esc(value)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+
+    def _link(match: re.Match[str]) -> str:
+        # value was already esc()'d above, so the captured href is single-escaped;
+        # emit it raw (re-escaping would turn & into &amp;amp;). The guard only
+        # decides whether to keep the <a>, dropping disallowed-scheme links to text.
+        label, href = match.group(1), match.group(2)
+        if href_scheme_allowed(href):
+            return f'<a href="{href}">{label}</a>'
+        return label
+
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", _link, text)
     return text
 
 
@@ -2801,6 +2853,8 @@ def source_href(href: str, prefix: str) -> str:
     href = (href or "").strip()
     if not href:
         return ""
+    if not href_scheme_allowed(href):
+        return ""
     if re.match(r"^(https?://|mailto:|#|/)", href) or href.startswith(("../", "./")):
         return href
     return prefix + href
@@ -2822,10 +2876,13 @@ def source_links_html(links: Any, *, prefix: str = "../", fallback: str = "") ->
         if key in seen:
             continue
         seen.add(key)
-        if href:
-            values.append(f'<a href="{esc(source_href(href, prefix))}">{esc(label or href)}</a>')
+        resolved = source_href(href, prefix) if href else ""
+        if resolved:
+            values.append(f'<a href="{esc(resolved)}">{esc(label or href)}</a>')
         else:
-            values.append(esc(label))
+            # No href, or a disallowed scheme that source_href rejected: render
+            # the label as plain text rather than a dead <a href="">.
+            values.append(esc(label or href))
     if not values and fallback:
         values.append(esc(fallback))
     return " / ".join(values)
