@@ -5063,7 +5063,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
             preview = report_summary_for_path(latest_path) or "Generated report artifact."
             history_items = []
             history_search = []
-            for path in links[1:4]:
+            for path in links[1:5]:
                 item_href = path.relative_to(wiki_root).as_posix()
                 item_title = html_title(path)
                 item_date = report_run_date(path)
@@ -5074,7 +5074,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
   <strong>{esc(item_title)}</strong>
 </a>"""
                 )
-            history_more = f'<span class="rh-more">{esc(len(links) - 4)} older</span>' if len(links) > 4 else ""
+            history_more = f'<span class="rh-more">{esc(len(links) - 5)} older</span>' if len(links) > 5 else ""
             history_html = (
                 f"""<div class="report-history">
   <div class="rh-label">Previous</div>
@@ -5451,22 +5451,40 @@ def main(argv: list[str]) -> int:
     if not args.project and not args.home:
         parser.error("--project or --home is required")
 
-    wiki_root = Path(args.project).expanduser().resolve() / "knowledge" / "wiki" if args.project else Path(args.home).expanduser().resolve()
-    project_folder = Path(args.project).expanduser().resolve() if args.project else (wiki_root / ".." / "..").resolve()
-
-    # Generating a report (non-init) into a project whose wiki does not exist is
-    # almost always an agent passing the company NAME instead of the project FOLDER
-    # path: that name resolves to a stray relative dir and we would silently create
-    # it. Fail loudly instead of writing to the wrong place. (--init legitimately
-    # creates the wiki, so it is exempt.)
-    if not args.init and not wiki_root.exists():
-        raise SystemExit(
-            f"No Day Zero CTO wiki found at {wiki_root}.\n"
-            f"--project must be the project FOLDER path (for example ~/Documents/Acme CTO), "
-            f"not a company name.\n"
-            f"If that resolved path is correct and the project is new, run `dzcto init` on it first."
-        )
-
+    if args.project:
+        project_folder = Path(args.project).expanduser().resolve()
+        if not project_folder.exists():
+            raise SystemExit(
+                f"--project path does not exist: {project_folder}\n"
+                f"  --project must be the project FOLDER path (e.g. ~/Documents/Acme\\ CTO), not a company name.\n"
+                f"  Use '.' if you are already inside the project folder."
+            )
+        if not project_folder.is_dir():
+            raise SystemExit(
+                f"--project must be a directory, got: {project_folder}\n"
+                f"  --project must be the project FOLDER path (e.g. ~/Documents/Acme\\ CTO), not a company name."
+            )
+        wiki_root = project_folder / "knowledge" / "wiki"
+        # A real project wiki has core/STRATEGY.md written during init. A directory
+        # that exists but lacks this file is almost certainly a ghost tree created by
+        # a prior run that resolved a company name as a relative path. Fail loudly
+        # instead of writing to the wrong place. (--init legitimately creates the wiki
+        # from scratch, so it is exempt from this check.)
+        if not args.init and not (wiki_root / "core" / "STRATEGY.md").exists():
+            parent_wiki = project_folder.parent / "knowledge" / "wiki"
+            hint = (
+                f"  The parent folder '{project_folder.parent}' looks like the correct project folder."
+                if (parent_wiki / "core" / "STRATEGY.md").exists()
+                else "  If the project is new, run `dzcto init` on it first."
+            )
+            raise SystemExit(
+                f"No Day Zero CTO wiki found at {wiki_root} (missing core/STRATEGY.md).\n"
+                f"  --project must be the project FOLDER path (e.g. ~/Documents/Acme\\ CTO), not a company name.\n"
+                f"{hint}"
+            )
+    else:
+        wiki_root = Path(args.home).expanduser().resolve()
+        project_folder = (wiki_root / ".." / "..").resolve()
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
     learning_dir = wiki_root / "learning"
@@ -5509,7 +5527,20 @@ def main(argv: list[str]) -> int:
             report_sources.append(body_path)
             body = body_path.read_text(encoding="utf-8")
         else:
-            body = sys.stdin.read()
+            # No explicit data or body source — auto-load data.json from the report
+            # folder if it exists so that `dzcto artifact --kind X --title Y` works
+            # without always needing an explicit --data-file flag.
+            auto_data_path = reports_dir / args.kind / "data.json"
+            if auto_data_path.exists():
+                data = json.loads(auto_data_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    report_sources.append(auto_data_path)
+                    structured_data = data
+                    body = render_structured_report(args.kind, data)
+                else:
+                    body = sys.stdin.read()
+            else:
+                body = sys.stdin.read()
 
         slug = slugify(f"{args.date} {args.title}")
         report_path = reports_dir / args.kind / f"{slug}.html"
