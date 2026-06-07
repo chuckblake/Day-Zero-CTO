@@ -100,9 +100,9 @@ Generated wiki pages use a compact command-center interface:
 - Filterable Decisions and Risks pages rendered from generated registries, with stable IDs for deep links from the dashboard and reports.
 - Canonical `risks/registry.json` and `decisions/registry.json` files generated from `core/RISKS.md`, `core/DECISIONS.md`, and structured report signals. These are machine-facing indexes, not the hand-editing source.
 - Generated per-risk and per-decision detail pages under `risks/` and `decisions/`. Clicking a matched risk or decision opens the focused item view with canonical fields plus every report/source reference that points at it.
-- A canonical Risks page with report-derived `Risk Signals From Reports` intake plus the generated risk registry. Signals link to existing risk detail pages when matched; unmatched signals remain intake until promoted, merged, or dismissed.
-- A canonical Decisions page with report-derived `Decision Signals From Reports` intake plus the generated decision registry. Signals link to existing decision detail pages when matched; unmatched asks or proposed choices stay intake until they become durable decisions.
-- Report cards show factual artifact counts and, when a report folder has multiple artifacts, a compact previous-run list under the latest report.
+- A canonical Risks page with report-derived `Risk Signals From Reports` triage plus the generated risk registry. Signals link to existing risk detail pages when matched; unmatched signals show as `Needs triage` until promoted, merged, or dismissed.
+- A canonical Decisions page with report-derived `Decision Signals From Reports` triage plus the generated decision registry. Signals link to existing decision detail pages when matched; unmatched asks or proposed choices show as `Needs triage` until they become durable decisions.
+- Report cards show an `Open latest` action, the latest report summary, and a compact previous-run list when a report folder has older artifacts.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
 - Breadcrumbs, sticky navigation, search, and a light/dark theme on generated pages.
@@ -118,7 +118,7 @@ Risk information has one editable source of truth: `knowledge/wiki/core/RISKS.md
 
 Decision information follows the same pattern: `knowledge/wiki/core/DECISIONS.md` is the editable decision log, while `knowledge/wiki/decisions/registry.json` and `knowledge/wiki/decisions/decision-*.html` are generated for stable IDs, filtering, report-signal matching, focused item views, references, and search. Report asks or proposed choices are not recorded decisions until they are promoted into `DECISIONS.md` with date, rationale, owner, and revisit trigger.
 
-Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. The generated Risks page rolls structured report signals into `Risk Signals From Reports` so the user can promote, merge, or dismiss them from one place. Promote actionable items into `core/RISKS.md` with owner, mitigation, source, and review date before relying on them in the command center.
+Report-specific risk sections, including Tech Stack risks and watchpoints, are candidate signals. They should not become a second operating risk list. The generated Risks page rolls structured report signals into `Risk Signals From Reports` so the user can promote, merge, or dismiss them from one place. A `Needs triage` signal means a report surfaced something plausible, but it is not an active operating risk until it is promoted into `core/RISKS.md` with owner, mitigation, source, and review date.
 
 Risk reviews can create decisions. If handling a risk leads to a formal choice, such as accepting the risk, choosing a mitigation path, changing architecture or process, closing the risk because of a strategic direction, or deferring based on an explicit threshold, record that choice in `knowledge/wiki/core/DECISIONS.md`. Keep the risk row focused on exposure and follow-through; keep the decision row focused on the choice, rationale, owner, and revisit trigger.
 
@@ -452,7 +452,7 @@ Optional `metrics` are rendered as summary cards when present.
 
 For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. The helper stores structured report JSON next to generated report HTML, and `core/risks.html` reads that data into `Risk Signals From Reports` with links back to the source report. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
 
-Report risk and decision fields are treated as signals. When a signal matches a canonical risk or decision title, generated pages link it to that item's focused detail page, and the detail page lists the signal under `Referenced By`. When it does not match, it remains intake until an agent or user promotes it into the source Markdown or dismisses it as non-durable.
+Report risk and decision fields are treated as signals. When a signal matches a canonical risk or decision title, generated pages link it to that item's focused detail page, and the detail page lists the signal under `Referenced By`. When it does not match, it shows as `Needs triage` until an agent or user promotes it into the source Markdown or dismisses it as non-durable.
 
 ## Repo Structure
 

@@ -198,6 +198,10 @@ def snippet(value: str | None, limit: int = 180) -> str:
     return text[: limit - 1].rsplit(" ", 1)[0].rstrip() + "..."
 
 
+def display_timestamp(value: str) -> str:
+    return (value or "").replace("T", " ").replace("Z", " UTC")
+
+
 def project_config(wiki_root: Path) -> dict[str, Any]:
     value = read_json(sidecar_dir(wiki_root) / "config.json", {})
     return value if isinstance(value, dict) else {}
@@ -1189,7 +1193,7 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk
                 if match:
                     cell = f'<a href="{esc(source_href(match["detailPath"], "../../"))}"><code>{esc(match["id"])}</code></a>'
                 else:
-                    cell = '<a href="../../core/risks.html#risk-signals">Intake signal</a>'
+                    cell = '<a href="../../core/risks.html#risk-signals">Needs triage</a>'
                 cells.append(f"<td>{cell}</td>")
                 continue
             elif key == "risk":
@@ -1238,6 +1242,9 @@ def item_headline(item: Any) -> str:
             "question",
             "title",
             "name",
+            "technology",
+            "component",
+            "layer",
             "headline",
             "summary",
             "mitigation",
@@ -1380,7 +1387,105 @@ def render_generic_report(data: dict[str, Any]) -> str:
     return "".join([*sections, render_sources(data)])
 
 
-def render_structured_report(kind: str, data: dict[str, Any], risk_registry: dict[str, Any] | None = None, decision_registry: dict[str, Any] | None = None) -> str:
+REPORT_CHANGE_GROUPS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
+    "weekly-reviews": [
+        ("Shipped / Learned", ("shipped_learned", "shipped", "progress")),
+        ("Risks", ("risks", "risks_blockers", "blockers")),
+        ("Decisions", ("decisions_needed", "decisions", "asks_decisions")),
+        ("Next Focus", ("next_week_focus", "next_focus", "next")),
+    ],
+    "ceo-updates": [
+        ("Progress", ("progress",)),
+        ("Risks / Blockers", ("risks_blockers", "risks", "blockers")),
+        ("Asks / Decisions", ("asks_decisions", "asks", "decisions")),
+        ("Next", ("next", "up_next")),
+    ],
+    "engineering-risk": [
+        ("Top Risks", ("top_risks", "risks")),
+        ("Mitigations", ("mitigations",)),
+        ("Watchpoints", ("watchpoints",)),
+    ],
+    "tech-stack": [
+        ("Stack Components", ("stack_components", "components")),
+        ("Integrations", ("integrations",)),
+        ("Infrastructure", ("infrastructure_operations", "infrastructure", "operations")),
+        ("Risk Signals", ("risks_watchpoints", "risks", "watchpoints")),
+        ("Onboarding", ("onboarding_notes", "notes")),
+    ],
+}
+
+
+def report_change_values(data: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for field in fields:
+        raw = value_at(data, field)
+        items = array_value(raw) if isinstance(raw, list) else ([raw] if present(raw) else [])
+        for item in items:
+            value = item_headline(item)
+            if not value:
+                value = text_value(item)
+            value = snippet(value, 110)
+            key = value.lower()
+            if value and key not in seen:
+                seen.add(key)
+                values.append(value)
+    return values
+
+
+def summarize_change_list(values: list[str], limit: int = 2) -> str:
+    shown = values[:limit]
+    text = "; ".join(shown)
+    remaining = len(values) - len(shown)
+    if remaining > 0:
+        text = f"{text}; plus {pluralize(remaining, 'more item')}"
+    return text
+
+
+def report_changes_html(kind: str, data: dict[str, Any], previous_data: dict[str, Any] | None, previous_date: str) -> str:
+    if not isinstance(previous_data, dict):
+        return ""
+
+    changes: list[str] = []
+    for label, fields in REPORT_CHANGE_GROUPS.get(kind, []):
+        current = report_change_values(data, fields)
+        previous = report_change_values(previous_data, fields)
+        current_keys = {value.lower() for value in current}
+        previous_keys = {value.lower() for value in previous}
+        added = [value for value in current if value.lower() not in previous_keys]
+        removed = [value for value in previous if value.lower() not in current_keys]
+        if added:
+            changes.append(f"<li><strong>{esc(label)}:</strong> Added: {esc(summarize_change_list(added))}</li>")
+        if removed and len(changes) < 4:
+            changes.append(f"<li><strong>{esc(label)}:</strong> No longer listed: {esc(summarize_change_list(removed, 1))}</li>")
+        if len(changes) >= 4:
+            break
+
+    if not changes:
+        current_summary = report_lead_summary(data, 160)
+        previous_summary = report_lead_summary(previous_data, 160)
+        if current_summary and current_summary != previous_summary:
+            changes.append(f"<li><strong>Summary:</strong> Updated emphasis: {esc(current_summary)}</li>")
+        else:
+            changes.append("<li><strong>No material structured changes:</strong> This report is broadly consistent with the previous run.</li>")
+
+    date_text = previous_date or "the previous run"
+    return f"""
+<section class="report-changes">
+  <h2>Significant changes since the last report was run on {esc(date_text)}</h2>
+  <ul>{''.join(changes[:4])}</ul>
+</section>
+"""
+
+
+def render_structured_report(
+    kind: str,
+    data: dict[str, Any],
+    risk_registry: dict[str, Any] | None = None,
+    decision_registry: dict[str, Any] | None = None,
+    previous_data: dict[str, Any] | None = None,
+    previous_date: str = "",
+) -> str:
     if kind == "tech-stack":
         body = render_tech_stack(data, risk_registry)
     else:
@@ -1392,8 +1497,9 @@ def render_structured_report(kind: str, data: dict[str, Any], risk_registry: dic
         body = renderers.get(kind, render_generic_report)(data)
     # The lead summary now lives in the masthead, so the follow-up-signals card
     # anchors deterministically at the top of the body for every kind.
+    change_summary = report_changes_html(kind, data, previous_data, previous_date)
     action_summary = render_action_summary(kind, data)
-    rendered = f"{action_summary}{body}".strip() or render_generic_report(data)
+    rendered = f"{change_summary}{action_summary}{body}".strip() or render_generic_report(data)
     # A blank body is legitimate when the lead summary carries the report in the
     # masthead deck. Only surface a placeholder when nothing at all was captured.
     if not rendered.strip() and not report_lead_summary(data):
@@ -1815,6 +1921,17 @@ def report_summary_for_path(path: Path, limit: int = 190) -> str:
     """
     lead = report_lead_summary(read_json_file(path.with_suffix(".json"), None), limit)
     return lead or report_summary(path, limit)
+
+
+def previous_report_json_path(json_path: Path) -> Path | None:
+    siblings = sorted(
+        [path for path in json_path.parent.glob("*.json") if path.name != "data.json"],
+        reverse=True,
+    )
+    for index, path in enumerate(siblings):
+        if path.resolve() == json_path.resolve():
+            return siblings[index + 1] if index + 1 < len(siblings) else None
+    return None
 
 
 def search_entry(
@@ -3065,6 +3182,15 @@ def decision_registry_html(registry: dict[str, Any], *, prefix: str = "../") -> 
 """
 
 
+def signal_status_label(status: str, item_kind: str) -> str:
+    normalized = text_value(status)
+    if normalized == "Matched":
+        return "In register" if item_kind == "risk" else "Recorded"
+    if normalized == "Intake":
+        return "Needs triage"
+    return normalized or "Needs triage"
+
+
 def report_risk_signals_html(registry: dict[str, Any], *, prefix: str = "../") -> str:
     signals = [signal for signal in registry.get("signals", []) if isinstance(signal, dict)]
     if not signals:
@@ -3074,9 +3200,10 @@ def report_risk_signals_html(registry: dict[str, Any], *, prefix: str = "../") -
     filter_rows: list[dict[str, str]] = []
     for signal in signals[:24]:
         status = text_value(signal.get("status") or "Intake")
+        status_label = signal_status_label(status, "risk")
         tone = "ready" if status == "Matched" else "medium"
         source_kind = text_value(signal.get("source_kind"))
-        filter_rows.append({"severity": signal.get("severity", ""), "status": status, "source": source_kind})
+        filter_rows.append({"severity": signal.get("severity", ""), "status": status_label, "source": source_kind})
         source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
         detail = signal["evidence"] or signal["impact"] or "No detail captured in the structured report data."
         if signal.get("matchedRiskId"):
@@ -3087,9 +3214,9 @@ def report_risk_signals_html(registry: dict[str, Any], *, prefix: str = "../") -
             action = esc(signal["mitigation"] or "Promote into RISKS.md with owner, mitigation, source, and next review date.")
             title_html = f"""<strong>{esc(signal["title"])}</strong>"""
         rows.append(
-            f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, signal["source_label"], source_kind, detail, signal.get("mitigation", ""), signal.get("matchedRiskId", ""))}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status)}" data-filter-source="{esc(source_kind)}">
+            f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal["title"], signal["severity"], status, status_label, signal["source_label"], source_kind, detail, signal.get("mitigation", ""), signal.get("matchedRiskId", ""))}" data-filter-severity="{esc(signal["severity"])}" data-filter-status="{esc(status_label)}" data-filter-source="{esc(source_kind)}">
   <td>{title_html}<br><span class="sev-badge b-{severity_token(signal["severity"])}">{esc(signal["severity"])}</span></td>
-  <td><span class="tag {tone}">{esc(status)}</span></td>
+  <td><span class="tag {tone}">{esc(status_label)}</span></td>
   <td>{source_html}</td>
   <td>{esc(detail)}</td>
   <td>{action}</td>
@@ -3110,7 +3237,7 @@ def report_risk_signals_html(registry: dict[str, Any], *, prefix: str = "../") -
     return f"""
   <section class="artifact-section risk-signals" id="risk-signals">
     <h2>Risk Signals From Reports</h2>
-    <p class="artifact-note">Generated from structured Tech Stack, Engineering Risk, Weekly Review, and CEO Update report data. Use this as an intake queue; promote actionable signals into <code>RISKS.md</code> so they get an owner, mitigation, source, and dated next review.</p>
+    <p class="artifact-note">Generated from structured Tech Stack, Engineering Risk, Weekly Review, and CEO Update report data. <strong>Needs triage</strong> means the signal has not been promoted, merged, or dismissed in <code>RISKS.md</code>; it is not an operating risk until it gets an owner, mitigation, source, and dated next review.</p>
     {controls}
     <div class="markdown-table" id="{esc(table_id)}" data-filterable-table>
       <table>
@@ -3131,8 +3258,9 @@ def report_decision_signals_html(registry: dict[str, Any], *, prefix: str = "../
     filter_rows: list[dict[str, str]] = []
     for signal in signals[:24]:
         status = text_value(signal.get("status") or "Intake")
+        status_label = signal_status_label(status, "decision")
         source_kind = text_value(signal.get("source_kind"))
-        filter_rows.append({"status": status, "source": source_kind, "date": text_value(signal.get("date"))})
+        filter_rows.append({"status": status_label, "source": source_kind, "date": text_value(signal.get("date"))})
         source_html = source_links_html(signal.get("sourceLinks"), prefix=prefix, fallback=text_value(signal.get("source_label")))
         if signal.get("matchedDecisionId"):
             matched_path = text_value(signal.get("matchedDecisionPath")) or decision_detail_relative_path(text_value(signal.get("matchedDecisionId")))
@@ -3142,9 +3270,9 @@ def report_decision_signals_html(registry: dict[str, Any], *, prefix: str = "../
             action = "Promote into DECISIONS.md when this is a durable choice, not merely an ask or open question."
             title_html = f"""<strong>{esc(signal.get("title", ""))}</strong>"""
         rows.append(
-            f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal.get("title"), status, source_kind, signal.get("date"), signal.get("context"), signal.get("owner"), signal.get("matchedDecisionId", ""))}" data-filter-status="{esc(status)}" data-filter-source="{esc(source_kind)}" data-filter-date="{esc(signal.get("date", ""))}">
+            f"""<tr id="{esc(signal.get("id", ""))}" data-filter-text="{search_text_attr(signal.get("title"), status, status_label, source_kind, signal.get("date"), signal.get("context"), signal.get("owner"), signal.get("matchedDecisionId", ""))}" data-filter-status="{esc(status_label)}" data-filter-source="{esc(source_kind)}" data-filter-date="{esc(signal.get("date", ""))}">
   <td>{title_html}</td>
-  <td><span class="tag {'ready' if status == 'Matched' else 'medium'}">{esc(status)}</span></td>
+  <td><span class="tag {'ready' if status == 'Matched' else 'medium'}">{esc(status_label)}</span></td>
   <td>{source_html}</td>
   <td>{esc(signal.get("context", "") or signal.get("options", "") or "No detail captured in the structured report data.")}</td>
   <td>{action}</td>
@@ -3236,7 +3364,7 @@ def item_reference_card(signal: dict[str, Any], *, prefix: str, item_kind: str) 
             ("Mitigation", signal.get("mitigation")),
         ]
     else:
-        badge = f'<span class="tag ready">{esc(signal.get("status") or "Matched")}</span>'
+        badge = f'<span class="tag ready">{esc(signal_status_label(text_value(signal.get("status") or "Matched"), "decision"))}</span>'
         fields = [
             ("Context", signal.get("context")),
             ("Options", signal.get("options")),
@@ -3575,7 +3703,7 @@ button { cursor: pointer; }
 .eyebrow::before { content: ""; width: 18px; height: 2px; background: var(--accent); border-radius: 2px; }
 h1.title { font-size: 38px; font-weight: 800; }
 .title .light { color: var(--muted); font-weight: 500; }
-.lede { max-width: 680px; margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
+.lede { max-width: none; margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
 .masthead-stamp { margin-top: 8px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .masthead-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: min(300px, 100%); }
 .masthead-mobile-tools { display: none; }
@@ -3885,9 +4013,12 @@ h1.title { font-size: 38px; font-weight: 800; }
 }
 .report:hover, .report-card:hover { border-color: var(--accent); text-decoration: none; }
 .report.empty, .report-card.empty { background: var(--surface-2); border-style: dashed; box-shadow: none; }
-.rp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.rp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rp-head { display: grid; gap: 3px; min-width: 0; }
 .rp-name, .report-title { color: var(--ink); font-size: 15px; font-weight: 800; }
-.rp-count, .report-count { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+.rp-count, .report-count, .rp-open-top { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+.rp-open-top { border: 1px solid var(--line-2); color: var(--accent); background: var(--surface); }
+.rp-open-top:hover { border-color: var(--accent); color: var(--accent-ink); text-decoration: none; }
 .rp-prev { color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
 .report-history { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 9px; }
 .rh-label { color: var(--faint); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
@@ -4063,13 +4194,22 @@ h1.title { font-size: 38px; font-weight: 800; }
 .artifact-list span, .artifact-list em, .artifact-list small { display: block; margin-top: 3px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
 .report-body > p:first-child {
-  max-width: 980px;
+  max-width: none;
   color: var(--ink-2);
   font-size: 15px;
   line-height: 1.58;
 }
+.report-changes {
+  margin: 16px 0 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 13px;
+}
+.report-changes h2 { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.report-changes ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
+.report-changes li { color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.report-changes li strong { color: var(--ink); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .report-attention {
-  max-width: 980px;
+  max-width: none;
   margin: 16px 0 4px;
   border-top: 1px solid var(--line);
   padding-top: 13px;
@@ -4751,7 +4891,16 @@ def refresh_structured_report_pages(
                 continue
             title = html_title(report_path) or report_name(report_path)
             date = report_run_date(report_path)
-            body = render_structured_report(kind, data, risk_registry=risk_registry, decision_registry=decision_registry)
+            previous_json = previous_report_json_path(json_path)
+            previous_data = read_json_file(previous_json, {}) if previous_json else None
+            body = render_structured_report(
+                kind,
+                data,
+                risk_registry=risk_registry,
+                decision_registry=decision_registry,
+                previous_data=previous_data if isinstance(previous_data, dict) else None,
+                previous_date=report_run_date(previous_json) if previous_json else "",
+            )
             provenance = provenance_payload(
                 wiki_root,
                 artifact_id=f"{kind}:{report_path.stem}",
@@ -5067,30 +5216,34 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
                 item_href = path.relative_to(wiki_root).as_posix()
                 item_title = html_title(path)
                 item_date = report_run_date(path)
-                history_search.extend([item_title, item_date, report_summary(path)])
+                item_summary = report_summary_for_path(path, 120) or item_title
+                history_search.extend([item_title, item_date, item_summary])
                 history_items.append(
                     f"""<a class="rh-item" href="{esc(item_href)}">
   <span>{esc(item_date)}</span>
-  <strong>{esc(item_title)}</strong>
+  <strong>{esc(item_summary)}</strong>
 </a>"""
                 )
             history_more = f'<span class="rh-more">{esc(len(links) - 5)} older</span>' if len(links) > 5 else ""
             history_html = (
                 f"""<div class="report-history">
-  <div class="rh-label">Previous</div>
+  <div class="rh-label">Previous reports</div>
   {''.join(history_items)}
   {history_more}
 </div>"""
                 if history_items or history_more
                 else ""
             )
-            open_label = "Open latest" if len(links) > 1 else "Open report"
+            previous_count = max(len(links) - 1, 0)
+            report_meta = latest if not previous_count else f"{latest} / {pluralize(previous_count, 'previous report')}"
             report_sections.append(
                 f"""<article class="report" data-search-text="{search_text_attr(label, preview, latest, *history_search)}">
-  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-count">{esc(pluralize(len(links), "report"))}</span></div>
+  <div class="rp-top">
+    <div class="rp-head"><span class="rp-name">{esc(label)}</span><span class="rp-date">{esc(report_meta)}</span></div>
+    <a class="rp-open-top" href="{esc(href)}">Open latest</a>
+  </div>
   <p class="rp-prev">{esc(preview)}</p>
   {history_html}
-  <div class="rp-foot"><span class="rp-date">{esc(latest)}</span><a class="rp-open" href="{esc(href)}">{esc(open_label)}</a></div>
 </article>"""
             )
         else:
@@ -5347,7 +5500,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
   <section class="today" aria-label="Today">
     <div class="today-head">
       <h2><span class="pulse" aria-hidden="true"></span>What needs you today</h2>
-      <span class="stamp">{esc(today.isoformat())} / generated {esc(generated_at.replace("T", " ").replace("Z", " UTC"))}</span>
+      <span class="stamp">{esc(today.isoformat())} / generated {esc(display_timestamp(generated_at))}</span>
     </div>
     <div class="today-grid">
       <div class="today-col">
@@ -5425,6 +5578,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         eyebrow="Command Center - Day Zero CTO",
         title=dashboard_title(company),
         subtitle=description,
+        stamp=f"Last updated {display_timestamp(generated_at)}",
         sticky_title=dashboard_title(company),
     )
     write_html_page(wiki_root / "index.html", dashboard_title(company), body, provenance)
