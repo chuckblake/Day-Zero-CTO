@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codebase Accountability"
+  short_description: "Brief repo movement and oversight exceptions."
+  default_prompt: "Generate a codebase accountability report for this startup."

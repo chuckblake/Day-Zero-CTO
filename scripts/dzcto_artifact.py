@@ -32,6 +32,7 @@ from dzcto_common import (
 REPORT_FOLDERS = {
     "tech-stack": "Tech Stack",
     "engineering-risk": "Engineering Risk",
+    "codebase-accountability": "Codebase Accountability",
     "weekly-reviews": "Weekly Reviews",
     "ceo-updates": "CEO Updates",
 }
@@ -39,6 +40,7 @@ REPORT_FOLDERS = {
 RISK_SIGNAL_REPORT_FIELDS = {
     "tech-stack": ("risks_watchpoints", "risks", "watchpoints"),
     "engineering-risk": ("top_risks", "risks", "watchpoints"),
+    "codebase-accountability": ("risks", "risk_signals"),
     "weekly-reviews": ("risks",),
     "ceo-updates": ("risks_blockers", "risks", "blockers"),
 }
@@ -48,6 +50,7 @@ DECISION_SIGNAL_REPORT_FIELDS = {
     "ceo-updates": ("asks_decisions", "asks", "decisions"),
     "engineering-risk": ("decisions", "decision_points"),
     "tech-stack": ("decisions", "decision_points"),
+    "codebase-accountability": ("decisions", "decision_points"),
 }
 
 RISK_REGISTRY_SCHEMA_VERSION = "1.0"
@@ -544,6 +547,15 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
         ("Tech Stack", exact_prompt(f"Review the connected codebase(s) and create a Tech Stack report for {company}.", project_folder, repos, report_prompt_context)),
         ("Engineering Risk Review", exact_prompt(f"Run the engineering risk review for {company}.", project_folder, repos, report_prompt_context)),
         (
+            "Codebase Accountability",
+            exact_prompt(
+                f"Generate a codebase accountability report for {company}. Use read-only local Git history to surface management exceptions, provenance gaps, guardrail drift, risk signals, decision signals, and CTO questions.",
+                project_folder,
+                repos,
+                report_prompt_context,
+            ),
+        ),
+        (
             "Review Risks",
             exact_prompt(
                 f"Use the Day Zero CTO review-risks workflow to walk the risk register for {company}. Prioritize risks whose next review is due, severity is high, or mitigation is unclear, and let me keep active, update, close, punt, or mark evidence needed one item at a time. If we make a formal choice while addressing a risk, log that choice in core/DECISIONS.md.",
@@ -609,6 +621,7 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
         ("Next Best Action", f'dzcto lfg "{project_folder}"'),
         ("Project Status", f'dzcto status "{project_folder}"'),
         ("Check Stale", f'dzcto check-stale "{project_folder}"'),
+        ("Codebase Accountability", f'dzcto codebase-accountability "{project_folder}"'),
         ("Refresh Wiki", f'dzcto refresh "{project_folder}"'),
         ("Serve Dashboard", f'dzcto serve "{project_folder}"'),
         ("Quickstart Help", f'dzcto quickstart --project "{project_folder}"'),
@@ -1282,6 +1295,12 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
             action_group("Mitigations", value_at(data, "mitigations")),
             action_group("Watchpoints", value_at(data, "watchpoints")),
         ],
+        "codebase-accountability": [
+            action_group("Exceptions", value_at(data, "management_exceptions", "exceptions")),
+            action_group("Risks", value_at(data, "risks", "risk_signals")),
+            action_group("Decisions", value_at(data, "decisions", "decision_points")),
+            action_group("Questions", value_at(data, "questions", "open_questions")),
+        ],
     }
     groups = [(label, items) for label, items in groups_by_kind.get(kind, []) if items]
     if not groups:
@@ -1374,6 +1393,25 @@ def render_tech_stack(data: dict[str, Any], risk_registry: dict[str, Any] | None
     )
 
 
+def render_codebase_accountability(data: dict[str, Any], risk_registry: dict[str, Any] | None = None) -> str:
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
+    return "".join(
+        [
+            render_metrics(value_at(data, "metrics")),
+            render_table_section("Management Exceptions", value_at(data, "management_exceptions", "exceptions"), [("Severity", "severity"), ("Finding", "finding"), ("Evidence", "evidence"), ("Action", "action"), ("Owner", "owner")]),
+            render_table_section("Changed Subsystems", value_at(data, "changed_subsystems", "subsystems"), [("Repo", "repo"), ("Subsystem", "subsystem"), ("Files", "files"), ("Commits", "commits"), ("Evidence", "evidence")]),
+            render_table_section("Provenance", value_at(data, "provenance"), [("Repo", "repo"), ("Signal", "signal"), ("Value", "value"), ("Evidence", "evidence")]),
+            render_table_section("Guardrail Checks", value_at(data, "guardrail_checks", "guardrails"), [("Guardrail", "guardrail"), ("Status", "status"), ("Evidence", "evidence"), ("Action", "action")]),
+            render_table_section("Agent / Author Activity", value_at(data, "agent_activity", "authors", "agents"), [("Actor", "actor"), ("Commits", "commits"), ("Repos", "repos"), ("Evidence", "evidence")]),
+            render_table_section("Recent Change Units", value_at(data, "change_units", "commits"), [("Repo", "repo"), ("Commit", "commit"), ("Date", "date"), ("Actor", "actor"), ("Intent", "intent"), ("Refs", "refs")]),
+            render_candidate_risk_section("Risk Signals", value_at(data, "risks", "risk_signals"), "Codebase Accountability report", risk_registry),
+            render_table_section("Decision Signals", value_at(data, "decisions", "decision_points"), [("Decision", "decision"), ("Context", "context"), ("Owner", "owner"), ("Needed By", "needed_by")]),
+            render_list_section("Questions", value_at(data, "questions", "open_questions")),
+            render_sources(data),
+        ]
+    )
+
+
 def render_generic_report(data: dict[str, Any]) -> str:
     # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     sections = []
@@ -1404,6 +1442,12 @@ REPORT_CHANGE_GROUPS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
         ("Top Risks", ("top_risks", "risks")),
         ("Mitigations", ("mitigations",)),
         ("Watchpoints", ("watchpoints",)),
+    ],
+    "codebase-accountability": [
+        ("Management Exceptions", ("management_exceptions", "exceptions")),
+        ("Risk Signals", ("risks", "risk_signals")),
+        ("Decision Signals", ("decisions", "decision_points")),
+        ("Questions", ("questions", "open_questions")),
     ],
     "tech-stack": [
         ("Stack Components", ("stack_components", "components")),
@@ -1488,6 +1532,8 @@ def render_structured_report(
 ) -> str:
     if kind == "tech-stack":
         body = render_tech_stack(data, risk_registry)
+    elif kind == "codebase-accountability":
+        body = render_codebase_accountability(data, risk_registry)
     else:
         renderers = {
             "weekly-reviews": render_weekly_review,

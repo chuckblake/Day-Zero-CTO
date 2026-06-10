@@ -9,6 +9,7 @@ import http.server
 import json
 import mimetypes
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -108,6 +109,373 @@ def shell_project(project: Path | None) -> str:
     return f'"{project}"' if project else '"$HOME/Documents/Acme CTO"'
 
 
+ISSUE_REF_PATTERN = re.compile(r"(?:[A-Z][A-Z0-9]+-\d+|#\d+|GH-\d+)", re.I)
+TEST_FILE_PATTERN = re.compile(r"(^|/)(test|tests|spec|__tests__)/|(_test|_spec|\.test|\.spec)\.", re.I)
+SOURCE_FILE_PATTERN = re.compile(r"\.(rb|py|js|jsx|ts|tsx|go|rs|java|kt|swift|php|cs|sql)$", re.I)
+DEPENDENCY_FILE_PATTERN = re.compile(r"(^|/)(Gemfile|Gemfile\.lock|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|requirements.*\.txt|pyproject\.toml|poetry\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock)$", re.I)
+HIGH_ATTENTION_PATTERNS = [
+    ("Security or auth", re.compile(r"(auth|authorization|permission|security|session|jwt|password|credential|secret|token|csp|csrf)", re.I)),
+    ("PHI / privacy / compliance", re.compile(r"(phi|hipaa|patient|claim|billing|payment|diagnosis|medical|privacy|compliance|audit)", re.I)),
+    ("Data model or migration", re.compile(r"(schema|migration|db/|database|model|policy)", re.I)),
+    ("Infrastructure or deploy", re.compile(r"(deploy|docker|kamal|terraform|infra|ci|github/workflows|heroku|kubernetes|helm)", re.I)),
+]
+
+
+def repo_git(repo: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(["git", "-C", str(repo), *args], check=False, capture_output=True, text=True)
+    except FileNotFoundError:
+        raise SystemExit("Missing git command. Install Git before running codebase accountability.")
+
+
+def repo_git_text(repo: Path, args: list[str]) -> str:
+    result = repo_git(repo, args)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def project_code_repos(project: Path, extra_repos: list[str] | None = None) -> list[Path]:
+    wiki_root = wiki_root_for_project(project)
+    config = read_json(sidecar_dir(wiki_root) / "config.json", {})
+    values = [str(item) for item in config.get("codeRepos", []) if str(item).strip()] if isinstance(config, dict) else []
+    values.extend(extra_repos or [])
+    if not values and (project / ".git").exists():
+        values.append(str(project))
+
+    repos: list[Path] = []
+    seen: set[str] = set()
+    for value in values:
+        path = Path(value).expanduser().resolve()
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            repos.append(path)
+    return repos
+
+
+def latest_structured_report_data(wiki_root: Path, kind: str) -> dict[str, Any] | None:
+    report_dir = wiki_root / "reports" / kind
+    paths = [path for path in sorted(report_dir.glob("*.json"), reverse=True) if path.name != "data.json"]
+    for path in paths:
+        data = read_json(path, None)
+        if isinstance(data, dict):
+            return data
+    return None
+
+
+def accountability_since(project: Path, explicit_since: str | None, days: int) -> tuple[str, str]:
+    if explicit_since:
+        return explicit_since, "explicit --since"
+    previous = latest_structured_report_data(wiki_root_for_project(project), "codebase-accountability")
+    previous_until = ""
+    if previous:
+        window = previous.get("review_window")
+        if isinstance(window, dict):
+            previous_until = str(window.get("until") or "").strip()
+    if previous_until:
+        return previous_until, "previous codebase-accountability report"
+    return f"{max(days, 1)} days ago", f"default {max(days, 1)} day window"
+
+
+def parse_commit_rows(output: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for line in output.splitlines():
+        parts = line.split("\t", 4)
+        if len(parts) != 5:
+            continue
+        full, short, date, author, subject = parts
+        rows.append({"full": full, "short": short, "date": date, "author": author, "subject": subject})
+    return rows
+
+
+def commit_files(repo: Path, commit: str) -> list[str]:
+    output = repo_git_text(repo, ["show", "--pretty=format:", "--name-only", "--no-renames", commit])
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def subsystem_for(path: str) -> str:
+    parts = Path(path).parts
+    if not parts:
+        return "(root)"
+    if len(parts) == 1:
+        return "(root)"
+    return parts[0]
+
+
+def unique_sorted(values: list[str]) -> list[str]:
+    return sorted({value for value in values if value})
+
+
+def build_codebase_accountability_data(project: Path, repos: list[Path], *, since_expr: str, since_reason: str) -> dict[str, Any]:
+    generated_at = utc_now()
+    management_exceptions: list[dict[str, str]] = []
+    changed_subsystems: list[dict[str, str]] = []
+    provenance: list[dict[str, str]] = []
+    guardrail_checks: list[dict[str, str]] = []
+    agent_activity_map: dict[str, dict[str, Any]] = {}
+    agent_activity: list[dict[str, str]] = []
+    change_units: list[dict[str, str]] = []
+    risk_signals: list[dict[str, str]] = []
+    decision_points: list[dict[str, str]] = []
+    questions: list[dict[str, str]] = []
+    sources: list[str] = []
+
+    total_commits = 0
+    total_files = 0
+    all_issue_refs: list[str] = []
+    dirty_repos = 0
+
+    wiki_root = wiki_root_for_project(project)
+    guardrails_path = wiki_root / "core" / "ENGINEERING_GUARDRAILS.md"
+    guardrails_text = guardrails_path.read_text(encoding="utf-8", errors="replace") if guardrails_path.exists() else ""
+    if guardrails_path.exists():
+        guardrail_checks.append(
+            {
+                "guardrail": "Engineering guardrails source",
+                "status": "Present",
+                "evidence": "core/ENGINEERING_GUARDRAILS.md exists.",
+                "action": "Keep this file current with the invariants one CTO expects agents to preserve.",
+            }
+        )
+        sources.append(str(guardrails_path.relative_to(wiki_root)))
+    else:
+        finding = "No ENGINEERING_GUARDRAILS.md source file is configured"
+        evidence = "The accountability report can inspect code movement, but there is no explicit invariant list to compare agent work against."
+        action = "Create knowledge/wiki/core/ENGINEERING_GUARDRAILS.md with architectural, security, privacy, data-flow, and review-owner rules."
+        management_exceptions.append({"severity": "Medium", "finding": finding, "evidence": evidence, "action": action, "owner": "CTO"})
+        guardrail_checks.append({"guardrail": "Engineering guardrails source", "status": "Needs setup", "evidence": evidence, "action": action})
+        decision_points.append({"decision": "Define codebase accountability guardrails", "context": evidence, "owner": "CTO", "needed_by": "Before relying on agent-fleet reports as an oversight layer"})
+
+    for repo in repos:
+        repo_label = repo.name
+        sources.append(str(repo))
+        if not repo.exists() or not (repo / ".git").exists():
+            finding = f"Configured repo is not a readable Git repository: {repo}"
+            management_exceptions.append({"severity": "High", "finding": finding, "evidence": str(repo), "action": "Fix the configured codeRepos entry or remove it from .dzcto/config.json.", "owner": "CTO"})
+            risk_signals.append({"risk": finding, "evidence": str(repo), "impact": "Accountability report cannot cover work happening in this source.", "severity": "High", "mitigation": "Fix or remove the repo path.", "source": "Codebase Accountability report"})
+            continue
+
+        branch = repo_git_text(repo, ["branch", "--show-current"]) or "detached"
+        head = repo_git_text(repo, ["rev-parse", "--short", "HEAD"]) or "unknown"
+        dirty_lines = [line for line in repo_git_text(repo, ["status", "--porcelain"]).splitlines() if line.strip()]
+        if dirty_lines:
+            dirty_repos += 1
+            finding = f"{repo_label} has uncommitted local changes"
+            evidence = f"{len(dirty_lines)} dirty working-tree entries on {branch}@{head}."
+            action = "Commit, stash, or intentionally exclude local work before treating the report as a clean post-merge accountability view."
+            management_exceptions.append({"severity": "Medium", "finding": finding, "evidence": evidence, "action": action, "owner": "Repo owner"})
+            risk_signals.append({"risk": finding, "evidence": evidence, "impact": "Uncommitted changes can hide agent output from PR, issue, and review provenance.", "severity": "Medium", "mitigation": action, "source": "Codebase Accountability report"})
+
+        log_output = repo_git_text(
+            repo,
+            [
+                "log",
+                f"--since={since_expr}",
+                "--date=short",
+                "--pretty=format:%H%x09%h%x09%ad%x09%an%x09%s",
+                "--max-count=200",
+            ],
+        )
+        commits = parse_commit_rows(log_output)
+        total_commits += len(commits)
+
+        touched_files: list[str] = []
+        commit_issue_refs: list[str] = []
+        for commit in commits[:80]:
+            refs = ISSUE_REF_PATTERN.findall(commit["subject"])
+            commit_issue_refs.extend(refs)
+            actor = commit["author"] or "Unknown"
+            actor_entry = agent_activity_map.setdefault(actor, {"commits": 0, "repos": set(), "examples": []})
+            actor_entry["commits"] += 1
+            actor_entry["repos"].add(repo_label)
+            if len(actor_entry["examples"]) < 3:
+                actor_entry["examples"].append(f"{repo_label}:{commit['short']} {commit['subject']}")
+            files = commit_files(repo, commit["full"])
+            touched_files.extend(files)
+            if len(change_units) < 40:
+                change_units.append(
+                    {
+                        "repo": repo_label,
+                        "commit": commit["short"],
+                        "date": commit["date"],
+                        "actor": actor,
+                        "intent": commit["subject"],
+                        "refs": ", ".join(refs) if refs else "No issue ref",
+                    }
+                )
+
+        touched_files = unique_sorted(touched_files)
+        total_files += len(touched_files)
+        all_issue_refs.extend(commit_issue_refs)
+
+        subsystem_counts: dict[str, int] = {}
+        for path in touched_files:
+            subsystem = subsystem_for(path)
+            subsystem_counts[subsystem] = subsystem_counts.get(subsystem, 0) + 1
+        for subsystem, count in sorted(subsystem_counts.items(), key=lambda item: (-item[1], item[0]))[:8]:
+            changed_subsystems.append(
+                {
+                    "repo": repo_label,
+                    "subsystem": subsystem,
+                    "files": str(count),
+                    "commits": str(len(commits)),
+                    "evidence": f"{branch}@{head}; {len(touched_files)} changed files in window.",
+                }
+            )
+
+        provenance.extend(
+            [
+                {"repo": repo_label, "signal": "Branch / HEAD", "value": f"{branch}@{head}", "evidence": "Read from local Git."},
+                {"repo": repo_label, "signal": "Commits in window", "value": str(len(commits)), "evidence": since_expr},
+                {"repo": repo_label, "signal": "Issue refs in subjects", "value": str(len(set(commit_issue_refs))), "evidence": ", ".join(sorted(set(commit_issue_refs))[:8]) or "None detected"},
+                {"repo": repo_label, "signal": "Working tree", "value": "Dirty" if dirty_lines else "Clean", "evidence": f"{len(dirty_lines)} dirty entries"},
+            ]
+        )
+
+        sensitive_files = [
+            path
+            for path in touched_files
+            if any(pattern.search(path) for _label, pattern in HIGH_ATTENTION_PATTERNS)
+        ]
+        repo_high_attention_hits: list[str] = []
+        dependency_files = [path for path in touched_files if DEPENDENCY_FILE_PATTERN.search(path)]
+        test_files = [path for path in touched_files if TEST_FILE_PATTERN.search(path)]
+        source_files = [path for path in touched_files if SOURCE_FILE_PATTERN.search(path) and not TEST_FILE_PATTERN.search(path)]
+
+        if commits and not commit_issue_refs:
+            finding = f"{repo_label} commits lack issue or intent references"
+            evidence = f"{len(commits)} commits since {since_expr}; no Linear/GitHub-style refs found in subjects."
+            action = "Add issue IDs to future agent tasks/PRs or record the intent in the accountability brief before merge."
+            management_exceptions.append({"severity": "Medium", "finding": finding, "evidence": evidence, "action": action, "owner": "Repo owner"})
+            risk_signals.append({"risk": finding, "evidence": evidence, "impact": "One CTO cannot reconstruct agent intent at fleet scale without queryable provenance.", "severity": "Medium", "mitigation": action, "source": "Codebase Accountability report"})
+            questions.append({"title": f"What work intent explains {repo_label}'s unreferenced commits?", "body": "Add the missing issue/PR/agent assignment link or decide that this repo does not require issue-level provenance."})
+
+        if sensitive_files:
+            finding = f"{repo_label} touched high-attention files"
+            evidence = "; ".join(sensitive_files[:8])
+            action = "Confirm reviewer-of-record and whether any risk or decision row should be updated."
+            management_exceptions.append({"severity": "High", "finding": finding, "evidence": evidence, "action": action, "owner": "CTO / repo owner"})
+            risk_signals.append({"risk": finding, "evidence": evidence, "impact": "Security, privacy, compliance, data-model, or deploy boundaries may have shifted.", "severity": "High", "mitigation": action, "source": "Codebase Accountability report"})
+            repo_high_attention_hits.extend(f"{repo_label}:{path}" for path in sensitive_files)
+
+        if dependency_files:
+            finding = f"{repo_label} changed dependency or lock files"
+            evidence = "; ".join(dependency_files[:8])
+            action = "Confirm dependency-change intent, update/rollback plan, and whether CI or staging smoke tests covered it."
+            management_exceptions.append({"severity": "Medium", "finding": finding, "evidence": evidence, "action": action, "owner": "Repo owner"})
+            risk_signals.append({"risk": finding, "evidence": evidence, "impact": "Dependency drift can introduce security, compatibility, or deployment risk without an explicit decision.", "severity": "Medium", "mitigation": action, "source": "Codebase Accountability report"})
+            decision_points.append({"decision": f"Accept dependency changes in {repo_label}", "context": evidence, "owner": "Repo owner", "needed_by": "Before release if not already reviewed"})
+
+        if source_files and not test_files:
+            finding = f"{repo_label} changed source files without test-file evidence"
+            evidence = f"{len(source_files)} source files changed; no test/spec files in the same commit window."
+            action = "Confirm whether coverage exists elsewhere or add the missing test/eval follow-up."
+            management_exceptions.append({"severity": "Medium", "finding": finding, "evidence": evidence, "action": action, "owner": "Repo owner"})
+            risk_signals.append({"risk": finding, "evidence": evidence, "impact": "Agent output may be shipping behavior changes without visible validation.", "severity": "Medium", "mitigation": action, "source": "Codebase Accountability report"})
+
+        if guardrails_text and repo_high_attention_hits and re.search(r"phi|hipaa|privacy|security|auth", guardrails_text, re.I):
+            guardrail_checks.append(
+                {
+                    "guardrail": f"{repo_label} high-attention boundary review",
+                    "status": "Review needed",
+                    "evidence": "; ".join(repo_high_attention_hits[:6]),
+                    "action": "Compare the touched files against ENGINEERING_GUARDRAILS.md before accepting the change as routine.",
+                }
+            )
+
+    for actor, payload in sorted(agent_activity_map.items(), key=lambda item: (-int(item[1]["commits"]), item[0].lower()))[:20]:
+        agent_activity.append(
+            {
+                "actor": actor,
+                "commits": str(payload["commits"]),
+                "repos": ", ".join(sorted(payload["repos"])),
+                "evidence": "; ".join(payload["examples"]),
+            }
+        )
+
+    if not repos:
+        finding = "No code repositories are configured"
+        evidence = "No --repo values were supplied and .dzcto/config.json has no codeRepos entries."
+        action = "Run dzcto init <project> --repo <path> or pass --repo when generating this report."
+        management_exceptions.append({"severity": "High", "finding": finding, "evidence": evidence, "action": action, "owner": "CTO"})
+        risk_signals.append({"risk": finding, "evidence": evidence, "impact": "The accountability report has no codebase evidence to oversee.", "severity": "High", "mitigation": action, "source": "Codebase Accountability report"})
+
+    if total_commits == 0 and repos:
+        questions.append({"title": "Was there intentionally no repo movement in this window?", "body": f"No commits were found since {since_expr}. Confirm the date window or configured repos if work happened elsewhere."})
+
+    exception_count = len(management_exceptions)
+    high_exception_count = sum(1 for item in management_exceptions if item.get("severity") == "High")
+    actor_count = len(agent_activity_map)
+    issue_ref_count = len(set(all_issue_refs))
+    attention = "No high-severity exceptions surfaced." if high_exception_count == 0 else f"{high_exception_count} high-severity exception{'s' if high_exception_count != 1 else ''} need review."
+    executive_read = (
+        f"Reviewed {len(repos)} repo{'s' if len(repos) != 1 else ''} since {since_expr} ({since_reason}). "
+        f"Found {total_commits} commit{'s' if total_commits != 1 else ''}, {total_files} touched file{'s' if total_files != 1 else ''}, "
+        f"{actor_count} author/agent signal{'s' if actor_count != 1 else ''}, and {issue_ref_count} issue reference{'s' if issue_ref_count != 1 else ''}. "
+        f"{attention} Use this as a management-by-exception brief; promote durable exposure into Risks, durable choices into Decisions, and guardrail gaps into ENGINEERING_GUARDRAILS.md."
+    )
+
+    return {
+        "executive_read": executive_read,
+        "review_window": {"since": since_expr, "since_reason": since_reason, "until": generated_at},
+        "metrics": [
+            {"label": "Repos", "value": len(repos), "detail": "Configured/read-only sources"},
+            {"label": "Commits", "value": total_commits, "detail": f"Since {since_expr}"},
+            {"label": "Files", "value": total_files, "detail": "Unique touched paths"},
+            {"label": "Exceptions", "value": exception_count, "detail": f"{high_exception_count} high"},
+            {"label": "Issue refs", "value": issue_ref_count, "detail": "Commit-subject refs"},
+            {"label": "Dirty repos", "value": dirty_repos, "detail": "Uncommitted local state"},
+        ],
+        "management_exceptions": management_exceptions,
+        "changed_subsystems": changed_subsystems,
+        "provenance": provenance,
+        "guardrail_checks": guardrail_checks,
+        "agent_activity": agent_activity,
+        "change_units": change_units,
+        "risks": risk_signals,
+        "decisions": decision_points,
+        "questions": questions,
+        "sources": sources,
+    }
+
+
+def run_codebase_accountability(args: argparse.Namespace) -> int:
+    project = resolve_project(args.project)
+    require_existing_wiki(project)
+    wiki_root = wiki_root_for_project(project)
+    since_expr, since_reason = accountability_since(project, args.since, args.days)
+    repos = project_code_repos(project, args.repo)
+    data = build_codebase_accountability_data(project, repos, since_expr=since_expr, since_reason=since_reason)
+
+    generated_dir = sidecar_dir(wiki_root) / "generated"
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    report_date = args.date or dt.date.today().isoformat()
+    data_path = Path(args.output_json).expanduser().resolve() if args.output_json else generated_dir / f"codebase-accountability-{report_date}.json"
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    data_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+
+    if args.no_artifact:
+        if not args.json:
+            print(data_path)
+        return 0
+
+    artifact_args = [
+        "--project",
+        str(project),
+        "--kind",
+        "codebase-accountability",
+        "--title",
+        args.title,
+        "--date",
+        report_date,
+        "--data-file",
+        str(data_path),
+    ]
+    return run_script("dzcto_artifact.py", artifact_args)
+
+
 def print_quickstart(project: Path | None = None) -> None:
     project_arg = shell_project(project)
     print(
@@ -196,10 +564,14 @@ def command_reference_text(project: Path | None = None) -> str:
               Check stale generated pages, generator version, missing artifacts, and cadence due state.
 
         Reports and artifacts
+          dzcto codebase-accountability {project_arg} [--repo <path> ...] [--since <git date>] [--days N] [--json] [--no-artifact]
+              Generate a management-by-exception report from read-only local Git history, provenance, guardrail checks,
+              risk signals, and decision signals. Defaults to the previous report window or the last 7 days.
           dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
               Kinds (token -> skill): tech-stack -> tech-stack, engineering-risk -> review-engineering-risk,
-              weekly-reviews -> weekly-cto-review, ceo-updates -> write-ceo-update.
+              codebase-accountability -> codebase-accountability, weekly-reviews -> weekly-cto-review,
+              ceo-updates -> write-ceo-update.
           dzcto collect-issue-bundle <project> [--output <zip>] [--no-redact]
               Create a troubleshooting bundle with redacted sidecar metadata and stale checks.
 
@@ -224,6 +596,8 @@ def command_reference_text(project: Path | None = None) -> str:
               Walk active risks one at a time and keep, update, close, punt, or mark evidence needed.
           day-zero-cto:review-engineering-risk
               Create a fresh engineering-risk report artifact.
+          day-zero-cto:codebase-accountability
+              Generate a management-by-exception codebase accountability report from Git history and guardrail signals.
 
         Editing rule
           Edit Markdown sources under <project>/knowledge/wiki/core/, not generated HTML. For substantive updates,
@@ -301,6 +675,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             Engineering Risk: top risks, mitigations, watchpoints.
             Review Risks: walk the risk register one item at a time and update RISKS.md.
             Tech Stack: architecture shape, stack components, candidate risks, onboarding notes.
+            Codebase Accountability: repo movement, management exceptions, provenance, guardrail checks, and agent/author activity.
 
             Reports are written under:
               {project_path}/knowledge/wiki/reports/
@@ -361,6 +736,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             Supported kinds (note the --kind token differs from the skill name):
               tech-stack        from the tech-stack skill
               engineering-risk  from the review-engineering-risk skill
+              codebase-accountability from the codebase-accountability skill
               weekly-reviews    from the weekly-cto-review skill
               ceo-updates       from the write-ceo-update skill
 
@@ -1204,6 +1580,17 @@ def main(argv: list[str]) -> int:
     claude_desktop = sub.add_parser("package-claude-desktop", help="Build an uploadable Claude Desktop custom skill zip")
     claude_desktop.add_argument("--output", help="Zip output path")
 
+    accountability = sub.add_parser("codebase-accountability", help="Generate a codebase accountability report from local Git history")
+    accountability.add_argument("project", help="Project folder")
+    accountability.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
+    accountability.add_argument("--since", help="Git --since value; defaults to previous accountability report window or --days")
+    accountability.add_argument("--days", type=int, default=7, help="Default lookback window when no previous report exists")
+    accountability.add_argument("--title", default="Codebase Accountability", help="Report title")
+    accountability.add_argument("--date", help="Report date")
+    accountability.add_argument("--output-json", help="Write structured report JSON to this path")
+    accountability.add_argument("--json", action="store_true", help="Print structured JSON")
+    accountability.add_argument("--no-artifact", action="store_true", help="Only write/print JSON; do not render HTML artifact")
+
     artifact = sub.add_parser("artifact", help="Generate a structured report artifact")
     artifact.add_argument("--project", required=True)
     artifact.add_argument("--kind", required=True)
@@ -1353,6 +1740,9 @@ def main(argv: list[str]) -> int:
         path = package_claude_desktop(output)
         print(path)
         return 0
+
+    if args.command == "codebase-accountability":
+        return run_codebase_accountability(args)
 
     if args.command == "artifact":
         artifact_args = ["--project", args.project, "--kind", args.kind, "--title", args.title]

@@ -15,6 +15,7 @@ Day Zero CTO gives early-stage technical leaders a first set of repeatable CTO w
 - Run recurring CTO reviews that produce durable HTML artifacts.
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
 - Map tech stacks across one or more read-only codebases.
+- Generate codebase accountability briefs that surface repo movement, management exceptions, provenance gaps, guardrail drift, and agent/author activity.
 - Teach system knowledge with spaced repetition.
 
 It is intentionally small. The first version should earn trust by observing the company, naming reality clearly, and producing useful artifacts.
@@ -26,6 +27,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, capture company context, connect read-only codebases, create core context, and offer initial reports and learning setup. |
 | `refine-core-context` | Interview the user after onboarding to review, correct, and approve updates to core context files before refreshing the generated wiki. |
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
+| `codebase-accountability` | Generate a management-by-exception report from read-only Git history, provenance, guardrail checks, risk signals, and decision signals. |
 | `review-decisions` | Walk the decision log one recorded decision at a time, using revisit triggers to reaffirm, supersede, punt, or mark evidence needed. |
 | `review-risks` | Walk the risk register one active risk at a time, using review dates, severity, mitigation state, and evidence gaps to keep, update, close, punt, mark evidence needed, and log formal choices to `DECISIONS.md`. |
 | `weekly-cto-review` | Run the recurring engineering leadership review. |
@@ -81,6 +83,7 @@ Recommended folder shape:
       reports/
         tech-stack/
         engineering-risk/
+        codebase-accountability/
         weekly-reviews/
         ceo-updates/
       learning/
@@ -103,6 +106,7 @@ Generated wiki pages use a compact command-center interface:
 - A canonical Risks page with report-derived `Risk Signals From Reports` triage plus the generated risk registry. Signals link to existing risk detail pages when matched; unmatched signals show as `Needs triage` until promoted, merged, or dismissed.
 - A canonical Decisions page with report-derived `Decision Signals From Reports` triage plus the generated decision registry. Signals link to existing decision detail pages when matched; unmatched asks or proposed choices show as `Needs triage` until they become durable decisions.
 - Report cards show an `Open latest` action, the latest report summary, and a compact previous-run list when a report folder has older artifacts.
+- Codebase Accountability reports give the CTO a management-by-exception view across connected repos: changed subsystems, actor/author activity, issue-reference coverage, dirty worktrees, high-attention file movement, dependency drift, guardrail checks, and risk/decision intake signals.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
 - Breadcrumbs, sticky navigation, search, and a light/dark theme on generated pages.
@@ -123,6 +127,8 @@ Report-specific risk sections, including Tech Stack risks and watchpoints, are c
 Risk reviews can create decisions. If handling a risk leads to a formal choice, such as accepting the risk, choosing a mitigation path, changing architecture or process, closing the risk because of a strategic direction, or deferring based on an explicit threshold, record that choice in `knowledge/wiki/core/DECISIONS.md`. Keep the risk row focused on exposure and follow-through; keep the decision row focused on the choice, rationale, owner, and revisit trigger.
 
 Every active risk should carry a calendar date in its `Next Review` field. External triggers are welcome, but they should be additive, for example `2026-07-06 or on receipt of legal opinion`, because the local dashboard cannot detect most external events by itself. `dzcto status` and `dzcto check-stale` warn when parsed risks lack a calendar review date.
+
+Codebase Accountability is the oversight layer for many coding agents. It does not replace code review or the canonical risk/decision logs. It scans local Git history from configured read-only repos, highlights exceptions, and writes report signals that can be promoted into `RISKS.md`, `DECISIONS.md`, or `ENGINEERING_GUARDRAILS.md` when they become durable operating facts.
 
 The index shows company information under the title, then a dashboard workspace:
 
@@ -407,7 +413,8 @@ dzcto <command> -h
 
 | Command | Use when | Key options |
 | --- | --- | --- |
-| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `tech-stack`, `engineering-risk`, `weekly-reviews`, `ceo-updates`. |
+| `dzcto codebase-accountability "<project folder>"` | Generate a codebase accountability report from read-only local Git history, provenance, guardrail checks, risk signals, and decision signals. | Repeatable `--repo <path>`, `--since <git date>`, `--days N`, `--title <title>`, `--date YYYY-MM-DD`, `--output-json <path>`, `--json`, `--no-artifact`. |
+| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `tech-stack`, `engineering-risk`, `codebase-accountability`, `weekly-reviews`, `ceo-updates`. |
 | `dzcto collect-issue-bundle "<project folder>"` | Create a troubleshooting bundle with redacted sidecar metadata and stale checks. | `--output <zip>`, `--no-redact`. |
 
 ### Learning
@@ -428,6 +435,7 @@ dzcto <command> -h
 | `day-zero-cto:review-decisions` | Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed. |
 | `day-zero-cto:review-risks` | Walk active risks one at a time and keep, update, close, punt, mark evidence needed, or log decisions made while addressing the risk. |
 | `day-zero-cto:review-engineering-risk` | Create a fresh engineering-risk report artifact. |
+| `day-zero-cto:codebase-accountability` | Create a management-by-exception codebase accountability report from repo movement and guardrail/provenance signals. |
 
 Generated dashboard pages also include a `Help` section with a project-specific command reference and copyable command cards.
 
@@ -444,6 +452,7 @@ The supported report kinds have fixed section templates:
 | Kind | Expected JSON fields |
 | --- | --- |
 | `tech-stack` | `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, `sources` |
+| `codebase-accountability` | `executive_read`, `review_window`, `metrics`, `management_exceptions`, `changed_subsystems`, `provenance`, `guardrail_checks`, `agent_activity`, `change_units`, `risks`, `decisions`, `questions`, `sources` |
 | `weekly-reviews` | `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
 | `ceo-updates` | `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources` |
 | `engineering-risk` | `executive_read`, `top_risks`, `mitigations`, `watchpoints`, `sources` |
@@ -451,6 +460,12 @@ The supported report kinds have fixed section templates:
 Optional `metrics` are rendered as summary cards when present.
 
 For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. The helper stores structured report JSON next to generated report HTML, and `core/risks.html` reads that data into `Risk Signals From Reports` with links back to the source report. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
+
+For `codebase-accountability`, prefer the dedicated command because it deterministically reads configured local repos, chooses a review window from the previous report when possible, writes structured JSON, renders HTML, and refreshes the dashboard:
+
+```bash
+dzcto codebase-accountability "<project folder>"
+```
 
 Report risk and decision fields are treated as signals. When a signal matches a canonical risk or decision title, generated pages link it to that item's focused detail page, and the detail page lists the signal under `Referenced By`. When it does not match, it shows as `Needs triage` until an agent or user promotes it into the source Markdown or dismisses it as non-durable.
 
@@ -470,6 +485,7 @@ day-zero-cto/
 │   ├── bootstrap-cto-context/
 │   ├── refine-core-context/
 │   ├── tech-stack/
+│   ├── codebase-accountability/
 │   ├── review-decisions/
 │   ├── review-risks/
 │   ├── weekly-cto-review/
@@ -490,7 +506,7 @@ day-zero-cto/
 └── README.md
 ```
 
-`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `lfg`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
+`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `lfg`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `codebase-accountability`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
 
 `scripts/dzcto_artifact.py` owns HTML generation, sidecar metadata, generated core HTML pages, per-risk and per-decision detail pages, report templates, learning index rendering, cadence alerts, and the command-center index.
 
@@ -513,6 +529,7 @@ Install or load this plugin, then ask for one of the workflows in natural langua
 - "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme CTO` as the project folder, company name `Acme`, company URL `https://acme.example`, and read-only repos `~/code/acme-app` and `~/code/acme-api`."
 - "Refine the Strategy core context for this startup. Interview me section by section and let me approve the Markdown before updating the wiki."
 - "Review the decision log for this startup. Walk me through each revisit trigger and let me reaffirm, supersede, punt, or mark evidence needed."
+- "Generate a codebase accountability report for this startup. Surface repo movement, provenance gaps, management exceptions, and any risk or decision signals."
 - "Create a Tech Stack report from the connected codebases and write it into the project knowledge wiki."
 - "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
 - "Write a CEO update from this week's engineering work."
