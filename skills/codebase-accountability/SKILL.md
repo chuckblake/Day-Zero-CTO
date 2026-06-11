@@ -17,7 +17,7 @@ Create a management-by-exception view of repo movement so one CTO can oversee ma
 dzcto codebase-accountability "<project folder>"
 ```
 
-Use `--repo <path>` for extra repos, `--since "<git date>"` for a specific review window, or `--days N` for the first run lookback.
+Use `--repo <path>` for extra repos, `--since "<git date>"` for a specific review window, or `--days N` for the rolling lookback window. The default is the last 7 days.
 
 4. Review the generated report for management exceptions first, then provenance, guardrails, changed subsystems, actor activity, risk signals, decision signals, and open questions.
 5. If deeper judgment is needed, inspect only the flagged commits, files, or subsystems. Keep evidence concise and cite concrete repos, commits, files, or report links.

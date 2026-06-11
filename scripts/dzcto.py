@@ -173,14 +173,6 @@ def latest_structured_report_data(wiki_root: Path, kind: str) -> dict[str, Any] 
 def accountability_since(project: Path, explicit_since: str | None, days: int) -> tuple[str, str]:
     if explicit_since:
         return explicit_since, "explicit --since"
-    previous = latest_structured_report_data(wiki_root_for_project(project), "codebase-accountability")
-    previous_until = ""
-    if previous:
-        window = previous.get("review_window")
-        if isinstance(window, dict):
-            previous_until = str(window.get("until") or "").strip()
-    if previous_until:
-        return previous_until, "previous codebase-accountability report"
     return f"{max(days, 1)} days ago", f"default {max(days, 1)} day window"
 
 
@@ -557,6 +549,86 @@ def latest_snapshot_entries_by_kind(entries: list[dict[str, Any]]) -> list[dict[
     return list(latest.values())
 
 
+def snapshot_entry_by_kind(entries: list[dict[str, Any]], kind: str) -> dict[str, Any] | None:
+    for entry in entries:
+        if entry.get("kind") == kind:
+            return entry
+    return None
+
+
+def snapshot_metric_value(data: dict[str, Any], *keys: str) -> str:
+    wanted = {re.sub(r"[^a-z0-9]+", "", key.lower()) for key in keys}
+    metrics = value_at(data, "metrics")
+    if isinstance(metrics, dict):
+        for key, value in metrics.items():
+            if re.sub(r"[^a-z0-9]+", "", str(key).lower()) in wanted:
+                return text_value(value)
+    for metric in array_value(metrics):
+        if not isinstance(metric, dict):
+            continue
+        label = text_value(value_at(metric, "label", "name", "title"))
+        if re.sub(r"[^a-z0-9]+", "", label.lower()) in wanted:
+            return text_value(value_at(metric, "value", "count", "status"))
+    return ""
+
+
+def snapshot_report_datetime(value: str) -> dt.datetime | None:
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    try:
+        return dt.datetime.combine(dt.date.fromisoformat(text[:10]), dt.time.min)
+    except ValueError:
+        return None
+
+
+def snapshot_date_sort_value(value: str) -> dt.date:
+    dates = dates_in_text(value)
+    return min(dates) if dates else dt.date.max
+
+
+def snapshot_deadline_sort_key(value: str) -> tuple[int, dt.date, str]:
+    text = value.strip()
+    lower = text.lower()
+    date_value = snapshot_date_sort_value(text)
+    if date_value != dt.date.max:
+        return (0, date_value, lower)
+    if "today" in lower or "now" in lower:
+        return (1, dt.date.min, lower)
+    if "this week" in lower:
+        return (2, dt.date.min, lower)
+    if lower.startswith("before "):
+        return (3, dt.date.min, lower)
+    if "needs date" in lower:
+        return (4, dt.date.max, lower)
+    return (5, dt.date.max, lower)
+
+
+def priority_done_when(title: str, body: str) -> str:
+    text = f"{title} {body}".lower()
+    if "csp" in text or "content security policy" in text:
+        return "CSP is enforced in production, or a dated exception is logged."
+    if "sentry" in text or "posthog" in text or "phi" in text:
+        return "Sentry/PostHog payloads are audited and PHI scrub tests or notes are recorded."
+    if "image_processing" in text or "pr #271" in text:
+        return "PR #271 is merged only after staging document-upload and variant tests pass, or explicitly held."
+    if "beta launch gate" in text:
+        return "A dated beta launch gate list exists with 5-7 must-haves, owners, and release criteria."
+    if "arw-98" in text or "eval" in text or "accuracy" in text:
+        return "Eval coverage is expanded and the remaining predicate disposition is recorded."
+    if "reducto" in text:
+        return "Queue-on-outage is built, or manual retry is accepted in DECISIONS.md with a review date."
+    if "guardrail" in text or "invariant" in text:
+        return "ENGINEERING_GUARDRAILS.md exists with architecture, privacy, data-flow, and reviewer rules."
+    if "hipaa" in text or "classification" in text:
+        return "Legal classification opinion is received or the next dated owner follow-up is logged."
+    return "The source report records a concrete completion condition, owner, and date."
+
+
 def add_unique_snapshot_item(items: list[dict[str, str]], item: dict[str, str], seen: set[str], *, limit: int = 12) -> None:
     title = item.get("title", "").strip()
     if not title:
@@ -600,7 +672,7 @@ def snapshot_items_from_reports(entries: list[dict[str, Any]], specs: dict[str, 
     return items
 
 
-def snapshot_priority_rows(entries: list[dict[str, Any]], due_risks: list[dict[str, Any]], cadence_due: list[dict[str, Any]], *, limit: int = 10) -> list[dict[str, str]]:
+def snapshot_priority_rows(entries: list[dict[str, Any]], due_risks: list[dict[str, Any]], cadence_due: list[dict[str, Any]], *, limit: int = 5) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     seen: set[str] = set()
 
@@ -609,7 +681,8 @@ def snapshot_priority_rows(entries: list[dict[str, Any]], due_risks: list[dict[s
         if not priority or key in seen:
             return
         seen.add(key)
-        rows.append({"priority": priority, "owner": owner, "why": snippet(why, 180), "done_when": snippet(done_when, 180), "source": source})
+        concrete_done_when = done_when if done_when and done_when != "Own the next explicit step." else priority_done_when(priority, why)
+        rows.append({"priority": priority, "owner": owner or "CTO", "why": snippet(why, 180), "done_when": snippet(concrete_done_when, 220), "source": source})
         del rows[limit:]
 
     for risk in due_risks:
@@ -617,7 +690,7 @@ def snapshot_priority_rows(entries: list[dict[str, Any]], due_risks: list[dict[s
             f"Review risk: {text_value(value_at(risk, 'title', 'risk'))}",
             text_value(value_at(risk, "owner", "responsible")) or "CTO",
             f"{text_value(value_at(risk, 'severity'))} / next review {text_value(value_at(risk, 'review'))}",
-            text_value(value_at(risk, "mitigation", "action", "plan")) or "Update, close, punt, or mark evidence needed.",
+            text_value(value_at(risk, "mitigation", "action", "plan")) or "",
             "Risk register",
         )
         if len(rows) >= limit:
@@ -644,19 +717,23 @@ def snapshot_priority_rows(entries: list[dict[str, Any]], due_risks: list[dict[s
         for field, prefix in specs.get(entry["kind"], []):
             for raw in array_value(value_at(entry["data"], field)):
                 item = snapshot_item_from_report(entry, raw, prefix=prefix)
-                add(item["title"], item.get("owner", ""), item.get("body", ""), "Own the next explicit step.", item["source"])
+                done_when = ""
+                if isinstance(raw, dict):
+                    done_when = text_value(value_at(raw, "done_when", "definition_of_done", "success", "outcome"))
+                add(item["title"], item.get("owner", ""), item.get("body", ""), done_when, item["source"])
                 if len(rows) >= limit:
                     return rows
     return rows
 
 
-def snapshot_risk_rows(risks: list[dict[str, Any]], due_risks: list[dict[str, Any]], entries: list[dict[str, Any]], *, limit: int = 8) -> list[dict[str, str]]:
+def snapshot_risk_rows(risks: list[dict[str, Any]], due_risks: list[dict[str, Any]], entries: list[dict[str, Any]], *, limit: int = 6) -> list[dict[str, str]]:
     due_titles = {text_value(value_at(risk, "title", "risk")).lower() for risk in due_risks}
     ranked = sorted(
         risks,
         key=lambda risk: (
-            0 if text_value(value_at(risk, "title", "risk")).lower() in due_titles else 1,
             severity_rank(text_value(value_at(risk, "severity", "status"))),
+            0 if text_value(value_at(risk, "title", "risk")).lower() in due_titles else 1,
+            snapshot_date_sort_value(text_value(value_at(risk, "review", "next_review", "due"))),
             text_value(value_at(risk, "title", "risk")).lower(),
         ),
     )
@@ -677,43 +754,6 @@ def snapshot_risk_rows(risks: list[dict[str, Any]], due_risks: list[dict[str, An
             }
         )
 
-    if len(rows) >= limit:
-        return rows
-
-    specs = {
-        "engineering-risk": ("top_risks", "risks", "watchpoints"),
-        "weekly-reviews": ("risks", "risks_blockers", "blockers"),
-        "ceo-updates": ("risks_blockers", "risks", "blockers"),
-        "tech-stack": ("risks_watchpoints", "risks", "watchpoints"),
-        "codebase-accountability": ("risks", "risk_signals"),
-    }
-    for entry in entries:
-        for field in specs.get(entry["kind"], ()):
-            for raw in array_value(value_at(entry["data"], field)):
-                title = item_headline(raw)
-                key = title.lower()
-                if not title or key in seen:
-                    continue
-                seen.add(key)
-                if isinstance(raw, dict):
-                    severity = text_value(value_at(raw, "severity", "priority", "status", "likelihood"))
-                    owner = text_value(value_at(raw, "owner", "owner_horizon", "responsible"))
-                    mitigation = text_value(value_at(raw, "mitigation", "recommendation", "next_step", "action", "plan"))
-                else:
-                    severity = ""
-                    owner = ""
-                    mitigation = ""
-                rows.append(
-                    {
-                        "risk": title,
-                        "severity": severity,
-                        "owner": owner,
-                        "review": f"{entry['label']} / {entry['date']}",
-                        "mitigation": snippet(mitigation, 220),
-                    }
-                )
-                if len(rows) >= limit:
-                    return rows
     return rows
 
 
@@ -726,7 +766,12 @@ def snapshot_decision_rows(decisions: list[dict[str, Any]], due_decisions: list[
         if not decision or key in seen:
             return
         seen.add(key)
-        rows.append({"decision": decision, "context": snippet(context, 220), "owner": owner, "needed_by": needed_by, "source": source})
+        deadline = needed_by
+        if not deadline and re.search(r"\bthis week\b", f"{decision} {context}", re.I):
+            deadline = "This week"
+        elif not deadline and re.search(r"\bbefore beta\b", f"{decision} {context}", re.I):
+            deadline = "Before beta launch"
+        rows.append({"decision": decision, "context": snippet(context, 220), "owner": owner or "CTO", "needed_by": deadline or "Needs date", "source": source})
         del rows[limit:]
 
     for decision in due_decisions:
@@ -750,13 +795,13 @@ def snapshot_decision_rows(decisions: list[dict[str, Any]], due_decisions: list[
                         item_headline(raw),
                         text_value(value_at(raw, "context", "detail", "details", "summary", "why")),
                         text_value(value_at(raw, "owner", "responsible")),
-                        text_value(value_at(raw, "needed_by", "due", "horizon")),
+                        text_value(value_at(raw, "needed_by", "due", "urgency", "horizon")),
                         f"{entry['label']} / {entry['date']}",
                     )
                 else:
-                    add(text_value(raw), "", "", "", f"{entry['label']} / {entry['date']}")
+                    add(text_value(raw), "", "", "Needs date", f"{entry['label']} / {entry['date']}")
                 if len(rows) >= limit:
-                    return rows
+                    return sorted(rows, key=lambda row: (*snapshot_deadline_sort_key(row.get("needed_by", "")), row.get("decision", "")))
     if not rows and decisions:
         for decision in decisions[-limit:]:
             add(
@@ -766,7 +811,7 @@ def snapshot_decision_rows(decisions: list[dict[str, Any]], due_decisions: list[
                 text_value(value_at(decision, "when", "revisitTrigger")),
                 "Decision log",
             )
-    return rows
+    return sorted(rows, key=lambda row: (*snapshot_deadline_sort_key(row.get("needed_by", "")), row.get("decision", "")))
 
 
 def snapshot_operating_rows(cadence_due: list[dict[str, Any]], learning_items: list[dict[str, Any]], report_entries: list[dict[str, Any]], end: dt.date) -> list[dict[str, str]]:
@@ -806,6 +851,204 @@ def snapshot_operating_rows(cadence_due: list[dict[str, Any]], learning_items: l
     return rows
 
 
+def snapshot_outcome_rows(latest_entries: list[dict[str, Any]], *, limit: int = 6) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    preferred = [
+        ("Beta users", ("beta_users",)),
+        ("Eval scenarios", ("eval_scenarios", "ai_eval_scenarios")),
+        ("Billing rules live", ("billing_rules_live", "rule_predicates_shipped")),
+        ("Open PRs", ("open_prs",)),
+        ("Commits this week", ("commits_this_week", "commits")),
+        ("Incidents", ("incidents",)),
+    ]
+    source_order = ["ceo-updates", "weekly-reviews", "engineering-risk", "codebase-accountability"]
+    ordered_entries = [entry for kind in source_order for entry in latest_entries if entry.get("kind") == kind]
+    for label, keys in preferred:
+        for entry in ordered_entries:
+            value = snapshot_metric_value(entry["data"], *keys)
+            if not value:
+                continue
+            key = label.lower()
+            if key in seen:
+                break
+            seen.add(key)
+            rows.append({"signal": label, "value": value, "source": f"{entry['label']} / {entry['date']}"})
+            break
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def snapshot_agent_activity_audit(project: Path, latest_entries: list[dict[str, Any]], start: dt.date) -> list[dict[str, str]]:
+    entry = snapshot_entry_by_kind(latest_entries, "codebase-accountability")
+    if not entry:
+        return [
+            {
+                "signal": "Codebase accountability",
+                "status": "Missing",
+                "detail": "No codebase accountability report exists for this snapshot.",
+                "action": f'dzcto codebase-accountability "{project}" --since {start.isoformat()}',
+            }
+        ]
+
+    data = entry["data"]
+    window = value_at(data, "review_window") if isinstance(value_at(data, "review_window"), dict) else {}
+    since = text_value((window or {}).get("since"))
+    since_dt = snapshot_report_datetime(since)
+    coverage_gap = bool(since_dt and since_dt.date() > start)
+    rows: list[dict[str, str]] = []
+    if coverage_gap:
+        rows.append(
+            {
+                "signal": "Coverage window",
+                "status": "Needs rerun",
+                "detail": f"Latest accountability report starts {since}; snapshot starts {start.isoformat()}.",
+                "action": f'dzcto codebase-accountability "{project}" --since {start.isoformat()}',
+            }
+        )
+    else:
+        rows.append(
+            {
+                "signal": "Coverage window",
+                "status": "Covered",
+                "detail": f"Latest accountability report covers since {since or 'the configured window'}.",
+                "action": "Use the report links below for commit-level evidence.",
+            }
+        )
+
+    commits = snapshot_metric_value(data, "Commits") or "0"
+    files = snapshot_metric_value(data, "Files") or "0"
+    issue_refs = snapshot_metric_value(data, "Issue refs") or "0"
+    actor_rows = array_value(value_at(data, "agent_activity", "authors", "agents"))
+    if actor_rows:
+        top_actor = actor_rows[0] if isinstance(actor_rows[0], dict) else {}
+        detail = f"{len(actor_rows)} actor signal(s); top actor {text_value(value_at(top_actor, 'actor', 'name')) or 'Unknown'} with {text_value(value_at(top_actor, 'commits')) or 'unknown'} commit(s)."
+    else:
+        detail = f"{commits} commit(s), {files} touched file(s), {issue_refs} issue reference(s); no author/agent activity captured."
+    rows.append(
+        {
+            "signal": "Agent / human attribution",
+            "status": "Partial" if commits != "0" else "No activity captured",
+            "detail": detail,
+            "action": "Record agent ID and reviewer-of-record in issues, PRs, or commit subjects for future runs.",
+        }
+    )
+
+    guardrails = array_value(value_at(data, "guardrail_checks", "guardrails"))
+    needs_guardrails = any(re.search(r"needs|missing|setup", text_value(value_at(item, "status", "guardrail", "evidence")), re.I) for item in guardrails if isinstance(item, dict))
+    rows.append(
+        {
+            "signal": "Engineering invariants",
+            "status": "Needs setup" if needs_guardrails else "Present",
+            "detail": "No ENGINEERING_GUARDRAILS.md source file is configured." if needs_guardrails else "Guardrail source exists for accountability checks.",
+            "action": "Create or maintain core/ENGINEERING_GUARDRAILS.md with privacy, architecture, data-flow, deploy, and review rules.",
+        }
+    )
+    return rows
+
+
+def snapshot_change_rows(
+    risks: list[dict[str, Any]],
+    high_risks: list[dict[str, Any]],
+    due_risks: list[dict[str, Any]],
+    decisions: list[dict[str, str]],
+    outcome_rows: list[dict[str, str]],
+    latest_entries: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    rows = [
+        {
+            "signal": "Risk posture",
+            "value": f"{len(risks)} active / {len(high_risks)} high or critical / {len(due_risks)} due",
+            "detail": "Baseline for comparison if no previous Snapshot exists.",
+        },
+        {
+            "signal": "Decision load",
+            "value": f"{len(decisions)} decisions or asks",
+            "detail": f"{sum(1 for row in decisions if row.get('needed_by') == 'Needs date')} need explicit dates.",
+        },
+    ]
+    accountability = snapshot_entry_by_kind(latest_entries, "codebase-accountability")
+    if accountability:
+        commits = snapshot_metric_value(accountability["data"], "Commits") or "0"
+        files = snapshot_metric_value(accountability["data"], "Files") or "0"
+        rows.append(
+            {
+                "signal": "Codebase movement",
+                "value": f"{commits} commits / {files} files",
+                "detail": f"{accountability['label']} / {accountability['date']}",
+            }
+        )
+    outcome_summary = ", ".join(f"{row['signal']}: {row['value']}" for row in outcome_rows[:3])
+    if outcome_summary:
+        rows.append({"signal": "Outcome signals", "value": outcome_summary, "detail": "Product/readiness metrics surfaced from latest reports."})
+    return rows[:4]
+
+
+def snapshot_tldr_rows(
+    entries: list[dict[str, Any]],
+    risks: list[dict[str, Any]],
+    high_risks: list[dict[str, Any]],
+    due_risks: list[dict[str, Any]],
+    decisions: list[dict[str, str]],
+    priorities: list[dict[str, str]],
+    audit_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    needs_attention = bool(high_risks or due_risks or any(row.get("status") in {"Needs rerun", "Needs setup", "Missing"} for row in audit_rows))
+    status = "Yellow" if needs_attention else "Green"
+    status_detail = (
+        f"{len(high_risks)} high/critical risk(s), {len(due_risks)} risk review(s) due, {len(decisions)} decision/ask row(s)."
+        if needs_attention
+        else "No high/critical risks, due risk reviews, or accountability setup gaps are visible."
+    )
+
+    ceo_entry = snapshot_entry_by_kind(entries, "ceo-updates")
+    one_thing = ""
+    if ceo_entry:
+        one_thing = text_value(value_at(ceo_entry["data"], "headline")) or report_lead_summary(ceo_entry["data"], 220)
+    if not one_thing and priorities:
+        one_thing = priorities[0]["priority"]
+    decision = next((row for row in decisions if snapshot_deadline_sort_key(row.get("needed_by", ""))[0] <= 2), decisions[0] if decisions else {})
+    decision_read = "No formal decision is due in the current snapshot."
+    if decision:
+        decision_read = f"{decision['decision']} — owner {decision['owner']}, needed by {decision['needed_by']}."
+
+    return [
+        {"label": "Overall status", "value": f"{status} — {status_detail}"},
+        {"label": "One thing to know", "value": one_thing or "No report summary is available yet."},
+        {"label": "Decision needed this week", "value": decision_read},
+    ]
+
+
+def snapshot_communication_rows(
+    direction: str,
+    entries: list[dict[str, Any]],
+    priorities: list[dict[str, str]],
+    decisions: list[dict[str, str]],
+    risks: list[dict[str, str]],
+    audit_rows: list[dict[str, str]],
+    *,
+    limit: int = 3,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    if direction == "up":
+        ceo_entry = snapshot_entry_by_kind(entries, "ceo-updates")
+        if ceo_entry:
+            headline = text_value(value_at(ceo_entry["data"], "headline")) or report_lead_summary(ceo_entry["data"], 200)
+            rows.append({"title": "CEO read", "body": headline, "source": f"{ceo_entry['label']} / {ceo_entry['date']}"})
+        if decisions:
+            rows.append({"title": "Decision needed", "body": f"{decisions[0]['decision']} — {decisions[0]['needed_by']}.", "source": decisions[0]["source"]})
+        if risks:
+            rows.append({"title": "Risk posture", "body": f"{risks[0]['risk']} remains the top canonical risk to manage.", "source": "Risk register"})
+    else:
+        for priority in priorities[:2]:
+            rows.append({"title": priority["priority"], "body": priority["done_when"], "source": priority["source"]})
+        gap = next((row for row in audit_rows if row.get("status") in {"Needs rerun", "Needs setup", "Missing"}), None)
+        if gap:
+            rows.append({"title": gap["signal"], "body": gap["action"], "source": "Codebase Accountability"})
+    return rows[:limit]
+
+
 def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[str, Any]:
     wiki_root = wiki_root_for_project(project)
     reports_dir = wiki_root / "reports"
@@ -827,26 +1070,7 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
     cadence_due = cadence_alerts(cadence_rules, reports_dir, end)
     learning_items = read_learning_items(learning_dir)
 
-    communicate_up = snapshot_items_from_reports(
-        entries,
-        {
-            "ceo-updates": [("progress", "Progress"), ("risks_blockers", "Risk"), ("asks_decisions", "Ask"), ("next", "Next")],
-            "weekly-reviews": [("ceo_update_seeds", ""), ("risks", "Risk"), ("decisions_needed", "Decision")],
-            "engineering-risk": [("top_risks", "Risk")],
-            "codebase-accountability": [("management_exceptions", "Exception")],
-        },
-        limit=8,
-    )
-    communicate_down = snapshot_items_from_reports(
-        entries,
-        {
-            "weekly-reviews": [("next_week_focus", "Focus"), ("team_process", "Team/process"), ("decisions_needed", "Decision")],
-            "codebase-accountability": [("management_exceptions", "Exception"), ("questions", "Question")],
-            "engineering-risk": [("mitigations", "Mitigation")],
-        },
-        limit=8,
-    )
-    priorities = snapshot_priority_rows(entries, due_risks, cadence_due)
+    priorities = snapshot_priority_rows(latest_entries, due_risks, cadence_due)
     application_state = [
         {"title": entry["label"], "body": entry["summary"], "source": f"{entry['label']} / {entry['date']}"}
         for entry in latest_entries
@@ -855,13 +1079,19 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
     risk_rows = snapshot_risk_rows(risks, due_risks, entries)
     decision_rows = snapshot_decision_rows(decisions, due_decisions, entries)
     operating_rows = snapshot_operating_rows(cadence_due, learning_items, entries, end)
+    outcome_rows = snapshot_outcome_rows(latest_entries)
+    agent_activity_audit = snapshot_agent_activity_audit(project, latest_entries, start)
+    changed_since_last_week = snapshot_change_rows(risks, high_risks, due_risks, decision_rows, outcome_rows, latest_entries)
+    tldr = snapshot_tldr_rows(latest_entries, risks, high_risks, due_risks, decision_rows, priorities, agent_activity_audit)
+    communicate_up = snapshot_communication_rows("up", latest_entries, priorities, decision_rows, risk_rows, agent_activity_audit)
+    communicate_down = snapshot_communication_rows("down", latest_entries, priorities, decision_rows, risk_rows, agent_activity_audit)
     report_rollup = [
         {"report": entry["label"], "date": entry["date"], "summary": entry["summary"], "source": entry["href"] or str(entry["path"].relative_to(wiki_root))}
-        for entry in entries
+        for entry in latest_entries
     ]
     snapshot_sources = [
-        {"title": f"{item['report']} / {item['date']}", "href": item["source"]}
-        for item in report_rollup
+        {"title": f"{entry['label']} / {entry['date']}", "href": entry["href"] or str(entry["path"].relative_to(wiki_root))}
+        for entry in entries
     ]
     snapshot_sources.extend(
         [
@@ -884,6 +1114,8 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
     return {
         "executive_read": executive_read,
         "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "tldr": tldr,
+        "changed_since_last_week": changed_since_last_week,
         "metrics": [
             {"label": "Reports", "value": len(entries), "detail": "Included in window"},
             {"label": "Active risks", "value": len(risks), "detail": f"{len(high_risks)} high/critical"},
@@ -898,6 +1130,8 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
         "risks": risk_rows,
         "decisions": decision_rows,
         "operating_signals": operating_rows,
+        "outcome_signals": outcome_rows,
+        "agent_activity_audit": agent_activity_audit,
         "report_rollup": report_rollup,
         "sources": snapshot_sources,
     }
@@ -1037,7 +1271,7 @@ def command_reference_text(project: Path | None = None) -> str:
               Defaults to the 7-day window ending today.
           dzcto codebase-accountability {project_arg} [--repo <path> ...] [--since <git date>] [--days N] [--json] [--no-artifact]
               Generate a management-by-exception report from read-only local Git history, provenance, guardrail checks,
-              risk signals, and decision signals. Defaults to the previous report window or the last 7 days.
+              risk signals, and decision signals. Defaults to the last 7 days unless --since is supplied.
           dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
               Kinds (token -> skill): snapshot -> snapshot-report, tech-stack -> tech-stack, engineering-risk -> review-engineering-risk,
@@ -2079,8 +2313,8 @@ def main(argv: list[str]) -> int:
     accountability = sub.add_parser("codebase-accountability", help="Generate a codebase accountability report from local Git history")
     accountability.add_argument("project", help="Project folder")
     accountability.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
-    accountability.add_argument("--since", help="Git --since value; defaults to previous accountability report window or --days")
-    accountability.add_argument("--days", type=int, default=7, help="Default lookback window when no previous report exists")
+    accountability.add_argument("--since", help="Git --since value; defaults to --days")
+    accountability.add_argument("--days", type=int, default=7, help="Default rolling lookback window when --since is omitted")
     accountability.add_argument("--title", default="Codebase Accountability", help="Report title")
     accountability.add_argument("--date", help="Report date")
     accountability.add_argument("--output-json", help="Write structured report JSON to this path")

@@ -459,7 +459,7 @@ The supported report kinds have fixed section templates:
 
 | Kind | Expected JSON fields |
 | --- | --- |
-| `snapshot` | `executive_read`, `window`, `metrics`, `communicate_up`, `communicate_down`, `priorities`, `application_state`, `risks`, `decisions`, `operating_signals`, `report_rollup`, `sources` |
+| `snapshot` | `executive_read`, `window`, `tldr`, `changed_since_last_week`, `metrics`, `communicate_up`, `communicate_down`, `priorities`, `application_state`, `risks`, `decisions`, `operating_signals`, `outcome_signals`, `agent_activity_audit`, `report_rollup`, `sources` |
 | `tech-stack` | `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, `sources` |
 | `codebase-accountability` | `executive_read`, `review_window`, `metrics`, `management_exceptions`, `changed_subsystems`, `provenance`, `guardrail_checks`, `agent_activity`, `change_units`, `risks`, `decisions`, `questions`, `sources` |
 | `weekly-reviews` | Supporting operating detail: `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
@@ -468,7 +468,7 @@ The supported report kinds have fixed section templates:
 
 Optional `metrics` are rendered as summary cards when present.
 
-Snapshot reports are synthesis artifacts. They keep the full report history in `report_rollup`, but `application_state` should show only the latest run for each report type. Snapshot sources render collapsed by default and should be clickable so provenance is available without crowding the main readout.
+Snapshot reports are synthesis artifacts. They start with a three-line TL;DR, changed-since-last-snapshot notes, a compact communication brief, decisions, canonical risks, top priorities, outcome signals, and agent activity audit. They keep only the latest run for each report type in `report_rollup`; full provenance lives in collapsed clickable `sources`.
 
 For `snapshot`, prefer the dedicated command because it deterministically reads existing report JSON plus canonical operating state, writes structured JSON, renders HTML, and refreshes the dashboard:
 
@@ -479,7 +479,7 @@ dzcto snapshot "<project folder>" --start 2026-06-05 --end 2026-06-11
 
 For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. The helper stores structured report JSON next to generated report HTML, and `core/risks.html` reads that data into `Risk Signals From Reports` with links back to the source report. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
 
-For `codebase-accountability`, prefer the dedicated command because it deterministically reads configured local repos, chooses a review window from the previous report when possible, writes structured JSON, renders HTML, and refreshes the dashboard:
+For `codebase-accountability`, prefer the dedicated command because it deterministically reads configured local repos, uses a rolling 7-day review window by default, writes structured JSON, renders HTML, and refreshes the dashboard:
 
 ```bash
 dzcto codebase-accountability "<project folder>"

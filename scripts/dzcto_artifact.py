@@ -1510,19 +1510,106 @@ def render_codebase_accountability(data: dict[str, Any], risk_registry: dict[str
     )
 
 
-def render_snapshot_report(data: dict[str, Any]) -> str:
+def render_snapshot_tldr(rows: Any) -> str:
+    values = [row for row in array_value(rows) if isinstance(row, dict)]
+    if not values:
+        return ""
+    items = []
+    for row in values[:3]:
+        items.append(
+            f"""
+<li>
+  <strong>{esc(text_value(value_at(row, "label", "title", "name")))}</strong>
+  <span>{esc(text_value(value_at(row, "value", "body", "summary", "detail")))}</span>
+</li>
+"""
+        )
+    return f"""
+<section class="snapshot-tldr artifact-section">
+  <h2>TL;DR</h2>
+  <ul>
+    {"".join(items)}
+  </ul>
+</section>
+"""
+
+
+def render_snapshot_communication(up_rows: Any, down_rows: Any) -> str:
+    up_items = [row for row in array_value(up_rows) if isinstance(row, dict)]
+    down_items = [row for row in array_value(down_rows) if isinstance(row, dict)]
+    if not up_items and not down_items:
+        return ""
+
+    def column(title: str, rows: list[dict[str, Any]]) -> str:
+        items = []
+        for row in rows[:3]:
+            items.append(
+                f"""
+<li>
+  <strong>{esc(text_value(value_at(row, "title", "item", "name")))}</strong>
+  <span>{esc(text_value(value_at(row, "body", "detail", "summary")))}</span>
+  {f'<small>{esc(text_value(value_at(row, "source")))}</small>' if present(value_at(row, "source")) else ''}
+</li>
+"""
+            )
+        return f"""
+<div>
+  <h3>{esc(title)}</h3>
+  <ul>{''.join(items)}</ul>
+</div>
+"""
+
+    return f"""
+<section class="snapshot-communication artifact-section">
+  <h2>Communication Brief</h2>
+  <div class="snapshot-communication-grid">
+    {column("Communicate Up", up_items)}
+    {column("Communicate Down", down_items)}
+  </div>
+</section>
+"""
+
+
+def render_snapshot_appendix(data: dict[str, Any]) -> str:
+    body = "".join(
+        [
+            render_list_section("Application State", value_at(data, "application_state", "state")),
+            render_table_section("Operating Signals", value_at(data, "operating_signals"), [("Signal", "signal"), ("Status", "status"), ("Detail", "detail"), ("Source", "source")]),
+            render_table_section("Latest Report Links", value_at(data, "report_rollup", "reports"), [("Report", "report"), ("Date", "date"), ("Summary", "summary"), ("Source", "source")]),
+        ]
+    )
+    if not body:
+        return ""
+    return f"""
+<details class="artifact-section appendix-section">
+  <summary>
+    <span>Appendix</span>
+    <small>Application state and latest report links</small>
+  </summary>
+  <div class="appendix-body">
+    {body}
+  </div>
+</details>
+"""
+
+
+def render_snapshot_changes(data: dict[str, Any]) -> str:
+    return render_table_section("Changed Since Last Snapshot", value_at(data, "changed_since_last_week", "changes"), [("Signal", "signal"), ("Now", "value"), ("Why It Matters", "detail")])
+
+
+def render_snapshot_report(data: dict[str, Any], change_summary: str = "") -> str:
     # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     return "".join(
         [
-            render_metrics(value_at(data, "metrics")),
-            render_list_section("Communicate Up", value_at(data, "communicate_up")),
-            render_list_section("Communicate Down", value_at(data, "communicate_down")),
-            render_table_section("Priorities", value_at(data, "priorities"), [("Priority", "priority"), ("Owner", "owner"), ("Why", "why"), ("Done When", "done_when"), ("Source", "source")]),
-            render_list_section("Application State", value_at(data, "application_state", "state")),
+            render_snapshot_tldr(value_at(data, "tldr")),
+            change_summary or render_snapshot_changes(data),
+            render_snapshot_communication(value_at(data, "communicate_up"), value_at(data, "communicate_down")),
+            render_table_section("Decisions Needed", value_at(data, "decisions"), [("Decision", "decision"), ("Context", "context"), ("Owner", "owner"), ("Needed By", "needed_by"), ("Source", "source")]),
             render_table_section("Risks Needing Attention", value_at(data, "risks"), [("Risk", "risk"), ("Severity", "severity"), ("Owner", "owner"), ("Review", "review"), ("Mitigation", "mitigation")]),
-            render_table_section("Decisions / Asks", value_at(data, "decisions"), [("Decision", "decision"), ("Context", "context"), ("Owner", "owner"), ("Needed By", "needed_by"), ("Source", "source")]),
-            render_table_section("Operating Signals", value_at(data, "operating_signals"), [("Signal", "signal"), ("Status", "status"), ("Detail", "detail"), ("Source", "source")]),
-            render_table_section("Report Rollup", value_at(data, "report_rollup", "reports"), [("Report", "report"), ("Date", "date"), ("Summary", "summary"), ("Source", "source")]),
+            render_table_section("Top 5 Priorities", value_at(data, "priorities"), [("Priority", "priority"), ("Owner", "owner"), ("Why", "why"), ("Done When", "done_when"), ("Source", "source")]),
+            render_table_section("Outcome Signals", value_at(data, "outcome_signals"), [("Signal", "signal"), ("Value", "value"), ("Source", "source")]),
+            render_table_section("Agent Activity Audit", value_at(data, "agent_activity_audit"), [("Signal", "signal"), ("Status", "status"), ("Detail", "detail"), ("Action", "action")]),
+            render_snapshot_appendix(data),
             render_sources(data),
         ]
     )
@@ -1637,9 +1724,10 @@ def report_changes_html(kind: str, data: dict[str, Any], previous_data: dict[str
             changes.append("<li><strong>No material structured changes:</strong> This report is broadly consistent with the previous run.</li>")
 
     date_text = previous_date or "the previous run"
+    heading = "Changed Since Last Snapshot" if kind == "snapshot" else f"Significant changes since the last report was run on {date_text}"
     return f"""
 <section class="report-changes">
-  <h2>Significant changes since the last report was run on {esc(date_text)}</h2>
+  <h2>{esc(heading)}</h2>
   <ul>{''.join(changes[:4])}</ul>
 </section>
 """
@@ -1653,10 +1741,11 @@ def render_structured_report(
     previous_data: dict[str, Any] | None = None,
     previous_date: str = "",
 ) -> str:
+    change_summary = report_changes_html(kind, data, previous_data, previous_date)
     if kind == "tech-stack":
         body = render_tech_stack(data, risk_registry)
     elif kind == "snapshot":
-        body = render_snapshot_report(data)
+        body = render_snapshot_report(data, change_summary)
     elif kind == "codebase-accountability":
         body = render_codebase_accountability(data, risk_registry)
     else:
@@ -1668,9 +1757,8 @@ def render_structured_report(
         body = renderers.get(kind, render_generic_report)(data)
     # The lead summary now lives in the masthead, so the follow-up-signals card
     # anchors deterministically at the top of the body for every kind.
-    change_summary = report_changes_html(kind, data, previous_data, previous_date)
     action_summary = render_action_summary(kind, data)
-    rendered = f"{change_summary}{action_summary}{body}".strip() or render_generic_report(data)
+    rendered = (body if kind == "snapshot" else f"{change_summary}{action_summary}{body}").strip() or render_generic_report(data)
     # A blank body is legitimate when the lead summary carries the report in the
     # masthead deck. Only surface a placeholder when nothing at all was captured.
     if not rendered.strip() and not report_lead_summary(data):
@@ -4389,7 +4477,37 @@ h1.title { font-size: 38px; font-weight: 800; }
 .artifact-list strong { color: var(--ink); font-weight: 800; }
 .artifact-list span, .artifact-list em, .artifact-list small { display: block; margin-top: 3px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
-.source-section > summary {
+.snapshot-tldr ul {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.snapshot-tldr li {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.snapshot-tldr li:first-child { border-top: 0; padding-top: 0; }
+.snapshot-tldr strong { color: var(--ink); font-weight: 850; }
+.snapshot-communication-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.snapshot-communication h3 { margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.snapshot-communication ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.snapshot-communication li { border-top: 1px solid var(--line); padding-top: 10px; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.snapshot-communication li:first-child { border-top: 0; padding-top: 0; }
+.snapshot-communication strong { display: block; color: var(--ink); font-weight: 850; }
+.snapshot-communication span, .snapshot-communication small { display: block; margin-top: 3px; color: var(--muted); }
+.source-section > summary, .appendix-section > summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4397,10 +4515,10 @@ h1.title { font-size: 38px; font-weight: 800; }
   cursor: pointer;
   list-style: none;
 }
-.source-section > summary::-webkit-details-marker { display: none; }
-.source-section > summary span { color: var(--ink); font-size: 22px; font-weight: 850; }
-.source-section > summary small { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
-.source-list { margin-top: 16px; }
+.source-section > summary::-webkit-details-marker, .appendix-section > summary::-webkit-details-marker { display: none; }
+.source-section > summary span, .appendix-section > summary span { color: var(--ink); font-size: 22px; font-weight: 850; }
+.source-section > summary small, .appendix-section > summary small { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.source-list, .appendix-body { margin-top: 16px; }
 .report-body > p:first-child {
   max-width: none;
   color: var(--ink-2);
@@ -4603,6 +4721,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .setup-summary { align-items: flex-start; flex-direction: column; }
   .setup-primary { width: 100%; text-align: center; }
   .report-attention li { grid-template-columns: 1fr; gap: 2px; }
+  .snapshot-tldr li, .snapshot-communication-grid { grid-template-columns: 1fr; }
   .help-guide { grid-template-columns: 1fr; }
   .help-guide-row { grid-template-columns: 1fr; gap: 6px; }
   .item-field-grid { grid-template-columns: 1fr; }
