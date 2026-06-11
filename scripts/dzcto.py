@@ -548,6 +548,15 @@ def snapshot_report_entries(wiki_root: Path, start: dt.date, end: dt.date) -> li
     return sorted(entries, key=lambda item: (item["date"], item["label"]), reverse=True)
 
 
+def latest_snapshot_entries_by_kind(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        kind = str(entry.get("kind") or "")
+        if kind and kind not in latest:
+            latest[kind] = entry
+    return list(latest.values())
+
+
 def add_unique_snapshot_item(items: list[dict[str, str]], item: dict[str, str], seen: set[str], *, limit: int = 12) -> None:
     title = item.get("title", "").strip()
     if not title:
@@ -803,6 +812,7 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
     core_dir = wiki_root / "core"
     learning_dir = wiki_root / "learning"
     entries = snapshot_report_entries(wiki_root, start, end)
+    latest_entries = latest_snapshot_entries_by_kind(entries)
 
     risk_registry = build_risk_registry(wiki_root)
     risks = active_registry_risks(risk_registry)
@@ -839,7 +849,7 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
     priorities = snapshot_priority_rows(entries, due_risks, cadence_due)
     application_state = [
         {"title": entry["label"], "body": entry["summary"], "source": f"{entry['label']} / {entry['date']}"}
-        for entry in entries
+        for entry in latest_entries
         if entry["summary"]
     ][:8]
     risk_rows = snapshot_risk_rows(risks, due_risks, entries)
@@ -849,6 +859,18 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
         {"report": entry["label"], "date": entry["date"], "summary": entry["summary"], "source": entry["href"] or str(entry["path"].relative_to(wiki_root))}
         for entry in entries
     ]
+    snapshot_sources = [
+        {"title": f"{item['report']} / {item['date']}", "href": item["source"]}
+        for item in report_rollup
+    ]
+    snapshot_sources.extend(
+        [
+            {"title": "Risk register", "href": "core/RISKS.md"},
+            {"title": "Decision log", "href": "core/DECISIONS.md"},
+            {"title": "Operating cadence", "href": "core/OPERATING_CADENCE.md"},
+            {"title": "Learning items", "href": "learning/items.json"},
+        ]
+    )
 
     executive_read = (
         f"Snapshot for {start.isoformat()} through {end.isoformat()}: {len(entries)} report artifact"
@@ -877,7 +899,7 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
         "decisions": decision_rows,
         "operating_signals": operating_rows,
         "report_rollup": report_rollup,
-        "sources": [item["source"] for item in report_rollup] + ["core/RISKS.md", "core/DECISIONS.md", "core/OPERATING_CADENCE.md", "learning/items.json"],
+        "sources": snapshot_sources,
     }
 
 

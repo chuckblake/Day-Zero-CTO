@@ -53,3 +53,6 @@ Expected JSON fields:
 - Prefer sharp operating judgment over exhaustive coverage.
 - Separate what should be communicated up from what should be communicated down.
 - Make priorities actionable, with owners or next actions when known.
+- Do not render a top-level follow-up-signals strip; those items are already covered in the Snapshot sections.
+- Application State should use only the latest report for each report type, even when the snapshot window contains multiple runs.
+- Keep Sources collapsed by default and clickable so provenance is available without crowding the report.

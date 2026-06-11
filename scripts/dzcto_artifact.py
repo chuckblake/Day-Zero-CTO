@@ -1291,8 +1291,50 @@ def render_candidate_risk_section(title: str, rows: Any, source_label: str, risk
 """
 
 
+def source_entry_html(source: Any, *, prefix: str = "../../") -> str:
+    title = ""
+    href = ""
+    detail = ""
+    if isinstance(source, dict):
+        title = text_value(value_at(source, "title", "label", "name", "source"))
+        href = text_value(value_at(source, "href", "url", "path"))
+        detail = text_value(value_at(source, "detail", "summary", "note"))
+    else:
+        title = text_value(source)
+        href = title
+    if not title:
+        return ""
+
+    resolved = ""
+    if href and (isinstance(source, dict) or re.match(r"^(https?://|mailto:|#|/)", href) or re.search(r"\.(?:html|md|json)(?:#.*)?$", href)):
+        resolved = source_href(href, prefix)
+    label = esc(title)
+    if resolved:
+        label = f'<a href="{esc(resolved)}">{label}</a>'
+    return f"""
+<li>
+  <strong>{label}</strong>
+  {f'<span>{esc(detail)}</span>' if detail else ''}
+</li>
+"""
+
+
 def render_sources(data: dict[str, Any]) -> str:
-    return render_list_section("Sources", value_at(data, "sources", "source_list", "evidence_sources"))
+    rows = [source_entry_html(source) for source in array_value(value_at(data, "sources", "source_list", "evidence_sources"))]
+    rows = [row for row in rows if row]
+    if not rows:
+        return ""
+    return f"""
+<details class="artifact-section source-section">
+  <summary>
+    <span>Sources</span>
+    <small>{esc(pluralize(len(rows), "source"))}</small>
+  </summary>
+  <ul class="artifact-list source-list">
+    {"".join(rows)}
+  </ul>
+</details>
+"""
 
 
 def item_headline(item: Any) -> str:
@@ -1327,7 +1369,7 @@ def action_group(label: str, value: Any) -> tuple[str, list[str]]:
 
 
 def render_action_summary(kind: str, data: dict[str, Any]) -> str:
-    if kind == "tech-stack":
+    if kind in {"tech-stack", "snapshot"}:
         return ""
 
     groups_by_kind = {
@@ -4347,6 +4389,18 @@ h1.title { font-size: 38px; font-weight: 800; }
 .artifact-list strong { color: var(--ink); font-weight: 800; }
 .artifact-list span, .artifact-list em, .artifact-list small { display: block; margin-top: 3px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
+.source-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.source-section > summary::-webkit-details-marker { display: none; }
+.source-section > summary span { color: var(--ink); font-size: 22px; font-weight: 850; }
+.source-section > summary small { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.source-list { margin-top: 16px; }
 .report-body > p:first-child {
   max-width: none;
   color: var(--ink-2);

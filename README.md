@@ -468,6 +468,8 @@ The supported report kinds have fixed section templates:
 
 Optional `metrics` are rendered as summary cards when present.
 
+Snapshot reports are synthesis artifacts. They keep the full report history in `report_rollup`, but `application_state` should show only the latest run for each report type. Snapshot sources render collapsed by default and should be clickable so provenance is available without crowding the main readout.
+
 For `snapshot`, prefer the dedicated command because it deterministically reads existing report JSON plus canonical operating state, writes structured JSON, renders HTML, and refreshes the dashboard:
 
 ```bash
