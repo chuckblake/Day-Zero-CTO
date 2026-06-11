@@ -30,6 +30,7 @@ from dzcto_common import (
 
 
 REPORT_FOLDERS = {
+    "snapshot": "Snapshot",
     "tech-stack": "Tech Stack",
     "engineering-risk": "Engineering Risk",
     "codebase-accountability": "Codebase Accountability",
@@ -535,6 +536,15 @@ def enrich_ai_prompt(label: str, prompt: str) -> str:
 def default_ai_prompts(company: str, project_folder: Path, repos: list[str], report_prompt_context: str = "") -> list[tuple[str, str]]:
     return [
         (
+            "Snapshot Report",
+            exact_prompt(
+                f"Generate the Day Zero CTO Snapshot Report for {company}. Distill the current reports, risks, decisions, cadence, and learning state into one consumable CTO readout: what to communicate up, what to communicate down, and what to prioritize.",
+                project_folder,
+                repos,
+                report_prompt_context,
+            ),
+        ),
+        (
             "Weekly CTO Review",
             exact_prompt(
                 f"Run the weekly CTO review for {company}. Prefer read-only local Git history for the review window when available; do not run mutating Git commands.",
@@ -619,6 +629,7 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
 def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
     return [
         ("Next Best Action", f'dzcto lfg "{project_folder}"'),
+        ("Snapshot Report", f'dzcto snapshot "{project_folder}"'),
         ("Project Status", f'dzcto status "{project_folder}"'),
         ("Check Stale", f'dzcto check-stale "{project_folder}"'),
         ("Codebase Accountability", f'dzcto codebase-accountability "{project_folder}"'),
@@ -1301,6 +1312,11 @@ def render_action_summary(kind: str, data: dict[str, Any]) -> str:
             action_group("Decisions", value_at(data, "decisions", "decision_points")),
             action_group("Questions", value_at(data, "questions", "open_questions")),
         ],
+        "snapshot": [
+            action_group("Communicate Up", value_at(data, "communicate_up")),
+            action_group("Communicate Down", value_at(data, "communicate_down")),
+            action_group("Priorities", value_at(data, "priorities")),
+        ],
     }
     groups = [(label, items) for label, items in groups_by_kind.get(kind, []) if items]
     if not groups:
@@ -1412,6 +1428,24 @@ def render_codebase_accountability(data: dict[str, Any], risk_registry: dict[str
     )
 
 
+def render_snapshot_report(data: dict[str, Any]) -> str:
+    # The lead summary renders in the masthead deck (see report_lead_summary), not here.
+    return "".join(
+        [
+            render_metrics(value_at(data, "metrics")),
+            render_list_section("Communicate Up", value_at(data, "communicate_up")),
+            render_list_section("Communicate Down", value_at(data, "communicate_down")),
+            render_table_section("Priorities", value_at(data, "priorities"), [("Priority", "priority"), ("Owner", "owner"), ("Why", "why"), ("Done When", "done_when"), ("Source", "source")]),
+            render_list_section("Application State", value_at(data, "application_state", "state")),
+            render_table_section("Risks Needing Attention", value_at(data, "risks"), [("Risk", "risk"), ("Severity", "severity"), ("Owner", "owner"), ("Review", "review"), ("Mitigation", "mitigation")]),
+            render_table_section("Decisions / Asks", value_at(data, "decisions"), [("Decision", "decision"), ("Context", "context"), ("Owner", "owner"), ("Needed By", "needed_by"), ("Source", "source")]),
+            render_table_section("Operating Signals", value_at(data, "operating_signals"), [("Signal", "signal"), ("Status", "status"), ("Detail", "detail"), ("Source", "source")]),
+            render_table_section("Report Rollup", value_at(data, "report_rollup", "reports"), [("Report", "report"), ("Date", "date"), ("Summary", "summary"), ("Source", "source")]),
+            render_sources(data),
+        ]
+    )
+
+
 def render_generic_report(data: dict[str, Any]) -> str:
     # The lead summary renders in the masthead deck (see report_lead_summary), not here.
     sections = []
@@ -1426,6 +1460,13 @@ def render_generic_report(data: dict[str, Any]) -> str:
 
 
 REPORT_CHANGE_GROUPS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
+    "snapshot": [
+        ("Communicate Up", ("communicate_up",)),
+        ("Communicate Down", ("communicate_down",)),
+        ("Priorities", ("priorities",)),
+        ("Risks", ("risks",)),
+        ("Decisions", ("decisions",)),
+    ],
     "weekly-reviews": [
         ("Shipped / Learned", ("shipped_learned", "shipped", "progress")),
         ("Risks", ("risks", "risks_blockers", "blockers")),
@@ -1532,6 +1573,8 @@ def render_structured_report(
 ) -> str:
     if kind == "tech-stack":
         body = render_tech_stack(data, risk_registry)
+    elif kind == "snapshot":
+        body = render_snapshot_report(data)
     elif kind == "codebase-accountability":
         body = render_codebase_accountability(data, risk_registry)
     else:

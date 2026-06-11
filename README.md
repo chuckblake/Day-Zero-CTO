@@ -15,6 +15,7 @@ Day Zero CTO gives early-stage technical leaders a first set of repeatable CTO w
 - Run recurring CTO reviews that produce durable HTML artifacts.
 - Turn engineering reality into CEO-facing updates stored outside the code repo.
 - Map tech stacks across one or more read-only codebases.
+- Distill the current operating picture into one Snapshot Report: what to understand, communicate up, communicate down, and prioritize.
 - Generate codebase accountability briefs that surface repo movement, management exceptions, provenance gaps, guardrail drift, and agent/author activity.
 - Teach system knowledge with spaced repetition.
 
@@ -26,6 +27,7 @@ It is intentionally small. The first version should earn trust by observing the 
 | --- | --- |
 | `bootstrap-cto-context` | Onboard Day Zero CTO: choose artifact location, capture company context, connect read-only codebases, create core context, and offer initial reports and learning setup. |
 | `refine-core-context` | Interview the user after onboarding to review, correct, and approve updates to core context files before refreshing the generated wiki. |
+| `snapshot-report` | Generate the one CTO readout: current application state, communicate up, communicate down, priorities, risks, decisions, and operating signals. |
 | `tech-stack` | Review one or more codebases and create a durable Tech Stack report. |
 | `codebase-accountability` | Generate a management-by-exception report from read-only Git history, provenance, guardrail checks, risk signals, and decision signals. |
 | `review-decisions` | Walk the decision log one recorded decision at a time, using revisit triggers to reaffirm, supersede, punt, or mark evidence needed. |
@@ -81,6 +83,7 @@ Recommended folder shape:
         registry.json
         risk-*.html
       reports/
+        snapshot/
         tech-stack/
         engineering-risk/
         codebase-accountability/
@@ -106,6 +109,7 @@ Generated wiki pages use a compact command-center interface:
 - A canonical Risks page with report-derived `Risk Signals From Reports` triage plus the generated risk registry. Signals link to existing risk detail pages when matched; unmatched signals show as `Needs triage` until promoted, merged, or dismissed.
 - A canonical Decisions page with report-derived `Decision Signals From Reports` triage plus the generated decision registry. Signals link to existing decision detail pages when matched; unmatched asks or proposed choices show as `Needs triage` until they become durable decisions.
 - Report cards show an `Open latest` action, the latest report summary, and a compact previous-run list when a report folder has older artifacts.
+- Snapshot Reports are the top-level CTO digest. They synthesize current report artifacts plus canonical risks, decisions, cadence, and learning state into one consumable report with `Communicate Up`, `Communicate Down`, and `Priorities` sections.
 - Codebase Accountability reports give the CTO a management-by-exception view across connected repos: changed subsystems, actor/author activity, issue-reference coverage, dirty worktrees, high-attention file movement, dependency drift, guardrail checks, and risk/decision intake signals.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
@@ -129,6 +133,8 @@ Risk reviews can create decisions. If handling a risk leads to a formal choice, 
 Every active risk should carry a calendar date in its `Next Review` field. External triggers are welcome, but they should be additive, for example `2026-07-06 or on receipt of legal opinion`, because the local dashboard cannot detect most external events by itself. `dzcto status` and `dzcto check-stale` warn when parsed risks lack a calendar review date.
 
 Codebase Accountability is the oversight layer for many coding agents. It does not replace code review or the canonical risk/decision logs. It scans local Git history from configured read-only repos, highlights exceptions, and writes report signals that can be promoted into `RISKS.md`, `DECISIONS.md`, or `ENGINEERING_GUARDRAILS.md` when they become durable operating facts.
+
+Snapshot Reports are synthesis artifacts. They do not create a new source of truth; they read existing reports plus canonical risks, decisions, cadence, and learning state, then produce the one report a CTO can use before a leadership meeting. The default command creates a seven-day window ending today; explicit windows are supported for board, investor, or sprint-cycle readouts.
 
 The index shows company information under the title, then a dashboard workspace:
 
@@ -413,8 +419,9 @@ dzcto <command> -h
 
 | Command | Use when | Key options |
 | --- | --- | --- |
+| `dzcto snapshot "<project folder>"` | Generate the Day Zero CTO Snapshot Report: current application state, what to communicate up, what to communicate down, and priorities. | `--start YYYY-MM-DD`, `--end YYYY-MM-DD`, `--days N`, `--title <title>`, `--date YYYY-MM-DD`, `--output-json <path>`, `--json`, `--no-artifact`. |
 | `dzcto codebase-accountability "<project folder>"` | Generate a codebase accountability report from read-only local Git history, provenance, guardrail checks, risk signals, and decision signals. | Repeatable `--repo <path>`, `--since <git date>`, `--days N`, `--title <title>`, `--date YYYY-MM-DD`, `--output-json <path>`, `--json`, `--no-artifact`. |
-| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `tech-stack`, `engineering-risk`, `codebase-accountability`, `weekly-reviews`, `ceo-updates`. |
+| `dzcto artifact` | Generate a durable HTML report and refresh the dashboard. Prefer structured JSON. | Required: `--project <project>`, `--kind <kind>`, `--title <title>`. Optional: `--date YYYY-MM-DD`, `--data-file <json>`, `--body-file <html>`. Kinds: `snapshot`, `tech-stack`, `engineering-risk`, `codebase-accountability`, `weekly-reviews`, `ceo-updates`. |
 | `dzcto collect-issue-bundle "<project folder>"` | Create a troubleshooting bundle with redacted sidecar metadata and stale checks. | `--output <zip>`, `--no-redact`. |
 
 ### Learning
@@ -431,6 +438,7 @@ dzcto <command> -h
 
 | Skill prompt | Use when |
 | --- | --- |
+| `day-zero-cto:snapshot-report` | Distill current reports, risks, decisions, cadence, and learning into one CTO snapshot. |
 | `day-zero-cto:refine-core-context` | Interview, draft, approve, write source Markdown, and refresh core context. |
 | `day-zero-cto:review-decisions` | Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed. |
 | `day-zero-cto:review-risks` | Walk active risks one at a time and keep, update, close, punt, mark evidence needed, or log decisions made while addressing the risk. |
@@ -451,6 +459,7 @@ The supported report kinds have fixed section templates:
 
 | Kind | Expected JSON fields |
 | --- | --- |
+| `snapshot` | `executive_read`, `window`, `metrics`, `communicate_up`, `communicate_down`, `priorities`, `application_state`, `risks`, `decisions`, `operating_signals`, `report_rollup`, `sources` |
 | `tech-stack` | `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, `sources` |
 | `codebase-accountability` | `executive_read`, `review_window`, `metrics`, `management_exceptions`, `changed_subsystems`, `provenance`, `guardrail_checks`, `agent_activity`, `change_units`, `risks`, `decisions`, `questions`, `sources` |
 | `weekly-reviews` | `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
@@ -458,6 +467,13 @@ The supported report kinds have fixed section templates:
 | `engineering-risk` | `executive_read`, `top_risks`, `mitigations`, `watchpoints`, `sources` |
 
 Optional `metrics` are rendered as summary cards when present.
+
+For `snapshot`, prefer the dedicated command because it deterministically reads existing report JSON plus canonical operating state, writes structured JSON, renders HTML, and refreshes the dashboard:
+
+```bash
+dzcto snapshot "<project folder>"
+dzcto snapshot "<project folder>" --start 2026-06-05 --end 2026-06-11
+```
 
 For `tech-stack`, `risks_watchpoints` rows are rendered as candidate risks, not as the active operating register. The helper stores structured report JSON next to generated report HTML, and `core/risks.html` reads that data into `Risk Signals From Reports` with links back to the source report. Include `source` when available, and promote any risk that needs ongoing review into `core/RISKS.md`.
 
@@ -484,6 +500,7 @@ day-zero-cto/
 ├── skills/
 │   ├── bootstrap-cto-context/
 │   ├── refine-core-context/
+│   ├── snapshot-report/
 │   ├── tech-stack/
 │   ├── codebase-accountability/
 │   ├── review-decisions/
@@ -506,7 +523,7 @@ day-zero-cto/
 └── README.md
 ```
 
-`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `lfg`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `codebase-accountability`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
+`scripts/dzcto.py` is the canonical local command surface. It exposes `quickstart`, `help`, `version`, `lfg`, `setup`, `update`, `doctor`, `init`, `refresh`, `serve`, `install-command`, `status`, `check-stale`, `snapshot`, `codebase-accountability`, `artifact`, `learning`, `collect-issue-bundle`, and `package-claude-desktop`.
 
 `scripts/dzcto_artifact.py` owns HTML generation, sidecar metadata, generated core HTML pages, per-risk and per-decision detail pages, report templates, learning index rendering, cadence alerts, and the command-center index.
 
@@ -529,6 +546,7 @@ Install or load this plugin, then ask for one of the workflows in natural langua
 - "Onboard Day Zero CTO for this startup. Use `~/Documents/Acme CTO` as the project folder, company name `Acme`, company URL `https://acme.example`, and read-only repos `~/code/acme-app` and `~/code/acme-api`."
 - "Refine the Strategy core context for this startup. Interview me section by section and let me approve the Markdown before updating the wiki."
 - "Review the decision log for this startup. Walk me through each revisit trigger and let me reaffirm, supersede, punt, or mark evidence needed."
+- "Generate the Day Zero CTO Snapshot Report for June 5, 2026 through June 11, 2026."
 - "Generate a codebase accountability report for this startup. Surface repo movement, provenance gaps, management exceptions, and any risk or decision signals."
 - "Create a Tech Stack report from the connected codebases and write it into the project knowledge wiki."
 - "Run the weekly CTO review and write the HTML report into the project knowledge wiki."

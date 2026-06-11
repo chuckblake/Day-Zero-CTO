@@ -22,6 +22,7 @@ from dzcto_artifact import (
     CORE_DOCS,
     REPORT_FOLDERS,
     active_registry_risks,
+    array_value,
     build_decision_registry,
     build_risk_registry,
     cadence_alerts,
@@ -31,11 +32,18 @@ from dzcto_artifact import (
     display_command,
     due_decision_entries,
     due_risk_entries,
+    item_headline,
     parse_cadence_rules,
     registry_decisions,
     read_learning_items,
+    report_lead_summary,
+    report_run_date,
     read_risk_entries,
     risk_detail_relative_path,
+    severity_rank,
+    snippet,
+    text_value,
+    value_at,
 )
 from dzcto_common import (
     TOOL_NAME,
@@ -476,6 +484,443 @@ def run_codebase_accountability(args: argparse.Namespace) -> int:
     return run_script("dzcto_artifact.py", artifact_args)
 
 
+def parse_snapshot_date(value: str, label: str) -> dt.date:
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError:
+        raise SystemExit(f"{label} must use YYYY-MM-DD format, got: {value}")
+
+
+def snapshot_window(args: argparse.Namespace) -> tuple[dt.date, dt.date]:
+    end = parse_snapshot_date(args.end, "--end") if args.end else dt.date.today()
+    if args.start:
+        start = parse_snapshot_date(args.start, "--start")
+    else:
+        start = end - dt.timedelta(days=max(args.days, 1) - 1)
+    if start > end:
+        raise SystemExit(f"--start must be on or before --end, got {start} > {end}")
+    return start, end
+
+
+def snapshot_title_date(value: dt.date) -> str:
+    return f"{value.month}/{value.day}/{str(value.year)[-2:]}"
+
+
+def report_json_date(path: Path) -> dt.date | None:
+    value = report_run_date(path)
+    if value == "Unknown date":
+        return None
+    try:
+        return dt.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def snapshot_report_entries(wiki_root: Path, start: dt.date, end: dt.date) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    reports_dir = wiki_root / "reports"
+    for kind, label in REPORT_FOLDERS.items():
+        if kind == "snapshot":
+            continue
+        for json_path in sorted((reports_dir / kind).glob("*.json"), reverse=True):
+            if json_path.name == "data.json":
+                continue
+            report_date = report_json_date(json_path)
+            if not report_date or report_date < start or report_date > end:
+                continue
+            data = read_json(json_path, {})
+            if not isinstance(data, dict):
+                continue
+            html_path = json_path.with_suffix(".html")
+            href = html_path.relative_to(wiki_root).as_posix() if html_path.exists() else ""
+            summary = report_lead_summary(data) or ""
+            entries.append(
+                {
+                    "kind": kind,
+                    "label": label,
+                    "date": report_date.isoformat(),
+                    "path": json_path,
+                    "href": href,
+                    "summary": snippet(summary, 240),
+                    "data": data,
+                }
+            )
+    return sorted(entries, key=lambda item: (item["date"], item["label"]), reverse=True)
+
+
+def add_unique_snapshot_item(items: list[dict[str, str]], item: dict[str, str], seen: set[str], *, limit: int = 12) -> None:
+    title = item.get("title", "").strip()
+    if not title:
+        return
+    key = re.sub(r"\W+", " ", f"{title} {item.get('body', '')}".lower()).strip()
+    if key in seen:
+        return
+    seen.add(key)
+    items.append(item)
+    del items[limit:]
+
+
+def snapshot_item_from_report(entry: dict[str, Any], raw: Any, *, prefix: str = "") -> dict[str, str]:
+    title = item_headline(raw)
+    if prefix and title:
+        title = f"{prefix}: {title}"
+    body = ""
+    owner = ""
+    if isinstance(raw, dict):
+        body = text_value(value_at(raw, "body", "detail", "details", "summary", "context", "why", "impact", "mitigation", "rationale", "note", "notes"))
+        owner = text_value(value_at(raw, "owner", "owner_horizon", "responsible", "needed_by", "done_when"))
+    if body == title:
+        body = ""
+    return {
+        "title": title,
+        "body": snippet(body, 220),
+        "owner": owner,
+        "source": f"{entry['label']} / {entry['date']}",
+    }
+
+
+def snapshot_items_from_reports(entries: list[dict[str, Any]], specs: dict[str, list[tuple[str, str]]], *, limit: int = 12) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        for field, prefix in specs.get(entry["kind"], []):
+            for raw in array_value(value_at(entry["data"], field)):
+                add_unique_snapshot_item(items, snapshot_item_from_report(entry, raw, prefix=prefix), seen, limit=limit)
+                if len(items) >= limit:
+                    return items
+    return items
+
+
+def snapshot_priority_rows(entries: list[dict[str, Any]], due_risks: list[dict[str, Any]], cadence_due: list[dict[str, Any]], *, limit: int = 10) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add(priority: str, owner: str, why: str, done_when: str, source: str) -> None:
+        key = priority.lower()
+        if not priority or key in seen:
+            return
+        seen.add(key)
+        rows.append({"priority": priority, "owner": owner, "why": snippet(why, 180), "done_when": snippet(done_when, 180), "source": source})
+        del rows[limit:]
+
+    for risk in due_risks:
+        add(
+            f"Review risk: {text_value(value_at(risk, 'title', 'risk'))}",
+            text_value(value_at(risk, "owner", "responsible")) or "CTO",
+            f"{text_value(value_at(risk, 'severity'))} / next review {text_value(value_at(risk, 'review'))}",
+            text_value(value_at(risk, "mitigation", "action", "plan")) or "Update, close, punt, or mark evidence needed.",
+            "Risk register",
+        )
+        if len(rows) >= limit:
+            return rows
+
+    for alert in cadence_due:
+        add(
+            f"Run cadence: {text_value(alert.get('label'))}",
+            "CTO",
+            text_value(alert.get("reason")),
+            text_value(alert.get("command")),
+            "Operating cadence",
+        )
+        if len(rows) >= limit:
+            return rows
+
+    specs = {
+        "weekly-reviews": [("next_week_focus", ""), ("next_focus", ""), ("priorities", "")],
+        "engineering-risk": [("mitigations", "Mitigate")],
+        "ceo-updates": [("next", "Next")],
+        "codebase-accountability": [("management_exceptions", "Resolve exception")],
+    }
+    for entry in entries:
+        for field, prefix in specs.get(entry["kind"], []):
+            for raw in array_value(value_at(entry["data"], field)):
+                item = snapshot_item_from_report(entry, raw, prefix=prefix)
+                add(item["title"], item.get("owner", ""), item.get("body", ""), "Own the next explicit step.", item["source"])
+                if len(rows) >= limit:
+                    return rows
+    return rows
+
+
+def snapshot_risk_rows(risks: list[dict[str, Any]], due_risks: list[dict[str, Any]], entries: list[dict[str, Any]], *, limit: int = 8) -> list[dict[str, str]]:
+    due_titles = {text_value(value_at(risk, "title", "risk")).lower() for risk in due_risks}
+    ranked = sorted(
+        risks,
+        key=lambda risk: (
+            0 if text_value(value_at(risk, "title", "risk")).lower() in due_titles else 1,
+            severity_rank(text_value(value_at(risk, "severity", "status"))),
+            text_value(value_at(risk, "title", "risk")).lower(),
+        ),
+    )
+    rows = []
+    seen: set[str] = set()
+    for risk in ranked[:limit]:
+        title = text_value(value_at(risk, "title", "risk"))
+        if not title:
+            continue
+        seen.add(title.lower())
+        rows.append(
+            {
+                "risk": title,
+                "severity": text_value(value_at(risk, "severity", "status")),
+                "owner": text_value(value_at(risk, "owner", "responsible")),
+                "review": text_value(value_at(risk, "review", "next_review", "due")),
+                "mitigation": snippet(text_value(value_at(risk, "mitigation", "action", "plan")), 220),
+            }
+        )
+
+    if len(rows) >= limit:
+        return rows
+
+    specs = {
+        "engineering-risk": ("top_risks", "risks", "watchpoints"),
+        "weekly-reviews": ("risks", "risks_blockers", "blockers"),
+        "ceo-updates": ("risks_blockers", "risks", "blockers"),
+        "tech-stack": ("risks_watchpoints", "risks", "watchpoints"),
+        "codebase-accountability": ("risks", "risk_signals"),
+    }
+    for entry in entries:
+        for field in specs.get(entry["kind"], ()):
+            for raw in array_value(value_at(entry["data"], field)):
+                title = item_headline(raw)
+                key = title.lower()
+                if not title or key in seen:
+                    continue
+                seen.add(key)
+                if isinstance(raw, dict):
+                    severity = text_value(value_at(raw, "severity", "priority", "status", "likelihood"))
+                    owner = text_value(value_at(raw, "owner", "owner_horizon", "responsible"))
+                    mitigation = text_value(value_at(raw, "mitigation", "recommendation", "next_step", "action", "plan"))
+                else:
+                    severity = ""
+                    owner = ""
+                    mitigation = ""
+                rows.append(
+                    {
+                        "risk": title,
+                        "severity": severity,
+                        "owner": owner,
+                        "review": f"{entry['label']} / {entry['date']}",
+                        "mitigation": snippet(mitigation, 220),
+                    }
+                )
+                if len(rows) >= limit:
+                    return rows
+    return rows
+
+
+def snapshot_decision_rows(decisions: list[dict[str, Any]], due_decisions: list[dict[str, Any]], entries: list[dict[str, Any]], *, limit: int = 8) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add(decision: str, context: str, owner: str, needed_by: str, source: str) -> None:
+        key = decision.lower()
+        if not decision or key in seen:
+            return
+        seen.add(key)
+        rows.append({"decision": decision, "context": snippet(context, 220), "owner": owner, "needed_by": needed_by, "source": source})
+        del rows[limit:]
+
+    for decision in due_decisions:
+        add(
+            text_value(value_at(decision, "title", "decision")),
+            text_value(value_at(decision, "context", "rationale")),
+            text_value(value_at(decision, "owner", "responsible")),
+            text_value(value_at(decision, "when", "revisitTrigger", "needed_by")),
+            "Decision log",
+        )
+    specs = {
+        "weekly-reviews": [("decisions_needed", ""), ("decisions", "")],
+        "ceo-updates": [("asks_decisions", ""), ("asks", ""), ("decisions", "")],
+        "codebase-accountability": [("decisions", ""), ("decision_points", "")],
+    }
+    for entry in entries:
+        for field, _prefix in specs.get(entry["kind"], []):
+            for raw in array_value(value_at(entry["data"], field)):
+                if isinstance(raw, dict):
+                    add(
+                        item_headline(raw),
+                        text_value(value_at(raw, "context", "detail", "details", "summary", "why")),
+                        text_value(value_at(raw, "owner", "responsible")),
+                        text_value(value_at(raw, "needed_by", "due", "horizon")),
+                        f"{entry['label']} / {entry['date']}",
+                    )
+                else:
+                    add(text_value(raw), "", "", "", f"{entry['label']} / {entry['date']}")
+                if len(rows) >= limit:
+                    return rows
+    if not rows and decisions:
+        for decision in decisions[-limit:]:
+            add(
+                text_value(value_at(decision, "title", "decision")),
+                text_value(value_at(decision, "context", "rationale")),
+                text_value(value_at(decision, "owner", "responsible")),
+                text_value(value_at(decision, "when", "revisitTrigger")),
+                "Decision log",
+            )
+    return rows
+
+
+def snapshot_operating_rows(cadence_due: list[dict[str, Any]], learning_items: list[dict[str, Any]], report_entries: list[dict[str, Any]], end: dt.date) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    if cadence_due:
+        for alert in cadence_due[:6]:
+            rows.append({"signal": f"Cadence due: {alert['label']}", "status": "Due", "detail": alert["reason"], "source": "Operating cadence"})
+    else:
+        rows.append({"signal": "Operating cadence", "status": "Current", "detail": "No cadence items are due today or overdue.", "source": "Operating cadence"})
+
+    learning_due = []
+    for item in learning_items:
+        due_on = text_value(item.get("due_on"))
+        try:
+            due_date = dt.date.fromisoformat(due_on)
+        except ValueError:
+            continue
+        if due_date <= end and int(item.get("seen_count", 0) or 0) > 0:
+            learning_due.append(item)
+    rows.append(
+        {
+            "signal": "Learning",
+            "status": f"{len(learning_due)} due",
+            "detail": f"{len(learning_items)} active learning items tracked.",
+            "source": "Learning",
+        }
+    )
+    report_kinds = sorted({entry["label"] for entry in report_entries})
+    rows.append(
+        {
+            "signal": "Report coverage",
+            "status": f"{len(report_entries)} reports",
+            "detail": ", ".join(report_kinds) if report_kinds else "No report artifacts found in the snapshot window.",
+            "source": "Reports",
+        }
+    )
+    return rows
+
+
+def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[str, Any]:
+    wiki_root = wiki_root_for_project(project)
+    reports_dir = wiki_root / "reports"
+    core_dir = wiki_root / "core"
+    learning_dir = wiki_root / "learning"
+    entries = snapshot_report_entries(wiki_root, start, end)
+
+    risk_registry = build_risk_registry(wiki_root)
+    risks = active_registry_risks(risk_registry)
+    due_risks = due_risk_entries(risks, end)
+    high_risks = [risk for risk in risks if severity_rank(text_value(value_at(risk, "severity", "status"))) <= severity_rank("High")]
+
+    decision_registry = build_decision_registry(wiki_root)
+    decisions = registry_decisions(decision_registry)
+    due_decisions = due_decision_entries(decisions, end)
+
+    cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
+    cadence_due = cadence_alerts(cadence_rules, reports_dir, end)
+    learning_items = read_learning_items(learning_dir)
+
+    communicate_up = snapshot_items_from_reports(
+        entries,
+        {
+            "ceo-updates": [("progress", "Progress"), ("risks_blockers", "Risk"), ("asks_decisions", "Ask"), ("next", "Next")],
+            "weekly-reviews": [("ceo_update_seeds", ""), ("risks", "Risk"), ("decisions_needed", "Decision")],
+            "engineering-risk": [("top_risks", "Risk")],
+            "codebase-accountability": [("management_exceptions", "Exception")],
+        },
+        limit=8,
+    )
+    communicate_down = snapshot_items_from_reports(
+        entries,
+        {
+            "weekly-reviews": [("next_week_focus", "Focus"), ("team_process", "Team/process"), ("decisions_needed", "Decision")],
+            "codebase-accountability": [("management_exceptions", "Exception"), ("questions", "Question")],
+            "engineering-risk": [("mitigations", "Mitigation")],
+        },
+        limit=8,
+    )
+    priorities = snapshot_priority_rows(entries, due_risks, cadence_due)
+    application_state = [
+        {"title": entry["label"], "body": entry["summary"], "source": f"{entry['label']} / {entry['date']}"}
+        for entry in entries
+        if entry["summary"]
+    ][:8]
+    risk_rows = snapshot_risk_rows(risks, due_risks, entries)
+    decision_rows = snapshot_decision_rows(decisions, due_decisions, entries)
+    operating_rows = snapshot_operating_rows(cadence_due, learning_items, entries, end)
+    report_rollup = [
+        {"report": entry["label"], "date": entry["date"], "summary": entry["summary"], "source": entry["href"] or str(entry["path"].relative_to(wiki_root))}
+        for entry in entries
+    ]
+
+    executive_read = (
+        f"Snapshot for {start.isoformat()} through {end.isoformat()}: {len(entries)} report artifact"
+        f"{'s' if len(entries) != 1 else ''}, {len(risks)} active risk{'s' if len(risks) != 1 else ''} "
+        f"({len(high_risks)} high or critical), {len(due_risks)} risk review{'s' if len(due_risks) != 1 else ''} due, "
+        f"{len(due_decisions)} decision review{'s' if len(due_decisions) != 1 else ''} due, and "
+        f"{len(cadence_due)} cadence item{'s' if len(cadence_due) != 1 else ''} due. "
+        "Use this as the single CTO readout: communicate up from the Communicate Up section, communicate down from the team-facing section, and run priorities from the priority table."
+    )
+
+    return {
+        "executive_read": executive_read,
+        "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "metrics": [
+            {"label": "Reports", "value": len(entries), "detail": "Included in window"},
+            {"label": "Active risks", "value": len(risks), "detail": f"{len(high_risks)} high/critical"},
+            {"label": "Risk reviews", "value": len(due_risks), "detail": "Due by window end"},
+            {"label": "Decision reviews", "value": len(due_decisions), "detail": "Due or triggered"},
+            {"label": "Cadence due", "value": len(cadence_due), "detail": "Due by window end"},
+        ],
+        "communicate_up": communicate_up,
+        "communicate_down": communicate_down,
+        "priorities": priorities,
+        "application_state": application_state,
+        "risks": risk_rows,
+        "decisions": decision_rows,
+        "operating_signals": operating_rows,
+        "report_rollup": report_rollup,
+        "sources": [item["source"] for item in report_rollup] + ["core/RISKS.md", "core/DECISIONS.md", "core/OPERATING_CADENCE.md", "learning/items.json"],
+    }
+
+
+def run_snapshot(args: argparse.Namespace) -> int:
+    project = resolve_project(args.project)
+    require_existing_wiki(project)
+    wiki_root = wiki_root_for_project(project)
+    start, end = snapshot_window(args)
+    data = build_snapshot_data(project, start=start, end=end)
+
+    generated_dir = sidecar_dir(wiki_root) / "generated"
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    report_date = args.date or end.isoformat()
+    title = args.title or f"Day Zero CTO Snapshot Report {snapshot_title_date(start)}-{snapshot_title_date(end)}"
+    data_path = Path(args.output_json).expanduser().resolve() if args.output_json else generated_dir / f"snapshot-{start.isoformat()}-{end.isoformat()}.json"
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    data_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+
+    if args.no_artifact:
+        if not args.json:
+            print(data_path)
+        return 0
+
+    return run_script(
+        "dzcto_artifact.py",
+        [
+            "--project",
+            str(project),
+            "--kind",
+            "snapshot",
+            "--title",
+            title,
+            "--date",
+            report_date,
+            "--data-file",
+            str(data_path),
+        ],
+    )
+
+
 def print_quickstart(project: Path | None = None) -> None:
     project_arg = shell_project(project)
     print(
@@ -564,12 +1009,15 @@ def command_reference_text(project: Path | None = None) -> str:
               Check stale generated pages, generator version, missing artifacts, and cadence due state.
 
         Reports and artifacts
+          dzcto snapshot {project_arg} [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--days N] [--json] [--no-artifact]
+              Generate the one-page CTO snapshot: what to communicate up, communicate down, and prioritize.
+              Defaults to the 7-day window ending today.
           dzcto codebase-accountability {project_arg} [--repo <path> ...] [--since <git date>] [--days N] [--json] [--no-artifact]
               Generate a management-by-exception report from read-only local Git history, provenance, guardrail checks,
               risk signals, and decision signals. Defaults to the previous report window or the last 7 days.
           dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
-              Kinds (token -> skill): tech-stack -> tech-stack, engineering-risk -> review-engineering-risk,
+              Kinds (token -> skill): snapshot -> snapshot-report, tech-stack -> tech-stack, engineering-risk -> review-engineering-risk,
               codebase-accountability -> codebase-accountability, weekly-reviews -> weekly-cto-review,
               ceo-updates -> write-ceo-update.
           dzcto collect-issue-bundle <project> [--output <zip>] [--no-redact]
@@ -598,6 +1046,8 @@ def command_reference_text(project: Path | None = None) -> str:
               Create a fresh engineering-risk report artifact.
           day-zero-cto:codebase-accountability
               Generate a management-by-exception codebase accountability report from Git history and guardrail signals.
+          day-zero-cto:snapshot-report
+              Distill current reports, risks, decisions, cadence, and learning into the one CTO snapshot.
 
         Editing rule
           Edit Markdown sources under <project>/knowledge/wiki/core/, not generated HTML. For substantive updates,
@@ -670,6 +1120,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
         "reports": f"""
             Report loop
 
+            Snapshot: the one document for what the CTO needs to understand, communicate up, communicate down, and prioritize.
             Weekly CTO Review: delivery, risks, decisions, team/process, next focus.
             CEO Update: progress, risks/blockers, asks/decisions, next.
             Engineering Risk: top risks, mitigations, watchpoints.
@@ -734,6 +1185,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
               dzcto artifact --project {project_arg} --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json
 
             Supported kinds (note the --kind token differs from the skill name):
+              snapshot          from the snapshot-report skill
               tech-stack        from the tech-stack skill
               engineering-risk  from the review-engineering-risk skill
               codebase-accountability from the codebase-accountability skill
@@ -1580,6 +2032,17 @@ def main(argv: list[str]) -> int:
     claude_desktop = sub.add_parser("package-claude-desktop", help="Build an uploadable Claude Desktop custom skill zip")
     claude_desktop.add_argument("--output", help="Zip output path")
 
+    snapshot = sub.add_parser("snapshot", help="Generate the CTO snapshot report from current Day Zero CTO artifacts")
+    snapshot.add_argument("project", help="Project folder")
+    snapshot.add_argument("--start", help="Window start date, YYYY-MM-DD. Defaults to --end minus --days + 1")
+    snapshot.add_argument("--end", help="Window end date, YYYY-MM-DD. Defaults to today")
+    snapshot.add_argument("--days", type=int, default=7, help="Default window length when --start is omitted")
+    snapshot.add_argument("--title", help="Report title; defaults to Day Zero CTO Snapshot Report <start>-<end>")
+    snapshot.add_argument("--date", help="Report date; defaults to --end or today")
+    snapshot.add_argument("--output-json", help="Write structured report JSON to this path")
+    snapshot.add_argument("--json", action="store_true", help="Print structured JSON")
+    snapshot.add_argument("--no-artifact", action="store_true", help="Only write/print JSON; do not render HTML artifact")
+
     accountability = sub.add_parser("codebase-accountability", help="Generate a codebase accountability report from local Git history")
     accountability.add_argument("project", help="Project folder")
     accountability.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
@@ -1740,6 +2203,9 @@ def main(argv: list[str]) -> int:
         path = package_claude_desktop(output)
         print(path)
         return 0
+
+    if args.command == "snapshot":
+        return run_snapshot(args)
 
     if args.command == "codebase-accountability":
         return run_codebase_accountability(args)

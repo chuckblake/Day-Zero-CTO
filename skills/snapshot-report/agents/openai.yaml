@@ -1,0 +1,4 @@
+interface:
+  display_name: "Snapshot Report"
+  short_description: "Create the one CTO readout."
+  default_prompt: "Generate the Day Zero CTO Snapshot Report for this startup."
