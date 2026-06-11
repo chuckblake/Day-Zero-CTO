@@ -99,7 +99,7 @@ All user-facing wiki pages are HTML. Core context starts as editable Markdown so
 Generated wiki pages use a compact command-center interface:
 
 - Sticky top navigation with the current page title, breadcrumbs back to the dashboard, search, and theme toggle.
-- Linked KPI strip for cadence, risks, decisions, reports, learning, and connected repos. The risk KPI opens the canonical Risks page rather than duplicating the register on the dashboard.
+- Linked KPI strip for cadence, risks, decisions, the primary Snapshot, learning, and connected repos. The risk KPI opens the canonical Risks page rather than duplicating the register on the dashboard.
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages. Incomplete setup appears as a top dashboard alert; complete setup moves into a collapsed Setup reference section.
 - A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
 - Generated "Current Read" summaries on the Decisions and Risks core pages. These are regenerated from source rows on every refresh and stay short: one paragraph that emphasizes frequent and newer themes.
@@ -108,7 +108,7 @@ Generated wiki pages use a compact command-center interface:
 - Generated per-risk and per-decision detail pages under `risks/` and `decisions/`. Clicking a matched risk or decision opens the focused item view with canonical fields plus every report/source reference that points at it.
 - A canonical Risks page with report-derived `Risk Signals From Reports` triage plus the generated risk registry. Signals link to existing risk detail pages when matched; unmatched signals show as `Needs triage` until promoted, merged, or dismissed.
 - A canonical Decisions page with report-derived `Decision Signals From Reports` triage plus the generated decision registry. Signals link to existing decision detail pages when matched; unmatched asks or proposed choices show as `Needs triage` until they become durable decisions.
-- Report cards show an `Open latest` action, the latest report summary, and a compact previous-run list when a report folder has older artifacts.
+- The Reports section leads with Snapshot as the primary CTO readout, then shows supporting drill-down reports beneath it. Report cards show an `Open latest` action, the latest report summary, and a compact previous-run list when a report folder has older artifacts.
 - Snapshot Reports are the top-level CTO digest. They synthesize current report artifacts plus canonical risks, decisions, cadence, and learning state into one consumable report with `Communicate Up`, `Communicate Down`, and `Priorities` sections.
 - Codebase Accountability reports give the CTO a management-by-exception view across connected repos: changed subsystems, actor/author activity, issue-reference coverage, dirty worktrees, high-attention file movement, dependency drift, guardrail checks, and risk/decision intake signals.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
@@ -134,7 +134,7 @@ Every active risk should carry a calendar date in its `Next Review` field. Exter
 
 Codebase Accountability is the oversight layer for many coding agents. It does not replace code review or the canonical risk/decision logs. It scans local Git history from configured read-only repos, highlights exceptions, and writes report signals that can be promoted into `RISKS.md`, `DECISIONS.md`, or `ENGINEERING_GUARDRAILS.md` when they become durable operating facts.
 
-Snapshot Reports are synthesis artifacts. They do not create a new source of truth; they read existing reports plus canonical risks, decisions, cadence, and learning state, then produce the one report a CTO can use before a leadership meeting. The default command creates a seven-day window ending today; explicit windows are supported for board, investor, or sprint-cycle readouts.
+Snapshot Reports are synthesis artifacts. They do not create a new source of truth; they read existing reports plus canonical risks, decisions, cadence, and learning state, then produce the one report a CTO can use before a leadership meeting. The default command creates a seven-day window ending today; explicit windows are supported for board, investor, or sprint-cycle readouts. Weekly CTO Reviews and CEO Updates are still useful, but they are drill-down inputs: Weekly captures operating detail, while CEO Update creates an audience-specific communication draft.
 
 The index shows company information under the title, then a dashboard workspace:
 
@@ -142,7 +142,7 @@ The index shows company information under the title, then a dashboard workspace:
 - `dzcto lfg`: a local command that picks the next best action in order: setup, cadence, risks, decisions, then learning.
 - `Setup`: a highlighted dashboard alert only while setup is incomplete; once complete it moves to the bottom of the page as a quieter reference link to `setup/index.html`.
 - `Core Context`: links to generated HTML pages for strategy, team, cadence, decisions, and risks.
-- `Reports`: latest report cards for each artifact kind.
+- `Reports`: Snapshot first, followed by drill-down report cards for Tech Stack, Engineering Risk, Codebase Accountability, Weekly Reviews, and CEO Updates.
 - `Learning`: spaced-repetition state and mastery progress.
 - `Help`: one expandable help document with the command reference, copyable AI prompts, and local helper commands with the exact project and repo context.
 
@@ -438,7 +438,7 @@ dzcto <command> -h
 
 | Skill prompt | Use when |
 | --- | --- |
-| `day-zero-cto:snapshot-report` | Distill current reports, risks, decisions, cadence, and learning into one CTO snapshot. |
+| `day-zero-cto:snapshot-report` | Distill current reports, risks, decisions, cadence, and learning into the primary CTO readout. |
 | `day-zero-cto:refine-core-context` | Interview, draft, approve, write source Markdown, and refresh core context. |
 | `day-zero-cto:review-decisions` | Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed. |
 | `day-zero-cto:review-risks` | Walk active risks one at a time and keep, update, close, punt, mark evidence needed, or log decisions made while addressing the risk. |
@@ -462,8 +462,8 @@ The supported report kinds have fixed section templates:
 | `snapshot` | `executive_read`, `window`, `metrics`, `communicate_up`, `communicate_down`, `priorities`, `application_state`, `risks`, `decisions`, `operating_signals`, `report_rollup`, `sources` |
 | `tech-stack` | `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, `sources` |
 | `codebase-accountability` | `executive_read`, `review_window`, `metrics`, `management_exceptions`, `changed_subsystems`, `provenance`, `guardrail_checks`, `agent_activity`, `change_units`, `risks`, `decisions`, `questions`, `sources` |
-| `weekly-reviews` | `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
-| `ceo-updates` | `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources` |
+| `weekly-reviews` | Supporting operating detail: `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
+| `ceo-updates` | Supporting communication draft: `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources` |
 | `engineering-risk` | `executive_read`, `top_risks`, `mitigations`, `watchpoints`, `sources` |
 
 Optional `metrics` are rendered as summary cards when present.
@@ -549,8 +549,8 @@ Install or load this plugin, then ask for one of the workflows in natural langua
 - "Generate the Day Zero CTO Snapshot Report for June 5, 2026 through June 11, 2026."
 - "Generate a codebase accountability report for this startup. Surface repo movement, provenance gaps, management exceptions, and any risk or decision signals."
 - "Create a Tech Stack report from the connected codebases and write it into the project knowledge wiki."
-- "Run the weekly CTO review and write the HTML report into the project knowledge wiki."
-- "Write a CEO update from this week's engineering work."
+- "Run the supporting weekly CTO review and write the HTML report into the project knowledge wiki."
+- "Write a supporting CEO update from this week's engineering work."
 - "Review engineering risk before launch. Treat the code repos as read-only."
 - "Review this PR as a startup CTO and save a durable review artifact."
 - "Run a Day Zero CTO learning prompt."

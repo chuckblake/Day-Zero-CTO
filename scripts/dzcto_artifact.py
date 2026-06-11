@@ -38,6 +38,33 @@ REPORT_FOLDERS = {
     "ceo-updates": "CEO Updates",
 }
 
+REPORT_ROLES = {
+    "snapshot": (
+        "Primary readout",
+        "The one report to read first: current state, communicate up, communicate down, and priorities.",
+    ),
+    "tech-stack": (
+        "Architecture evidence",
+        "Stack, systems, integrations, and onboarding context that feed the snapshot and risk register.",
+    ),
+    "engineering-risk": (
+        "Risk evidence",
+        "Focused engineering risk review and mitigation evidence for the canonical risk system.",
+    ),
+    "codebase-accountability": (
+        "Accountability evidence",
+        "Management-by-exception view of repo movement, provenance gaps, guardrails, and agent activity.",
+    ),
+    "weekly-reviews": (
+        "Operating detail",
+        "Week-level delivery, process, decisions, risks, and next-focus detail that feeds the snapshot.",
+    ),
+    "ceo-updates": (
+        "Executive draft",
+        "Audience-specific communication draft for CEO/founder updates; the snapshot remains the source readout.",
+    ),
+}
+
 RISK_SIGNAL_REPORT_FIELDS = {
     "tech-stack": ("risks_watchpoints", "risks", "watchpoints"),
     "engineering-risk": ("top_risks", "risks", "watchpoints"),
@@ -547,13 +574,21 @@ def default_ai_prompts(company: str, project_folder: Path, repos: list[str], rep
         (
             "Weekly CTO Review",
             exact_prompt(
-                f"Run the weekly CTO review for {company}. Prefer read-only local Git history for the review window when available; do not run mutating Git commands.",
+                f"Run the supporting weekly CTO review for {company}. Capture the week-level delivery, risks, decisions, team/process, and next-focus detail that should feed the Snapshot Report. Prefer read-only local Git history for the review window when available; do not run mutating Git commands.",
                 project_folder,
                 repos,
                 report_prompt_context,
             ),
         ),
-        ("CEO Update", exact_prompt(f"Write the CEO engineering update for {company}.", project_folder, repos, report_prompt_context)),
+        (
+            "CEO Update",
+            exact_prompt(
+                f"Write the supporting CEO engineering update for {company}. Treat it as an audience-specific communication draft; the Snapshot Report remains the primary CTO readout.",
+                project_folder,
+                repos,
+                report_prompt_context,
+            ),
+        ),
         ("Tech Stack", exact_prompt(f"Review the connected codebase(s) and create a Tech Stack report for {company}.", project_folder, repos, report_prompt_context)),
         ("Engineering Risk Review", exact_prompt(f"Run the engineering risk review for {company}.", project_folder, repos, report_prompt_context)),
         (
@@ -643,6 +678,10 @@ def local_helper_commands(project_folder: Path) -> list[tuple[str, str]]:
     ]
 
 
+def report_role(folder: str) -> tuple[str, str]:
+    return REPORT_ROLES.get(folder, ("Drill-down report", "Supporting report artifact."))
+
+
 def setup_checklist_items(
     *,
     wiki_root: Path,
@@ -696,7 +735,7 @@ def setup_checklist_items(
         item(
             "First reports",
             report_count > 0,
-            f"{report_count} report artifact{'s' if report_count != 1 else ''}" if report_count else "Run Tech Stack, Risk, Weekly, or CEO update",
+            f"{report_count} report artifact{'s' if report_count != 1 else ''}" if report_count else "Run Tech Stack, Engineering Risk, and Snapshot reports",
             "#sec-reports",
             "Run first report",
         ),
@@ -819,7 +858,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         ),
         (
             "Operate",
-            "Run weekly reviews, CEO updates, risk reviews, decision reviews, learning, and tech-stack reports from prompt cards.",
+            "Read the Snapshot first, then drill into weekly, CEO, risk, accountability, learning, and tech-stack reports when evidence is needed.",
             f'dzcto help reports --project "{project}"',
         ),
         (
@@ -842,6 +881,7 @@ def dashboard_help_html(project_folder: Path, ai_prompt_items: list[str], local_
         ("status", f'dzcto status "{project}"', "Show setup checklist and operating health."),
         ("doctor", f'dzcto doctor --project "{project}"', "Check install, manifests, helper syntax, wrappers, and project files."),
         ("check-stale", f'dzcto check-stale "{project}"', "Check generated artifacts, version drift, missing files, and cadence due state."),
+        ("snapshot", f'dzcto snapshot "{project}"', "Generate the primary CTO readout from current reports and canonical operating state."),
         ("artifact", f'dzcto artifact --project "{project}" --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json', "Generate durable HTML reports from structured data."),
         ("learning", f'dzcto learning --project "{project}" --select', "Manage spaced-repetition learning items and reviews."),
         ("collect-issue-bundle", f'dzcto collect-issue-bundle "{project}"', "Create a redacted troubleshooting bundle."),
@@ -4088,6 +4128,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .b-high { color: var(--high); background: var(--high-soft); }
 .b-med, .medium { color: var(--med); background: var(--med-soft); }
 .b-low, .ready, .low { color: var(--low); background: var(--low-soft); }
+.report-stack { display: grid; gap: 14px; }
 .reports, .reports-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
 .report, .report-card {
   display: flex;
@@ -4102,13 +4143,37 @@ h1.title { font-size: 38px; font-weight: 800; }
 }
 .report:hover, .report-card:hover { border-color: var(--accent); text-decoration: none; }
 .report.empty, .report-card.empty { background: var(--surface-2); border-style: dashed; box-shadow: none; }
+.report-primary {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.report-primary.empty { border-style: solid; border-color: var(--high-line); background: var(--high-soft); }
+.report-subhead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 1px 0;
+}
+.report-subhead h3 { color: var(--ink); font-size: 15px; font-weight: 800; }
+.report-subhead p { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.report-subhead span { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .rp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .rp-head { display: grid; gap: 3px; min-width: 0; }
+.rp-role { color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .rp-name, .report-title { color: var(--ink); font-size: 15px; font-weight: 800; }
 .rp-count, .report-count, .rp-open-top { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
 .rp-open-top { border: 1px solid var(--line-2); color: var(--accent); background: var(--surface); }
 .rp-open-top:hover { border-color: var(--accent); color: var(--accent-ink); text-decoration: none; }
+.rp-purpose { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .rp-prev { color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+.report-command {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .report-history { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 9px; }
 .rh-label { color: var(--faint); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .rh-item { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 9px; color: var(--ink-2); font-size: 11.5px; line-height: 1.35; }
@@ -4492,6 +4557,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
 @media (max-width: 560px) {
   .app { padding: 24px 16px 70px; }
   .kpis, .core, .status-grid, .summary, .grid, .item-meta-grid { grid-template-columns: 1fr 1fr; }
+  .report-subhead { align-items: flex-start; flex-direction: column; gap: 4px; }
   .setup-list { grid-template-columns: 1fr; }
   .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
   .setup-page-list .setup-item { grid-template-columns: auto minmax(0, 1fr); }
@@ -5289,11 +5355,17 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     core_ready = sum(1 for page in core_pages if page["source_exists"])
 
     report_entries = [(folder, label, sorted((reports_dir / folder).glob("*.html"), reverse=True)) for folder, label in REPORT_FOLDERS.items()]
+    report_links_by_folder = {folder: links for folder, _label, links in report_entries}
+    snapshot_links = report_links_by_folder.get("snapshot", [])
+    supporting_report_entries = [(folder, label, links) for folder, label, links in report_entries if folder != "snapshot"]
     report_count = sum(len(links) for _folder, _label, links in report_entries)
+    supporting_report_count = sum(len(links) for _folder, _label, links in supporting_report_entries)
     tech_stack_links = next((links for folder, _label, links in report_entries if folder == "tech-stack"), [])
     tech_stack_href = tech_stack_links[0].relative_to(wiki_root).as_posix() if tech_stack_links else "#sec-reports"
-    report_sections = []
-    for folder, label, links in report_entries:
+
+    def report_card(folder: str, label: str, links: list[Path], *, primary: bool = False) -> str:
+        role_label, role_detail = report_role(folder)
+        card_classes = "report report-primary" if primary else "report"
         latest = report_run_date(links[0]) if links else ""
         if links:
             latest_path = links[0]
@@ -5325,24 +5397,50 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
             )
             previous_count = max(len(links) - 1, 0)
             report_meta = latest if not previous_count else f"{latest} / {pluralize(previous_count, 'previous report')}"
-            report_sections.append(
-                f"""<article class="report" data-search-text="{search_text_attr(label, preview, latest, *history_search)}">
+            return f"""<article class="{card_classes}" data-search-text="{search_text_attr(label, role_label, role_detail, preview, latest, *history_search)}">
   <div class="rp-top">
-    <div class="rp-head"><span class="rp-name">{esc(label)}</span><span class="rp-date">{esc(report_meta)}</span></div>
+    <div class="rp-head"><span class="rp-role">{esc(role_label)}</span><span class="rp-name">{esc(label)}</span><span class="rp-date">{esc(report_meta)}</span></div>
     <a class="rp-open-top" href="{esc(href)}">Open latest</a>
   </div>
+  <p class="rp-purpose">{esc(role_detail)}</p>
   <p class="rp-prev">{esc(preview)}</p>
   {history_html}
 </article>"""
-            )
-        else:
-            report_sections.append(
-                f"""<article class="report empty" data-search-text="{search_text_attr(label, 'No reports generated yet')}">
-  <div class="rp-top"><span class="rp-name">{esc(label)}</span><span class="rp-count">No reports</span></div>
-  <p class="rp-prev">No reports generated yet.</p>
+        if primary:
+            return f"""<article class="{card_classes} empty" data-search-text="{search_text_attr(label, role_label, role_detail, 'No snapshot generated yet')}">
+  <div class="rp-top">
+    <div class="rp-head"><span class="rp-role">{esc(role_label)}</span><span class="rp-name">{esc(label)}</span><span class="rp-date">No snapshot yet</span></div>
+    <span class="rp-count">Needed</span>
+  </div>
+  <p class="rp-purpose">{esc(role_detail)}</p>
+  <p class="rp-prev">Generate the Snapshot after the supporting reports have enough signal. It becomes the one CTO readout for leadership prep, team communication, and priorities.</p>
+  <code class="report-command">dzcto snapshot "{esc(str(project_folder))}"</code>
+</article>"""
+        return f"""<article class="{card_classes} empty" data-search-text="{search_text_attr(label, role_label, role_detail, 'No reports generated yet')}">
+  <div class="rp-top">
+    <div class="rp-head"><span class="rp-role">{esc(role_label)}</span><span class="rp-name">{esc(label)}</span></div>
+    <span class="rp-count">No reports</span>
+  </div>
+  <p class="rp-purpose">{esc(role_detail)}</p>
+  <p class="rp-prev">No supporting report generated yet.</p>
   <div class="rp-foot"><span class="rp-date">No runs</span></div>
 </article>"""
-            )
+
+    snapshot_card = report_card("snapshot", REPORT_FOLDERS["snapshot"], snapshot_links, primary=True)
+    supporting_report_sections = [report_card(folder, label, links) for folder, label, links in supporting_report_entries]
+    reports_html = f"""
+      <div class="report-stack">
+        {snapshot_card}
+        <div class="report-subhead">
+          <div>
+            <h3>Drill-down reports</h3>
+            <p>Use these as evidence and source material for the Snapshot, not as competing top-level dashboards.</p>
+          </div>
+          <span>{esc(pluralize(supporting_report_count, "artifact"))}</span>
+        </div>
+        <div class="reports reports-supporting">{''.join(supporting_report_sections)}</div>
+      </div>
+"""
 
     core_links = []
     for page in core_pages:
@@ -5388,12 +5486,14 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         cadence_tone_attr = ' data-tone="crit"'
     cadence_class_attr = f" {cadence_class}" if cadence_class else ""
 
-    if not cadence_rules:
-        report_status = pluralize(report_count, "artifact")
-    elif not alerts:
-        report_status = f"{pluralize(report_count, 'artifact')} / All current"
-    else:
-        report_status = f"{pluralize(report_count, 'artifact')} / {pluralize(len(alerts), 'alert')}"
+    snapshot_href = snapshot_links[0].relative_to(wiki_root).as_posix() if snapshot_links else "#sec-reports"
+    snapshot_latest = report_run_date(snapshot_links[0]) if snapshot_links else ""
+    snapshot_tone_attr = "" if snapshot_links else ' data-tone="warn"'
+    snapshot_sub = f"Latest {snapshot_latest}" if snapshot_links else "Generate first snapshot"
+    snapshot_status = f"Snapshot {snapshot_latest}" if snapshot_links else "Snapshot needed"
+    report_status = f"{snapshot_status} / {pluralize(supporting_report_count, 'drill-down artifact')}"
+    if alerts:
+        report_status = f"{report_status} / {pluralize(len(alerts), 'cadence alert')}"
     risk_tone_attr = ' data-tone="crit"' if critical_risks else ' data-tone="warn"' if due_risks else ""
     risk_sub = f"{pluralize(len(due_risks), 'review')} due" if due_risks else "Open risk page"
     decision_tone_attr = ' data-tone="warn"' if due_decisions else ""
@@ -5567,10 +5667,10 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <div class="k-val">{esc(len(decisions))}</div>
       <div class="k-sub">{esc(decision_sub)}</div>
     </a>
-    <a class="kpi" href="#sec-reports">
-      <div class="k-label">Reports</div>
-      <div class="k-val">{esc(report_count)}<span class="unit">/ {esc(len(REPORT_FOLDERS))}</span></div>
-      <div class="k-sub">{esc(report_status)}</div>
+    <a class="kpi" href="{esc(snapshot_href)}"{snapshot_tone_attr}>
+      <div class="k-label">Snapshot</div>
+      <div class="k-val">{esc(1 if snapshot_links else 0)}<span class="unit">/ primary</span></div>
+      <div class="k-sub">{esc(snapshot_sub)}</div>
     </a>
     <a class="kpi" href="learning/index.html">
       <div class="k-label">Learning due</div>
@@ -5615,7 +5715,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <span class="sec-meta" data-report-count>{esc(report_status)}</span>
     </summary>
     <div class="sec-body">
-      <div class="reports">{''.join(report_sections)}</div>
+      {reports_html}
     </div>
   </details>
 

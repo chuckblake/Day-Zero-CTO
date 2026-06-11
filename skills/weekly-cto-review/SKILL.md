@@ -1,11 +1,11 @@
 ---
 name: weekly-cto-review
-description: "Run the recurring Day Zero CTO weekly review and durable HTML report. Use for weekly CTO review, engineering health, startup operating review, leadership recap, next-week priorities, delivery, risks, decisions, team/process, or CEO-update seeds."
+description: "Run the supporting Day Zero CTO weekly review and durable HTML report. Use for week-level operating detail, engineering health, delivery, risks, decisions, team/process, next-week priorities, and source material for the Snapshot Report."
 ---
 
 # Weekly CTO Review
 
-Turn scattered engineering activity into a clear operating picture and next-week focus.
+Turn scattered engineering activity into a clear operating-detail report that can feed the Snapshot Report.
 
 ## Workflow
 
@@ -15,7 +15,7 @@ Turn scattered engineering activity into a clear operating picture and next-week
 4. Gather current evidence from available read-only sources: recent commits, open diffs, test/CI status, issues, project docs, incidents, and user-provided notes. Prefer local read-only Git history when available.
 5. Compare progress against the company's current goals, not against generic engineering ideals.
 6. Identify the smallest useful set of decisions, risks, and next actions.
-7. Write the canonical review as an HTML artifact under `<project>/knowledge/wiki/reports/weekly-reviews/`. The artifact command refreshes the dashboard automatically.
+7. Write the supporting review as an HTML artifact under `<project>/knowledge/wiki/reports/weekly-reviews/`. The artifact command refreshes the dashboard automatically.
 8. Summarize the review in chat and link to the generated artifact.
 
 ## Review Sections
@@ -26,7 +26,7 @@ Turn scattered engineering activity into a clear operating picture and next-week
 - `Decisions needed`: choices that need founder, CEO, product, or engineering attention.
 - `Team and process`: load, coordination, morale signals, review bottlenecks, hiring gaps, or meeting debt.
 - `Next-week focus`: 3-5 priorities with clear owners when known.
-- `CEO-update seeds`: bullets that can feed `write-ceo-update`.
+- `CEO-update seeds`: bullets that can feed `write-ceo-update` or the Snapshot `Communicate Up` section.
 
 ## Git Evidence
 
@@ -56,6 +56,7 @@ The helper owns the HTML template; the agent owns the judgment and structured co
 
 ## Standards
 
+- Treat this as a drill-down report. The Snapshot Report is the primary CTO readout.
 - Do not manufacture metrics. Say when evidence is missing.
 - Prefer fewer sharper risks over a long risk catalog.
 - Distinguish delivery slippage, product uncertainty, technical risk, and people/process risk.

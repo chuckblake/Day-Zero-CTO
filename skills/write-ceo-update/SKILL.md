@@ -1,11 +1,11 @@
 ---
 name: write-ceo-update
-description: "Write a Day Zero CTO CEO-facing engineering update and durable HTML report. Use for CEO report, founder update, executive recap, weekly update, board/investor summary, or translating engineering work, risks, decisions, and asks into business language."
+description: "Write a supporting Day Zero CTO CEO-facing engineering update and durable HTML report. Use for audience-specific CEO/founder communication drafts, executive recaps, weekly updates, board/investor summaries, and translating engineering work, risks, decisions, and asks into business language."
 ---
 
 # Write CEO Update
 
-Translate engineering reality into concise business signal for the CEO or founding team.
+Translate engineering reality into a concise audience-specific communication draft for the CEO or founding team.
 
 ## Workflow
 
@@ -16,7 +16,7 @@ Translate engineering reality into concise business signal for the CEO or foundi
 5. Extract only the information that changes business judgment: progress, blocked outcomes, customer impact, risk, asks, and upcoming decisions.
 6. Draft the update in the requested tone. If no tone is specified, use direct, calm, non-defensive language.
 7. Flag unsupported claims and missing evidence instead of smoothing over them.
-8. Write the canonical update as an HTML artifact under `<project>/knowledge/wiki/reports/ceo-updates/`. The artifact command refreshes the dashboard automatically.
+8. Write the supporting update as an HTML artifact under `<project>/knowledge/wiki/reports/ceo-updates/`. The artifact command refreshes the dashboard automatically.
 9. Summarize the update in chat and link to the generated artifact.
 
 ## Default Structure
@@ -44,6 +44,7 @@ The helper owns the HTML template; the agent owns the judgment and structured co
 
 ## Standards
 
+- Treat this as a communication drill-down. The Snapshot Report is the primary CTO readout.
 - Avoid technical detail unless it changes a business decision.
 - Do not oversell progress or hide uncertainty.
 - Make asks explicit.

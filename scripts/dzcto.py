@@ -951,7 +951,8 @@ def print_quickstart(project: Path | None = None) -> None:
                Ask your agent to use day-zero-cto:refine-core-context for Strategy, Team, Operating Cadence, Decisions, or Risks.
 
             6. Run the operating loop
-               Use the dashboard's AI prompt cards for Weekly CTO Review, CEO Update, Engineering Risk, Tech Stack, Review Decisions, Review Risks, and Learning.
+               Use the dashboard's AI prompt cards for Snapshot Report first, then drill into Weekly Review, CEO Update,
+               Engineering Risk, Tech Stack, Codebase Accountability, Review Decisions, Review Risks, and Learning as needed.
 
             Useful help:
               dzcto help onboarding
@@ -1120,13 +1121,21 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
         "reports": f"""
             Report loop
 
-            Snapshot: the one document for what the CTO needs to understand, communicate up, communicate down, and prioritize.
-            Weekly CTO Review: delivery, risks, decisions, team/process, next focus.
-            CEO Update: progress, risks/blockers, asks/decisions, next.
-            Engineering Risk: top risks, mitigations, watchpoints.
-            Review Risks: walk the risk register one item at a time and update RISKS.md.
-            Tech Stack: architecture shape, stack components, candidate risks, onboarding notes.
-            Codebase Accountability: repo movement, management exceptions, provenance, guardrail checks, and agent/author activity.
+            Primary readout
+              Snapshot: the one document for what the CTO needs to understand, communicate up,
+              communicate down, and prioritize.
+
+            Drill-down reports
+              Weekly CTO Review: delivery, risks, decisions, team/process, next focus.
+              CEO Update: audience-specific progress, risks/blockers, asks/decisions, next.
+              Engineering Risk: top risks, mitigations, watchpoints.
+              Tech Stack: architecture shape, stack components, candidate risks, onboarding notes.
+              Codebase Accountability: repo movement, management exceptions, provenance, guardrail checks,
+              and agent/author activity.
+
+            Operating reviews
+              Review Risks: walk the risk register one item at a time and update RISKS.md.
+              Review Decisions: revisit durable choices by trigger and update DECISIONS.md.
 
             Reports are written under:
               {project_path}/knowledge/wiki/reports/
@@ -1756,7 +1765,7 @@ def collect_issue_bundle(project: Path, output: Path | None, do_redact: bool) ->
 def claude_desktop_skill_markdown() -> str:
     return """---
 name: day-zero-cto
-description: "Run Day Zero CTO workflows for early-stage technical leaders: onboarding, CTO context, tech stack mapping, risk reviews, decision-log reviews, weekly CTO reviews, CEO updates, and spaced-repetition learning. Use when the user asks for Day Zero CTO, CTO onboarding, startup technical leadership workflows, or durable CTO artifacts."
+description: "Run Day Zero CTO workflows for early-stage technical leaders: onboarding, CTO context, primary Snapshot reports, drill-down tech stack/accountability/risk/weekly/CEO reports, risk reviews, decision-log reviews, and spaced-repetition learning. Use when the user asks for Day Zero CTO, CTO onboarding, startup technical leadership workflows, or durable CTO artifacts."
 ---
 
 # Day Zero CTO
@@ -1777,11 +1786,13 @@ Use Day Zero CTO to help an early-stage technical leader organize company contex
 Read the matching reference file when needed:
 
 - `references/bootstrap-cto-context.md`: onboarding and project wiki setup.
+- `references/snapshot-report.md`: primary CTO Snapshot report.
 - `references/tech-stack.md`: codebase stack mapping.
+- `references/codebase-accountability.md`: repo movement, provenance, guardrails, and agent activity.
 - `references/review-engineering-risk.md`: engineering risk report.
 - `references/review-risks.md`: risk-register review and update workflow.
-- `references/weekly-cto-review.md`: weekly CTO operating review.
-- `references/write-ceo-update.md`: CEO-facing update.
+- `references/weekly-cto-review.md`: supporting weekly CTO operating detail.
+- `references/write-ceo-update.md`: supporting CEO-facing communication draft.
 - `references/review-decisions.md`: decision-log review and revisit workflow.
 - `references/learning.md`: spaced-repetition learning.
 
