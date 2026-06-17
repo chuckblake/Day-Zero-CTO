@@ -103,13 +103,13 @@ Generated wiki pages use a compact command-center interface:
 - A dedicated setup checklist page for company context, read-only repos, core context, cadence, first reports, learning, and generated pages. Incomplete setup appears as a top dashboard alert; complete setup moves into a collapsed Setup reference section.
 - A linked `What needs you today` panel with only actionable due items: decision reviews due or triggered, risk reviews due today or overdue, and cadence items due today or overdue.
 - Generated "Current Read" summaries on the Decisions and Risks core pages. These are regenerated from source rows on every refresh and stay short: one paragraph that emphasizes frequent and newer themes.
-- Filterable Decisions and Risks pages rendered from generated registries, with stable IDs for deep links from the dashboard and reports.
+- Filterable Decisions and Risks pages rendered from generated registries, with compact controls, contextual help, disabled inactive filters, and stable IDs for deep links from the dashboard and reports.
 - Canonical `risks/registry.json` and `decisions/registry.json` files generated from `core/RISKS.md`, `core/DECISIONS.md`, and structured report signals. These are machine-facing indexes, not the hand-editing source.
 - Generated per-risk and per-decision detail pages under `risks/` and `decisions/`. Clicking a matched risk or decision opens the focused item view with canonical fields plus every report/source reference that points at it.
 - A canonical Risks page with report-derived `Risk Signals From Reports` triage plus the generated risk registry. Signals link to existing risk detail pages when matched; unmatched signals show as `Needs triage` until promoted, merged, or dismissed.
 - A canonical Decisions page with report-derived `Decision Signals From Reports` triage plus the generated decision registry. Signals link to existing decision detail pages when matched; unmatched asks or proposed choices show as `Needs triage` until they become durable decisions.
 - The Reports section leads with Snapshot as the primary CTO readout, then shows supporting drill-down reports beneath it. Report cards show an `Open latest` action, the latest report summary, and a compact previous-run list when a report folder has older artifacts.
-- Snapshot Reports are the top-level CTO digest. They synthesize current report artifacts plus canonical risks, decisions, cadence, and learning state into one consumable report with `Communicate Up`, `Communicate Down`, and `Priorities` sections.
+- Snapshot Reports are the top-level CTO digest. They synthesize current report artifacts plus canonical risks, decisions, cadence, and learning state into one consumable report with `What Shipped`, `Communicate Up`, `Communicate Down`, and `Priorities` sections.
 - Codebase Accountability reports give the CTO a management-by-exception view across connected repos: changed subsystems, actor/author activity, issue-reference coverage, dirty worktrees, high-attention file movement, dependency drift, guardrail checks, and risk/decision intake signals.
 - Report, core context, learning, and Help-document sections modeled after the Arwen command-center template.
 - Top search across dashboard context, core docs, report artifacts, and active learning items.
@@ -459,7 +459,7 @@ The supported report kinds have fixed section templates:
 
 | Kind | Expected JSON fields |
 | --- | --- |
-| `snapshot` | `executive_read`, `window`, `tldr`, `changed_since_last_week`, `metrics`, `communicate_up`, `communicate_down`, `priorities`, `application_state`, `risks`, `decisions`, `operating_signals`, `outcome_signals`, `agent_activity_audit`, `report_rollup`, `sources` |
+| `snapshot` | `executive_read`, `window`, `tldr`, `changed_since_last_week`, `shipped_last_week`, `metrics`, `communicate_up`, `communicate_down`, `priorities`, `application_state`, `risks`, `decisions`, `operating_signals`, `outcome_signals`, `agent_activity_audit`, `report_rollup`, `sources` |
 | `tech-stack` | `executive_read`, `stack_components`, `architecture_shape`, `data_storage`, `integrations`, `infrastructure_operations`, `development_tooling`, `risks_watchpoints`, `onboarding_notes`, `sources` |
 | `codebase-accountability` | `executive_read`, `review_window`, `metrics`, `management_exceptions`, `changed_subsystems`, `provenance`, `guardrail_checks`, `agent_activity`, `change_units`, `risks`, `decisions`, `questions`, `sources` |
 | `weekly-reviews` | Supporting operating detail: `executive_read`, `shipped_learned`, `risks`, `decisions_needed`, `team_process`, `next_week_focus`, `ceo_update_seeds`, `sources` |
@@ -468,7 +468,7 @@ The supported report kinds have fixed section templates:
 
 Optional `metrics` are rendered as summary cards when present.
 
-Snapshot reports are synthesis artifacts. They start with a three-line TL;DR, changed-since-last-snapshot notes, a compact communication brief, decisions, canonical risks, top priorities, outcome signals, and agent activity audit. They keep only the latest run for each report type in `report_rollup`; full provenance lives in collapsed clickable `sources`.
+Snapshot reports are synthesis artifacts. They start with a three-line TL;DR, changed-since-last-snapshot notes, a clear What Shipped summary and itemized shipped-work list, a compact communication brief, decisions, canonical risks, top priorities, outcome signals, and agent activity audit. They keep only the latest run for each report type in `report_rollup`; full provenance lives in collapsed clickable `sources`.
 
 For `snapshot`, prefer the dedicated command because it deterministically reads existing report JSON plus canonical operating state, writes structured JSON, renders HTML, and refreshes the dashboard:
 
