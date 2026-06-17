@@ -39,7 +39,6 @@ Expected JSON fields:
 - `window`
 - `tldr`
 - `changed_since_last_week`
-- `shipped_last_week`
 - `metrics`
 - `communicate_up`
 - `communicate_down`
@@ -58,7 +57,6 @@ Expected JSON fields:
 - This is a synthesis layer, not a new source of truth.
 - Keep it short enough to read before a leadership meeting.
 - Prefer sharp operating judgment over exhaustive coverage.
-- Include a clear `What Shipped` section for the snapshot window: one summary plus an itemized list of shipped/learned work.
 - Separate what should be communicated up from what should be communicated down.
 - Make priorities actionable, with owners or next actions when known.
 - Do not render a top-level follow-up-signals strip; those items are already covered in the Snapshot sections.

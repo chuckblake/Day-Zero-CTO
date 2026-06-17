@@ -880,48 +880,6 @@ def snapshot_outcome_rows(latest_entries: list[dict[str, Any]], *, limit: int = 
     return rows
 
 
-def snapshot_shipped_payload(latest_entries: list[dict[str, Any]]) -> dict[str, Any]:
-    weekly = snapshot_entry_by_kind(latest_entries, "weekly-reviews")
-    ceo = snapshot_entry_by_kind(latest_entries, "ceo-updates")
-    source = weekly or ceo
-    if not source:
-        return {"summary": "No shipped-work report is available for this snapshot window.", "items": []}
-
-    data = source["data"]
-    raw_items = array_value(value_at(data, "shipped_learned", "shipped", "progress"))
-    items: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for raw in raw_items:
-        title = item_headline(raw)
-        if not title:
-            continue
-        key = title.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        if isinstance(raw, dict):
-            detail = text_value(value_at(raw, "significance", "detail", "details", "summary", "body", "impact"))
-            evidence = text_value(value_at(raw, "detail", "evidence", "source"))
-        else:
-            detail = ""
-            evidence = ""
-        items.append(
-            {
-                "title": title,
-                "body": snippet(detail, 260),
-                "evidence": snippet(evidence, 220) if evidence and evidence != detail else "",
-                "source": f"{source['label']} / {source['date']}",
-            }
-        )
-        if len(items) >= 8:
-            break
-
-    summary = report_lead_summary(data, 420)
-    if not summary and items:
-        summary = f"{len(items)} shipped item{'s' if len(items) != 1 else ''} captured from {source['label']}."
-    return {"summary": summary or "No shipped-work summary is available yet.", "items": items}
-
-
 def snapshot_agent_activity_audit(project: Path, latest_entries: list[dict[str, Any]], start: dt.date) -> list[dict[str, str]]:
     entry = snapshot_entry_by_kind(latest_entries, "codebase-accountability")
     if not entry:
@@ -1122,7 +1080,6 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
     decision_rows = snapshot_decision_rows(decisions, due_decisions, entries)
     operating_rows = snapshot_operating_rows(cadence_due, learning_items, entries, end)
     outcome_rows = snapshot_outcome_rows(latest_entries)
-    shipped_last_week = snapshot_shipped_payload(latest_entries)
     agent_activity_audit = snapshot_agent_activity_audit(project, latest_entries, start)
     changed_since_last_week = snapshot_change_rows(risks, high_risks, due_risks, decision_rows, outcome_rows, latest_entries)
     tldr = snapshot_tldr_rows(latest_entries, risks, high_risks, due_risks, decision_rows, priorities, agent_activity_audit)
@@ -1159,7 +1116,6 @@ def build_snapshot_data(project: Path, *, start: dt.date, end: dt.date) -> dict[
         "window": {"start": start.isoformat(), "end": end.isoformat()},
         "tldr": tldr,
         "changed_since_last_week": changed_since_last_week,
-        "shipped_last_week": shipped_last_week,
         "metrics": [
             {"label": "Reports", "value": len(entries), "detail": "Included in window"},
             {"label": "Active risks", "value": len(risks), "detail": f"{len(high_risks)} high/critical"},

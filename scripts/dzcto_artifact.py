@@ -1347,7 +1347,6 @@ def item_headline(item: Any) -> str:
             "finding",
             "question",
             "title",
-            "item",
             "name",
             "technology",
             "component",
@@ -1571,34 +1570,6 @@ def render_snapshot_communication(up_rows: Any, down_rows: Any) -> str:
 """
 
 
-def render_snapshot_shipped(payload: Any) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    summary = text_value(value_at(payload, "summary", "body", "detail"))
-    items = [item for item in array_value(value_at(payload, "items")) if isinstance(item, dict)]
-    if not summary and not items:
-        return ""
-    list_items = []
-    for item in items:
-        list_items.append(
-            f"""
-<li>
-  <strong>{esc(text_value(value_at(item, "title", "item", "name")))}</strong>
-  {f'<span>{esc(text_value(value_at(item, "body", "significance", "summary", "detail")))}</span>' if present(value_at(item, "body", "significance", "summary", "detail")) else ''}
-  {f'<small>{esc(text_value(value_at(item, "evidence")))}</small>' if present(value_at(item, "evidence")) else ''}
-  {f'<em>{esc(text_value(value_at(item, "source")))}</em>' if present(value_at(item, "source")) else ''}
-</li>
-"""
-        )
-    return f"""
-<section class="snapshot-shipped artifact-section">
-  <h2>What Shipped</h2>
-  {f'<p>{esc(summary)}</p>' if summary else ''}
-  {f'<ul class="artifact-list">{"".join(list_items)}</ul>' if list_items else ''}
-</section>
-"""
-
-
 def render_snapshot_appendix(data: dict[str, Any]) -> str:
     body = "".join(
         [
@@ -1632,7 +1603,6 @@ def render_snapshot_report(data: dict[str, Any], change_summary: str = "") -> st
         [
             render_snapshot_tldr(value_at(data, "tldr")),
             change_summary or render_snapshot_changes(data),
-            render_snapshot_shipped(value_at(data, "shipped_last_week", "shipped")),
             render_snapshot_communication(value_at(data, "communicate_up"), value_at(data, "communicate_down")),
             render_table_section("Decisions Needed", value_at(data, "decisions"), [("Decision", "decision"), ("Context", "context"), ("Owner", "owner"), ("Needed By", "needed_by"), ("Source", "source")]),
             render_table_section("Risks Needing Attention", value_at(data, "risks"), [("Risk", "risk"), ("Severity", "severity"), ("Owner", "owner"), ("Review", "review"), ("Mitigation", "mitigation")]),
@@ -1948,8 +1918,12 @@ def table_filter_controls(table_id: str, rows: list[list[str]], columns: list[di
     def filter_values(value: str) -> list[str]:
         return [part.strip() for part in plain_markdown(value).split("|") if has_real_value(part)]
 
-    search_disabled = len(rows) <= 1
-    filter_choices: list[tuple[dict[str, Any], list[str], bool]] = []
+    controls = [
+        f"""<label class="filter-field filter-search-field">
+  <span>Filter</span>
+  <input type="search" data-table-filter-search placeholder="Search rows">
+</label>"""
+    ]
     for column in columns:
         values = sorted(
             {
@@ -1960,39 +1934,27 @@ def table_filter_controls(table_id: str, rows: list[list[str]], columns: list[di
             },
             key=str.lower,
         )
-        filter_choices.append((column, values, len(values) <= 1))
-
-    if search_disabled and all(disabled for _column, _values, disabled in filter_choices):
-        return ""
-
-    controls = [
-        f"""<label class="filter-field filter-search-field{' is-disabled' if search_disabled else ''}" title="Search across every visible column in this table.">
-  <span>Search</span>
-  <input type="search" data-table-filter-search placeholder="Search rows" aria-label="Search table rows"{' disabled' if search_disabled else ''}>
-</label>"""
-    ]
-    for column, values, disabled in filter_choices:
-        disabled_reason = "Only one value is available for this filter." if values else "No values are available for this filter."
+        if not values:
+            continue
         options = "".join(f'<option value="{esc(value)}">{esc(snippet(value, 54))}</option>' for value in values)
         controls.append(
-            f"""<label class="filter-field{' is-disabled' if disabled else ''}" title="{esc(disabled_reason if disabled else 'Filter rows by ' + column["label"] + '.')}">
+            f"""<label class="filter-field">
   <span>{esc(column["label"])}</span>
-  <select data-table-filter-select="{esc(column["key"])}" aria-label="Filter by {esc(column["label"])}"{' disabled' if disabled else ''}>
+  <select data-table-filter-select="{esc(column["key"])}">
     <option value="">All</option>
     {options}
   </select>
 </label>"""
         )
 
+    if len(controls) == 1:
+        return ""
+
     return f"""
 <div class="table-filter" data-table-filter-controls="{esc(table_id)}">
   {''.join(controls)}
-  <button type="button" class="filter-clear" data-table-filter-clear title="Clear active search and filters" disabled>Clear</button>
-  <details class="filter-help">
-    <summary title="How table controls work">Help</summary>
-    <p>Search narrows all rows. Select filters narrow by one column. Disabled filters have no useful choices for this table.</p>
-  </details>
-  <span class="filter-count sr-only" data-table-filter-count aria-live="polite">{esc(len(rows))} rows</span>
+  <button type="button" class="filter-clear" data-table-filter-clear>Clear</button>
+  <span class="filter-count" data-table-filter-count>{esc(len(rows))} rows</span>
 </div>
 """
 
@@ -4447,92 +4409,41 @@ h1.title { font-size: 38px; font-weight: 800; }
 .copy-status { display: block; min-height: 18px; margin-top: 7px; color: var(--good); font-size: 13px; }
 .breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; color: var(--muted); font-size: 13px; }
 .breadcrumbs span { color: var(--muted); }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 .table-filter {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
-  gap: 7px;
-  margin: 12px 0 9px;
+  gap: 9px;
+  margin: 16px 0 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   background: var(--surface-2);
-  padding: 7px;
+  padding: 11px;
 }
-.filter-field { display: grid; gap: 3px; min-width: 128px; }
-.filter-search-field { min-width: min(230px, 100%); flex: 1 1 230px; }
-.filter-field span { color: var(--muted); font-size: 9.5px; font-weight: 800; text-transform: uppercase; }
+.filter-field { display: grid; gap: 4px; min-width: 150px; }
+.filter-search-field { min-width: min(280px, 100%); flex: 1 1 260px; }
+.filter-field span { color: var(--muted); font-size: 10.5px; font-weight: 800; text-transform: uppercase; }
 .filter-field input, .filter-field select {
-  min-height: 30px;
+  min-height: 34px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--ink);
-  padding: 4px 8px;
-  font-size: 12.5px;
-}
-.filter-field.is-disabled { opacity: .56; }
-.filter-field.is-disabled input, .filter-field.is-disabled select {
-  cursor: not-allowed;
-  background: var(--surface-2);
-  color: var(--muted);
+  padding: 6px 9px;
+  font-size: 13px;
 }
 .filter-clear {
-  min-height: 30px;
+  min-height: 34px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--ink-2);
-  padding: 0 9px;
+  padding: 0 11px;
   font-size: 12px;
   font-weight: 800;
 }
 .filter-clear:hover { border-color: var(--accent); color: var(--accent); }
-.filter-clear:disabled { cursor: not-allowed; opacity: .45; }
-.filter-help { position: relative; margin-left: auto; }
-.filter-help > summary {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--ink-2);
-  padding: 0 9px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 800;
-  list-style: none;
-}
-.filter-help > summary::-webkit-details-marker { display: none; }
-.filter-help[open] > summary { border-color: var(--accent); color: var(--accent); }
-.filter-help p {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 30;
-  width: min(300px, 78vw);
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  box-shadow: var(--shadow-md);
-  color: var(--ink-2);
-  padding: 10px 11px;
-  font-size: 12px;
-  line-height: 1.45;
-}
-.filter-count { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+.filter-count { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 34px; }
 .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); margin: 20px 0 24px; }
 .status-card, .cadence-alert, .cadence-ok {
   border: 1px solid var(--line);
@@ -5059,13 +4970,12 @@ def refresh_script() -> str:
 
     const applyTableFilters = () => {
       const query = String(search?.value || '').trim().toLowerCase();
-      const hasActiveFilter = Boolean(query) || selects.some((select) => !select.disabled && Boolean(select.value));
       let visible = 0;
       rows.forEach((row) => {
         const text = String(row.dataset.filterText || '').toLowerCase();
         let show = !query || text.includes(query);
         selects.forEach((select) => {
-          if (!show || select.disabled || !select.value) return;
+          if (!show || !select.value) return;
           const rowValue = String(row.dataset[filterDatasetKey(select.dataset.tableFilterSelect)] || '');
           const rowValues = rowValue.split('|').map((value) => value.trim()).filter(Boolean);
           show = rowValues.includes(select.value);
@@ -5074,21 +4984,15 @@ def refresh_script() -> str:
         if (show) visible += 1;
       });
       if (count) count.textContent = `${visible} of ${rows.length} shown`;
-      if (clear) clear.disabled = !hasActiveFilter;
-      controls.classList.toggle('is-filtering', hasActiveFilter);
     };
 
-    if (search && !search.disabled) search.addEventListener('input', applyTableFilters);
-    selects.forEach((select) => {
-      if (!select.disabled) select.addEventListener('change', applyTableFilters);
-    });
+    if (search) search.addEventListener('input', applyTableFilters);
+    selects.forEach((select) => select.addEventListener('change', applyTableFilters));
     if (clear) clear.addEventListener('click', () => {
       if (search) search.value = '';
-      selects.forEach((select) => {
-        if (!select.disabled) select.value = '';
-      });
+      selects.forEach((select) => select.value = '');
       applyTableFilters();
-      if (search && !search.disabled) search.focus();
+      if (search) search.focus();
     });
     applyTableFilters();
   });
