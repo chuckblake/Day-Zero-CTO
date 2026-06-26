@@ -382,40 +382,6 @@ def apply_init_metadata(
         config["codeRepos"] = existing
     write_json(config_path, config)
 
-    strategy_path = wiki_root / "core" / "STRATEGY.md"
-    if not strategy_path.exists() and (company_name_value or description or company_url):
-        name = company_name_value or project_folder.name
-        source_line = f"\nSource: {company_url}\n" if company_url else ""
-        strategy_path.write_text(
-            f"""# {name} Strategy
-
-## Company
-
-{description or "Unknown"}
-{source_line}
-## Stage
-
-Unknown
-
-## Product Thesis
-
-{description or "Unknown"}
-
-## Current Goals
-
-Unknown
-
-## Constraints
-
-Unknown
-
-## Non-Goals
-
-Unknown
-""",
-            encoding="utf-8",
-        )
-
 
 def default_artifacts_dir_from_global() -> Path | None:
     profile = profile_from_global()
@@ -5907,35 +5873,37 @@ def main(argv: list[str]) -> int:
                 f"  --project must be the project FOLDER path (e.g. ~/Documents/Acme\\ CTO), not a company name."
             )
         wiki_root = project_folder / "knowledge" / "wiki"
-        # A real project wiki has core/STRATEGY.md written during init. A directory
-        # that exists but lacks this file is almost certainly a ghost tree created by
-        # a prior run that resolved a company name as a relative path. Fail loudly
-        # instead of writing to the wrong place. (--init legitimately creates the wiki
-        # from scratch, so it is exempt from this check.)
-        if not args.init and not (wiki_root / "core" / "STRATEGY.md").exists():
+        # A real simplified workspace has .dzcto/config.json written during init. A
+        # directory that exists but lacks this file is almost certainly a ghost tree
+        # created by a prior run that resolved a company name as a relative path.
+        # (--init legitimately creates the workspace from scratch, so it is exempt.)
+        if not args.init and not (sidecar_dir(wiki_root) / "config.json").exists():
             parent_wiki = project_folder.parent / "knowledge" / "wiki"
             hint = (
                 f"  The parent folder '{project_folder.parent}' looks like the correct project folder."
-                if (parent_wiki / "core" / "STRATEGY.md").exists()
+                if (sidecar_dir(parent_wiki) / "config.json").exists()
                 else "  If the project is new, run `dzcto init` on it first."
             )
             raise SystemExit(
-                f"No Day Zero CTO wiki found at {wiki_root} (missing core/STRATEGY.md).\n"
+                f"No Day Zero CTO workspace found at {wiki_root} (missing .dzcto/config.json).\n"
                 f"  --project must be the project FOLDER path (e.g. ~/Documents/Acme\\ CTO), not a company name.\n"
                 f"{hint}"
             )
     else:
         wiki_root = Path(args.home).expanduser().resolve()
         project_folder = (wiki_root / ".." / "..").resolve()
+
+    if not args.init:
+        if not args.kind:
+            parser.error("--kind is required unless --init is used")
+        if not args.title:
+            parser.error("--title is required unless --init is used")
+
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
-    learning_dir = wiki_root / "learning"
 
-    core_dir.mkdir(parents=True, exist_ok=True)
-    folders_to_create = ACTIVE_REPORT_FOLDERS if args.init and not args.kind else REPORT_FOLDERS
-    for folder in folders_to_create:
-        (reports_dir / folder).mkdir(parents=True, exist_ok=True)
-    learning_dir.mkdir(parents=True, exist_ok=True)
+    report_folder = args.kind or "ceo-updates"
+    (reports_dir / report_folder).mkdir(parents=True, exist_ok=True)
     ensure_sidecar(wiki_root, project_folder, "init" if args.init else "generate-artifact")
     apply_init_metadata(
         wiki_root,
@@ -5959,11 +5927,6 @@ def main(argv: list[str]) -> int:
 
     written_report: Path | None = None
     if not args.init:
-        if not args.kind:
-            parser.error("--kind is required unless --init is used")
-        if not args.title:
-            parser.error("--title is required unless --init is used")
-
         report_sources: list[Path] = []
         structured_data: dict[str, Any] | None = None
         if args.data_file:
