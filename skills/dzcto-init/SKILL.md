@@ -10,7 +10,7 @@ Set up the small Day Zero CTO surface for CEO reports only. Do not run or offer 
 ## Workflow
 
 1. Resolve the artifact/report location. If the user has not given one, ask where reports should live. Prefer a durable folder outside the code repo. The helper creates an `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json` in that location.
-2. Resolve the company or project name if it is not obvious from the folder or conversation.
+2. Resolve the company, CTO, or project profile name. If the user does not provide one, derive a short slug from the company/project, such as `getmusic`. This profile is how one global install supports multiple repos or CTO contexts.
 3. Ask what weekly reporting window they want. Do not silently choose Monday-Sunday. Capture a concrete schedule such as `Fri-Thu`, `Mon-Sun`, `previous completed week ending Thursday`, or `rolling last 7 days`.
 4. Convert that answer into helper flags:
    - `Fri-Thu` means `--weekly-range "previous_completed_week" --weekly-start-day "Friday" --weekly-end-day "Thursday"`.
@@ -23,6 +23,7 @@ Set up the small Day Zero CTO surface for CEO reports only. Do not run or offer 
 ```bash
 dzcto init \
   --artifacts-dir "<artifact/report folder>" \
+  --profile "<profile-name>" \
   --company-name "<company name>" \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Monday" \
@@ -35,6 +36,7 @@ If `dzcto` is not on `PATH`, run the plugin helper from the repo:
 ```bash
 python3 scripts/dzcto.py init \
   --artifacts-dir "<artifact/report folder>" \
+  --profile "<profile-name>" \
   --company-name "<company name>" \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Monday" \
@@ -44,11 +46,11 @@ python3 scripts/dzcto.py init \
 
 Add repeatable `--repo "<path>"` flags when read-only code repos should be saved as evidence sources.
 
-The helper also saves these preferences to `~/.dzcto/config.json`, including the default artifact directory, so `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report` can work from other repos later.
+The helper also saves these preferences to `~/.dzcto/config.json` under `profiles.<profile-name>`, including the artifact directory, weekly defaults, tone, and optional repos. It also updates `defaultProfile` unless `--no-switch-default` is used, so `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report` can work from other repos later.
 
 ## Result
 
-Confirm only the created index path, the global preferences path, the stored weekly range defaults, the stored tone guidance, and the next command to run:
+Confirm only the created index path, the profile name, the global preferences path, the stored weekly range defaults, the stored tone guidance, and the next command to run:
 
 - `/dzcto-ceo-report-weekly` for the default weekly report.
 - `/dzcto-ceo-report` for a custom date range.

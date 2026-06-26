@@ -9,9 +9,9 @@ Create a CEO report for a user-selected date range.
 
 ## Workflow
 
-1. Resolve the artifact/report folder. First read `~/.dzcto/config.json` and use `defaultArtifactsDir` when present. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
+1. Resolve the profile and artifact/report folder. First read `~/.dzcto/config.json`; if the user named a profile, use `profiles.<name>.artifactsDir`, otherwise use `defaultProfile`. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
 2. Ask for the report date range when the user did not provide it. Use concrete `YYYY-MM-DD` start and end dates.
-3. Read `<artifact folder>/.dzcto/config.json` and use `ceoReportTone` when present. Fall back to `~/.dzcto/config.json`. If no tone is configured, use direct, concise, business-facing language.
+3. Read `<artifact folder>/.dzcto/config.json` and use `ceoReportTone` when present. Fall back to the selected global profile. If no tone is configured, use direct, concise, business-facing language.
 4. Gather evidence for only the requested range:
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
@@ -22,6 +22,7 @@ Create a CEO report for a user-selected date range.
 
 ```bash
 dzcto artifact \
+  --profile "<profile-name>" \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
@@ -33,6 +34,7 @@ If `dzcto` is not on `PATH`, use:
 
 ```bash
 python3 scripts/dzcto.py artifact \
+  --profile "<profile-name>" \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \

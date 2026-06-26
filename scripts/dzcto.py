@@ -1193,6 +1193,7 @@ def print_quickstart(project: Path | None = None) -> None:
 
                Manual equivalent:
                dzcto init --artifacts-dir {artifacts_arg} \\
+                 --profile "acme" \\
                  --company-name "Acme" \\
                  --weekly-range "previous_completed_week" \\
                  --weekly-start-day "Friday" \\
@@ -1226,14 +1227,14 @@ def command_reference_text(project: Path | None = None) -> str:
               Ask for a concrete date range and generate a CEO report for that range.
 
         Local helper
-          dzcto init --artifacts-dir {artifacts_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>]
+          dzcto init --artifacts-dir {artifacts_arg} [--profile <name>] [--company-name <name>] [--company-description <summary>] [--company-url <url>]
                      [--weekly-range <range>] [--weekly-start-day <day>] [--weekly-end-day <day>]
                      [--weekly-lookback-days N] [--ceo-report-tone <text>] [--repo <path> ...]
               Create or refresh the artifact folder, .dzcto/config.json, reports/ceo-updates/, index.html,
-              and ~/.dzcto/config.json for cross-repo defaults.
-          dzcto artifact --artifacts-dir {artifacts_arg} --kind ceo-updates --title <title>
+              and a named profile in ~/.dzcto/config.json for cross-repo defaults.
+          dzcto artifact --profile <name> --kind ceo-updates --title <title>
                          [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
-              Render a CEO report and refresh the index. If --artifacts-dir is omitted, use ~/.dzcto/config.json.
+              Render a CEO report and refresh the index. If --profile is omitted, use defaultProfile.
           dzcto setup
               Install the local Codex plugin marketplace entry.
           dzcto install-command
@@ -1257,7 +1258,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             CEO reports
 
             Init captures weekly defaults and tone:
-              dzcto init --artifacts-dir {artifacts_arg} --weekly-range previous_completed_week --weekly-start-day Friday --weekly-end-day Thursday --ceo-report-tone "<tone>"
+              dzcto init --artifacts-dir {artifacts_arg} --profile acme --weekly-range previous_completed_week --weekly-start-day Friday --weekly-end-day Thursday --ceo-report-tone "<tone>"
 
             Weekly report:
               /dzcto-ceo-report-weekly
@@ -1852,7 +1853,8 @@ Use Day Zero CTO to help an early-stage technical leader turn engineering realit
 ## Surface Notes
 
 - In Claude Desktop chat, create or update downloadable artifacts inside Claude's available workspace unless the user has provided a mounted writable folder.
-- For local filesystem report indexes, ask the user to run the local helper from a terminal or from an agent with filesystem access: `dzcto init --artifacts-dir <dir>` and `dzcto artifact --artifacts-dir <dir> --kind ceo-updates ...`.
+- For local filesystem report indexes, ask the user to run the local helper from a terminal or from an agent with filesystem access: `dzcto init --artifacts-dir <dir> --profile <name>` and `dzcto artifact --profile <name> --kind ceo-updates ...`.
+- Global preferences live in `~/.dzcto/config.json` as named profiles under `profiles.<name>` plus `defaultProfile`, so one install can support multiple repos or CTO contexts.
 - If the helper lives under a versioned plugin cache path, ask the user to run `dzcto install-command` once to create a stable `~/.local/bin/dzcto` command.
 - Do not write Day Zero CTO artifacts into a code repo unless the user explicitly asks.
 - Treat code repos as read-only evidence.
@@ -2078,6 +2080,7 @@ def main(argv: list[str]) -> int:
     )
     init.add_argument("project", nargs="?", help="Project folder, such as ~/Documents/Acme. Optional when --artifacts-dir is provided.")
     init.add_argument("--artifacts-dir", help="Folder that directly stores CEO report artifacts, index.html, reports/, and .dzcto/")
+    init.add_argument("--profile", help="Named global profile in ~/.dzcto/config.json, such as getmusic")
     init.add_argument("--company-name", help="Company name; persisted as companyName in .dzcto/config.json")
     init.add_argument("--company-description", help="Short company summary; persisted as companyDescription in .dzcto/config.json")
     init.add_argument("--company-url", help="Company URL; persisted as companyUrl in .dzcto/config.json")
@@ -2088,6 +2091,7 @@ def main(argv: list[str]) -> int:
     init.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
     init.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports; persisted as ceoReportTone in .dzcto/config.json")
     init.add_argument("--no-save-preferences", action="store_true", help="Do not update ~/.dzcto/config.json")
+    init.add_argument("--no-switch-default", action="store_true", help="Update the named profile without making it the global default")
     init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated. Persisted as codeRepos in .dzcto/config.json")
 
     refresh = sub.add_parser("refresh", help=argparse.SUPPRESS)
@@ -2144,6 +2148,7 @@ def main(argv: list[str]) -> int:
     artifact = sub.add_parser("artifact", help="Generate a structured report artifact")
     artifact.add_argument("--project")
     artifact.add_argument("--artifacts-dir", help="Folder that directly stores index.html, reports/, and .dzcto/")
+    artifact.add_argument("--profile", help="Named global profile to use when --artifacts-dir is omitted")
     artifact.add_argument("--kind", required=True)
     artifact.add_argument("--title", required=True)
     artifact.add_argument("--date")
@@ -2244,6 +2249,8 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--project", str(resolve_project(args.project))])
         if args.artifacts_dir:
             init_args.extend(["--artifacts-dir", str(Path(args.artifacts_dir).expanduser().resolve())])
+        if args.profile:
+            init_args.extend(["--profile", args.profile])
         if args.company_name:
             init_args.extend(["--company-name", args.company_name])
         if args.company_description:
@@ -2264,6 +2271,8 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--ceo-report-tone", args.ceo_report_tone])
         if args.no_save_preferences:
             init_args.append("--no-save-preferences")
+        if args.no_switch_default:
+            init_args.append("--no-switch-default")
         for repo in args.repo:
             init_args.extend(["--repo", repo])
         return run_script("dzcto_artifact.py", init_args)
@@ -2321,6 +2330,8 @@ def main(argv: list[str]) -> int:
             artifact_args.extend(["--project", args.project])
         if args.artifacts_dir:
             artifact_args.extend(["--artifacts-dir", args.artifacts_dir])
+        if args.profile:
+            artifact_args.extend(["--profile", args.profile])
         if args.date:
             artifact_args.extend(["--date", args.date])
         if args.data_file:

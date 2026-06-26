@@ -9,8 +9,8 @@ Create the CEO report for the configured weekly window.
 
 ## Workflow
 
-1. Resolve the artifact/report folder. First read `~/.dzcto/config.json` and use `defaultArtifactsDir` when present. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
-2. Read `<artifact folder>/.dzcto/config.json`. Use `weeklyReportDefaults` for the date window and `ceoReportTone` for the report voice. Fall back to matching values in `~/.dzcto/config.json`.
+1. Resolve the profile and artifact/report folder. First read `~/.dzcto/config.json`; if the user named a profile, use `profiles.<name>.artifactsDir`, otherwise use `defaultProfile`. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
+2. Read `<artifact folder>/.dzcto/config.json`. Use `weeklyReportDefaults` for the date window and `ceoReportTone` for the report voice. Fall back to matching values in the selected global profile.
 3. If weekly defaults are missing, ask for the start and end dates or run `/dzcto-init` first.
 4. Gather evidence for only the selected week:
    - User notes in the conversation.
@@ -22,6 +22,7 @@ Create the CEO report for the configured weekly window.
 
 ```bash
 dzcto artifact \
+  --profile "<profile-name>" \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
@@ -33,6 +34,7 @@ If `dzcto` is not on `PATH`, use:
 
 ```bash
 python3 scripts/dzcto.py artifact \
+  --profile "<profile-name>" \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \

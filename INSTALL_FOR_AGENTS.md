@@ -7,7 +7,7 @@ Day Zero CTO is currently a small CEO-report workflow. Install it when a user wa
 Before running `/dzcto-init`, gather:
 
 - Artifact/report folder.
-- Company or project name.
+- Company, CTO, or project profile name, such as `getmusic`.
 - Weekly report defaults: ask for the exact reporting week schedule, such as `Fri-Thu`, `Mon-Sun`, or `rolling last 7 days`. Do not silently choose a default.
 - CEO report tone guidance.
 - Optional company description or URL.
@@ -21,7 +21,7 @@ reports/ceo-updates/
 .dzcto/config.json
 ```
 
-`dzcto init` also writes `~/.dzcto/config.json` with the default artifact folder, weekly schedule, CEO report tone, and optional evidence repos. That global preference file is what lets the same skills work from any repo later.
+`dzcto init` also writes `~/.dzcto/config.json` with named profiles under `profiles.<name>` and a `defaultProfile`. Each profile stores the artifact folder, weekly schedule, CEO report tone, and optional evidence repos. That global preference file is what lets the same skills work from any repo later without overwriting other CTO contexts.
 
 ## Codex Desktop
 
@@ -84,6 +84,7 @@ Upload `dist/day-zero-cto-claude-desktop.zip` where the user's Claude client and
 ```bash
 dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
+  --profile "acme" \
   --company-name "Acme" \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Friday" \
@@ -91,7 +92,7 @@ dzcto init \
   --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
 
 dzcto artifact \
-  --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
+  --profile "acme" \
   --kind ceo-updates \
   --title "CEO Report 2026-06-15 to 2026-06-21" \
   --date "2026-06-21" \

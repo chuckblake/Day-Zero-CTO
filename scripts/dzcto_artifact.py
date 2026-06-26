@@ -322,6 +322,7 @@ def apply_init_metadata(
     weekly_end_day: str | None = None,
     weekly_lookback_days: int | None = None,
     ceo_report_tone: str | None = None,
+    profile_name: str | None = None,
     repos: list[str] | None = None,
 ) -> None:
     if not any(
@@ -335,6 +336,7 @@ def apply_init_metadata(
             weekly_end_day,
             weekly_lookback_days,
             ceo_report_tone,
+            profile_name,
             repos,
         ]
     ):
@@ -355,6 +357,9 @@ def apply_init_metadata(
         config["reportPromptContext"] = report_prompt_context.strip()
     if ceo_report_tone and ceo_report_tone.strip():
         config["ceoReportTone"] = ceo_report_tone.strip()
+    if profile_name and profile_name.strip():
+        config["profile"] = profile_slug(profile_name)
+        config["profileName"] = profile_slug(profile_name)
     weekly_defaults = config.get("weeklyReportDefaults")
     if not isinstance(weekly_defaults, dict):
         weekly_defaults = {}
@@ -413,28 +418,109 @@ Unknown
 
 
 def default_artifacts_dir_from_global() -> Path | None:
-    config = read_global_config()
-    for key in ("defaultArtifactsDir", "artifactsDir", "artifactDirectory", "wikiRoot"):
-        value = str(config.get(key) or "").strip()
+    profile = profile_from_global()
+    for key in ("artifactsDir", "artifactDirectory", "defaultArtifactsDir", "wikiRoot"):
+        value = str(profile.get(key) or "").strip()
         if value:
             return Path(value).expanduser().resolve()
     return None
 
 
-def save_global_preferences(wiki_root: Path, project_folder: Path) -> None:
+def profile_slug(value: str | None, fallback: str = "default") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+    return slug or fallback
+
+
+def profile_name_for_config(config: dict[str, Any], wiki_root: Path, explicit_profile: str | None = None) -> str:
+    if explicit_profile and explicit_profile.strip():
+        return profile_slug(explicit_profile)
+    for key in ("profile", "profileName", "companyName"):
+        value = str(config.get(key) or "").strip()
+        if value:
+            return profile_slug(value)
+    return profile_slug(wiki_root.name)
+
+
+def legacy_global_profile(config: dict[str, Any]) -> dict[str, Any]:
+    profile: dict[str, Any] = {}
+    key_map = {
+        "defaultArtifactsDir": "artifactsDir",
+        "artifactsDir": "artifactsDir",
+        "artifactDirectory": "artifactDirectory",
+        "wikiRoot": "wikiRoot",
+        "projectFolder": "projectFolder",
+        "companyName": "companyName",
+        "companyDescription": "companyDescription",
+        "companyUrl": "companyUrl",
+        "weeklyReportDefaults": "weeklyReportDefaults",
+        "ceoReportTone": "ceoReportTone",
+        "reportPromptContext": "reportPromptContext",
+        "codeRepos": "codeRepos",
+    }
+    for source, destination in key_map.items():
+        value = config.get(source)
+        if value:
+            profile[destination] = value
+    return profile
+
+
+def profiles_from_global(config: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    config = config or read_global_config()
+    raw_profiles = config.get("profiles")
+    profiles: dict[str, dict[str, Any]] = {}
+    if isinstance(raw_profiles, dict):
+        for name, value in raw_profiles.items():
+            if isinstance(value, dict):
+                profiles[profile_slug(str(name))] = value
+    if not profiles:
+        legacy = legacy_global_profile(config)
+        if legacy:
+            profiles[profile_slug(str(config.get("defaultProfile") or config.get("companyName") or "default"))] = legacy
+    return profiles
+
+
+def profile_from_global(profile_name: str | None = None) -> dict[str, Any]:
+    config = read_global_config()
+    profiles = profiles_from_global(config)
+    if not profiles:
+        return {}
+    if profile_name and profile_name.strip():
+        return profiles.get(profile_slug(profile_name), {})
+    name = profile_slug(str(config.get("defaultProfile") or ""))
+    if name in profiles:
+        return profiles[name]
+    return profiles.get(profile_slug(str(config.get("defaultProfile") or "")), {}) or next(iter(profiles.values()))
+
+
+def default_artifacts_dir_for_profile(profile_name: str | None = None) -> Path | None:
+    profile = profile_from_global(profile_name)
+    for key in ("artifactsDir", "artifactDirectory", "defaultArtifactsDir", "wikiRoot"):
+        value = str(profile.get(key) or "").strip()
+        if value:
+            return Path(value).expanduser().resolve()
+    return None
+
+
+def save_global_preferences(wiki_root: Path, project_folder: Path, profile_name: str | None = None, *, set_default: bool = True) -> str:
     config = project_config(wiki_root)
+    profile_name = profile_name_for_config(config, wiki_root, profile_name)
+    config["profile"] = profile_name
+    config["profileName"] = profile_name
+    write_json(sidecar_dir(wiki_root) / "config.json", config)
     global_config = read_global_config()
-    global_config.update(
+    profiles = profiles_from_global(global_config)
+    profile = dict(profiles.get(profile_name, {}))
+    profile.update(
         {
-            "tool": "day-zero-cto",
-            "toolVersion": TOOL_VERSION,
-            "schemaVersion": "1.0",
-            "updatedAt": utc_now(),
-            "defaultArtifactsDir": str(wiki_root.expanduser().resolve()),
+            "artifactsDir": str(wiki_root.expanduser().resolve()),
             "artifactDirectory": str(wiki_root.expanduser().resolve()),
             "projectFolder": str(project_folder.expanduser().resolve()),
         }
     )
+    profile["profile"] = profile_name
+    profile["profileName"] = profile_name
+    profile["updatedAt"] = utc_now()
+    profile["toolVersion"] = TOOL_VERSION
     for key in (
         "companyName",
         "companyDescription",
@@ -446,8 +532,22 @@ def save_global_preferences(wiki_root: Path, project_folder: Path) -> None:
     ):
         value = config.get(key)
         if value:
-            global_config[key] = value
+            profile[key] = value
+    profiles[profile_name] = profile
+    global_config.update(
+        {
+            "tool": "day-zero-cto",
+            "toolVersion": TOOL_VERSION,
+            "schemaVersion": "1.0",
+            "updatedAt": utc_now(),
+            "profiles": profiles,
+        }
+    )
+    if set_default or not str(global_config.get("defaultProfile") or "").strip():
+        global_config["defaultProfile"] = profile_name
+        global_config["defaultArtifactsDir"] = profile["artifactsDir"]
     write_global_config(global_config)
+    return profile_name
 
 
 def split_markdown_row(row: str) -> list[str]:
@@ -5613,19 +5713,20 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
     tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
     artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
+    profile_name = profile_name_for_config(config, wiki_root)
     report_prompt_context = configured_report_prompt_context(config)
 
     def command_card(card_id: str, label: str, command: str) -> str:
         return copy_card(card_id, label, command, "Command")
 
     weekly_prompt = exact_prompt(
-        f"Run /dzcto-ceo-report-weekly for {company}. Use the configured weekly defaults ({weekly_label}) and CEO tone guidance: {tone}.",
+        f"Run /dzcto-ceo-report-weekly for {company} using DZ CTO profile `{profile_name}`. Use the configured weekly defaults ({weekly_label}) and CEO tone guidance: {tone}.",
         project_folder,
         repos,
         report_prompt_context,
     )
     custom_prompt = exact_prompt(
-        f"Run /dzcto-ceo-report for {company}. Ask for a concrete start and end date, then write the CEO report using tone guidance: {tone}.",
+        f"Run /dzcto-ceo-report for {company} using DZ CTO profile `{profile_name}`. Ask for a concrete start and end date, then write the CEO report using tone guidance: {tone}.",
         project_folder,
         repos,
         report_prompt_context,
@@ -5635,7 +5736,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         copy_card("ai-prompt-custom-ceo-report", "/dzcto-ceo-report", custom_prompt, "Prompt"),
     ]
     command_items = [
-        command_card("local-command-init", "Refresh Init", f'dzcto init --artifacts-dir "{artifact_dir}"'),
+        command_card("local-command-init", "Refresh Init", f'dzcto init --artifacts-dir "{artifact_dir}" --profile "{profile_name}"'),
         command_card("local-command-serve", "Serve Index", f'python3 -m http.server 8765 --directory "{artifact_dir}"'),
     ]
 
@@ -5754,6 +5855,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Generate Day Zero CTO artifacts")
     parser.add_argument("--project", help="Project folder; creates/uses PATH/knowledge/wiki")
     parser.add_argument("--artifacts-dir", help="Folder that directly stores index.html, reports/, and .dzcto/")
+    parser.add_argument("--profile", help="Named global profile in ~/.dzcto/config.json, such as getmusic")
     parser.add_argument("--home", help="Legacy: wiki root folder")
     parser.add_argument("--kind", choices=REPORT_FOLDERS.keys())
     parser.add_argument("--title")
@@ -5771,15 +5873,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
     parser.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports")
     parser.add_argument("--no-save-preferences", action="store_true", help="Do not update ~/.dzcto/config.json during init")
+    parser.add_argument("--no-switch-default", action="store_true", help="Update the named profile without making it the global default")
     parser.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
     args = parser.parse_args(argv)
 
     if not args.project and not args.home and not args.artifacts_dir:
-        default_artifacts_dir = default_artifacts_dir_from_global()
+        default_artifacts_dir = default_artifacts_dir_for_profile(args.profile)
         if default_artifacts_dir:
             args.artifacts_dir = str(default_artifacts_dir)
         else:
-            parser.error("--project, --artifacts-dir, or --home is required. Run dzcto init --artifacts-dir <path> once to save preferences.")
+            profile_hint = f" for profile {args.profile!r}" if args.profile else ""
+            parser.error(f"--project, --artifacts-dir, or --home is required. Run dzcto init --artifacts-dir <path>{profile_hint} once to save preferences.")
 
     if args.artifacts_dir:
         wiki_root = Path(args.artifacts_dir).expanduser().resolve()
@@ -5845,10 +5949,12 @@ def main(argv: list[str]) -> int:
         weekly_end_day=args.weekly_end_day,
         weekly_lookback_days=args.weekly_lookback_days,
         ceo_report_tone=args.ceo_report_tone,
+        profile_name=args.profile,
         repos=args.repo,
     )
     if args.init and not args.no_save_preferences:
-        save_global_preferences(wiki_root, project_folder)
+        saved_profile = save_global_preferences(wiki_root, project_folder, args.profile, set_default=not args.no_switch_default)
+        args.profile = saved_profile
     stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
 
     written_report: Path | None = None

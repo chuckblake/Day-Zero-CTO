@@ -17,6 +17,7 @@ Everything else is legacy reference material for now. The old broad CTO workflow
 `/dzcto-init` should collect:
 
 - The artifact/report folder. This folder directly contains `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json`.
+- A profile name, such as `getmusic`, for the company/CTO context. This is how one DZ CTO install supports multiple repos or multiple CTO clients.
 - Weekly report defaults. Init should ask for the schedule explicitly, such as `Fri-Thu`, `Mon-Sun`, or `rolling last 7 days`; it should not silently choose a default.
 - CEO report tone guidance.
 - Optional company metadata.
@@ -27,6 +28,7 @@ The equivalent helper command is:
 ```bash
 dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
+  --profile "acme" \
   --company-name "Acme" \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Friday" \
@@ -39,6 +41,7 @@ For a Monday-through-Sunday reporting week:
 ```bash
 dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
+  --profile "acme" \
   --company-name "Acme" \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Monday" \
@@ -58,7 +61,30 @@ It also saves preferences to:
 ~/.dzcto/config.json
 ```
 
-That global config stores the default artifact directory, weekly schedule, CEO report tone, and optional evidence repos so the same skill can be used from any code repo.
+That global config stores named profiles so the same skill can be used from any code repo:
+
+```json
+{
+  "defaultProfile": "getmusic",
+  "profiles": {
+    "getmusic": {
+      "artifactsDir": "/Users/chuck/dzcto/GetMusic",
+      "weeklyReportDefaults": {
+        "range": "previous_completed_week",
+        "startDay": "Friday",
+        "endDay": "Thursday"
+      },
+      "ceoReportTone": "Direct, concise, business-facing.",
+      "codeRepos": ["/Users/chuck/code/getmusic"]
+    },
+    "client-two": {
+      "artifactsDir": "/Users/chuck/dzcto/Client Two"
+    }
+  }
+}
+```
+
+When no `--profile` is provided, report commands use `defaultProfile`. Use `--profile getmusic` to select a profile explicitly.
 
 ## CEO Reports
 
@@ -149,8 +175,8 @@ The slash commands are the primary interface. The local helper still exists for 
 
 | Command | Purpose |
 | --- | --- |
-| `dzcto init --artifacts-dir <dir>` | Create or refresh the CEO report workspace. |
-| `dzcto artifact --artifacts-dir <dir> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report and refresh the index. If `--artifacts-dir` is omitted, the helper uses `~/.dzcto/config.json`. |
+| `dzcto init --artifacts-dir <dir> --profile <name>` | Create or refresh one CEO report workspace and save/update a global profile. |
+| `dzcto artifact --profile <name> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report using a named global profile. If `--profile` is omitted, the helper uses `defaultProfile`. |
 | `dzcto install-command` | Create `~/.local/bin/dzcto`. |
 | `dzcto setup` | Install the local Codex plugin entry. |
 | `dzcto update` | Pull/refresh a local install and run doctor. |
