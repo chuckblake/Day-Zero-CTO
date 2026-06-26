@@ -1,0 +1,4 @@
+interface:
+  display_name: "DZ CTO CEO Report"
+  short_description: "Create a CEO report for a chosen range."
+  default_prompt: "Generate a CEO report for a specific date range."

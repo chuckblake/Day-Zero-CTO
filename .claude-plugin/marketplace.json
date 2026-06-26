@@ -1,7 +1,7 @@
 {
   "name": "day-zero-cto",
   "description": "Day Zero CTO plugin marketplace.",
-  "version": "0.6.38",
+  "version": "0.7.0",
   "owner": {
     "name": "Chuck Blake"
   },
@@ -10,8 +10,8 @@
       "name": "day-zero-cto",
       "displayName": "Day Zero CTO",
       "source": "./",
-      "description": "Cross-agent CTO operating skills and durable artifacts for early-stage startups.",
-      "version": "0.6.38",
+      "description": "A simplified Day Zero CTO workflow for CEO reports and durable report artifacts.",
+      "version": "0.7.0",
       "author": {
         "name": "Chuck Blake"
       },

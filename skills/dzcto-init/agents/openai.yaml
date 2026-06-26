@@ -1,0 +1,4 @@
+interface:
+  display_name: "DZ CTO Init"
+  short_description: "Set up CEO-report artifacts and defaults."
+  default_prompt: "Initialize Day Zero CTO for CEO reports. Ask for the report location, weekly date defaults, and CEO report tone."

@@ -1178,286 +1178,106 @@ def run_snapshot(args: argparse.Namespace) -> int:
 
 
 def print_quickstart(project: Path | None = None) -> None:
-    project_arg = shell_project(project)
+    artifacts_path = str(project) if project else "$HOME/Documents/Acme CEO Reports"
+    artifacts_arg = f'"{artifacts_path}"'
     print(
         textwrap.dedent(
             f"""
             Day Zero CTO quickstart
 
-            First make sure `dzcto` is on PATH. In Claude Code, run `dzcto install-command`
-            once to create ~/.local/bin/dzcto so you do not need versioned cache paths.
-
             1. Check the install
                dzcto doctor
 
-            2. Create or refresh a startup wiki (do this before serving)
-               Primary: ask your agent to use day-zero-cto:bootstrap-cto-context for guided onboarding
-                        (company context, core files, first reports, learning seed).
-               Manual:  dzcto init {project_arg} --company-name "Acme" --company-description "Short company summary" --repo "$HOME/code/acme-app"
+            2. Initialize CEO report artifacts
+               /dzcto-init
 
-            3. Open the command center
-               dzcto serve {project_arg}
+               Manual equivalent:
+               dzcto init --artifacts-dir {artifacts_arg} \\
+                 --company-name "Acme" \\
+                 --weekly-range "previous_completed_week" \\
+                 --weekly-start-day "Monday" \\
+                 --weekly-end-day "Sunday" \\
+                 --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
 
-            4. Check what needs attention
-               dzcto lfg {project_arg}
-               dzcto status {project_arg}
-               dzcto check-stale {project_arg}
+            3. Generate reports
+               /dzcto-ceo-report-weekly
+               /dzcto-ceo-report
 
-            5. Keep core context accurate
-               Ask your agent to use day-zero-cto:refine-core-context for Strategy, Team, Operating Cadence, Decisions, or Risks.
-
-            6. Run the operating loop
-               Use the dashboard's AI prompt cards for Snapshot Report first, then drill into Weekly Review, CEO Update,
-               Engineering Risk, Tech Stack, Codebase Accountability, Review Decisions, Review Risks, and Learning as needed.
-
-            Useful help:
-              dzcto help onboarding
-              dzcto help editing
-              dzcto help reports
-              dzcto help commands
+            4. Open the report index
+               {artifacts_arg}/index.html
             """
         ).strip()
     )
 
 
 def command_reference_text(project: Path | None = None) -> str:
-    project_arg = shell_project(project)
+    artifacts_path = str(project) if project else "$HOME/Documents/Acme CEO Reports"
+    artifacts_arg = f'"{artifacts_path}"'
     return textwrap.dedent(
         f"""
         Day Zero CTO command reference
 
-        Start and help
-          dzcto quickstart [--project <project>]
-              Print the shortest self-serve setup path.
-          dzcto help [onboarding|editing|reports|commands|lfg|serve|troubleshooting|learning|artifacts] [--project <project>]
-              Print workflow help. With no topic, prints this command reference.
-          dzcto lfg <project> [--json]
-              LFG (pick the next best action): setup, cadence, risks, decisions, then learning.
+        Slash commands
+          /dzcto-init
+              Ask for artifact/report location, weekly report defaults, CEO report tone, then create index.html.
+          /dzcto-ceo-report-weekly
+              Generate a CEO report using the weekly defaults captured by init.
+          /dzcto-ceo-report
+              Ask for a concrete date range and generate a CEO report for that range.
+
+        Local helper
+          dzcto init --artifacts-dir {artifacts_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>]
+                     [--weekly-range <range>] [--weekly-start-day <day>] [--weekly-end-day <day>]
+                     [--weekly-lookback-days N] [--ceo-report-tone <text>] [--repo <path> ...]
+              Create or refresh the artifact folder, .dzcto/config.json, reports/ceo-updates/, and index.html.
+          dzcto artifact --artifacts-dir {artifacts_arg} --kind ceo-updates --title <title>
+                         [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
+              Render a CEO report and refresh the index. Prefer --data-file.
+          dzcto setup
+              Install the local Codex plugin marketplace entry.
+          dzcto install-command
+              Create a stable shell command, usually ~/.local/bin/dzcto.
+          dzcto update
+              Pull or relink the local install, then run doctor.
+          dzcto doctor
+              Check install health, manifests, helper syntax, and wrappers.
           dzcto version
               Print the installed Day Zero CTO helper version.
-
-        Install and update
-          dzcto setup [--editable-skills] [--plugin-link <path>] [--marketplace-file <path>] [--editable-skills-dir <path>]
-                     [--wiki-project <project>] [--company-name <name>] [--company-description <summary>] [--company-url <url>]
-                     [--report-prompt-context <text>] [--repo <path> ...]
-              Install the local Codex plugin marketplace entry and optionally initialize a project wiki.
-          dzcto update [--no-pull] [--allow-dirty] [--editable-skills] [--plugin-link <path>] [--marketplace-file <path>]
-                       [--editable-skills-dir <path>] [--project <project>]
-              Pull or relink the local install, optionally refresh editable Codex skill links, then run doctor.
-          dzcto install-command [--dest <path>] [--force]
-              Create a stable shell command, usually ~/.local/bin/dzcto, so users do not need versioned plugin cache paths.
-          dzcto package-claude-desktop [--output <zip>]
-              Build an uploadable Claude Desktop custom skill zip.
-
-        Project wiki
-          dzcto init {project_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>]
-                     [--report-prompt-context <text>] [--repo <path> ...]
-              Create or refresh <project>/knowledge/wiki, sidecar metadata, generated core pages, search index, and dashboard.
-          dzcto refresh {project_arg}
-              Regenerate dashboard, core HTML pages, structured report pages, learning index, search index, cadence alerts, and provenance.
-              Decisions and Risks pages also regenerate short Current Read summaries, stable registries, and report signal intake.
-          dzcto serve {project_arg} [--host 127.0.0.1] [--port 8765]
-              Serve the wiki locally so search JSON loads reliably and local refresh works.
-          dzcto status {project_arg} [--json]
-              Show the setup checklist and operating health for the project.
-          dzcto doctor [--project <project>] [--json]
-              Check install health, manifests, helper syntax, wrappers, and optional project files.
-          dzcto check-stale {project_arg} [--json] [--fail-on-stale]
-              Check stale generated pages, generator version, missing artifacts, and cadence due state.
-
-        Reports and artifacts
-          dzcto snapshot {project_arg} [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--days N] [--json] [--no-artifact]
-              Generate the one-page CTO snapshot: what to communicate up, communicate down, and prioritize.
-              Defaults to the 7-day window ending today.
-          dzcto codebase-accountability {project_arg} [--repo <path> ...] [--since <git date>] [--days N] [--json] [--no-artifact]
-              Generate a management-by-exception report from read-only local Git history, provenance, guardrail checks,
-              risk signals, and decision signals. Defaults to the last 7 days unless --since is supplied.
-          dzcto artifact --project <project> --kind <kind> --title <title> [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
-              Generate a durable HTML report and refresh the dashboard. Prefer --data-file.
-              Kinds (token -> skill): snapshot -> snapshot-report, tech-stack -> tech-stack, engineering-risk -> review-engineering-risk,
-              codebase-accountability -> codebase-accountability, weekly-reviews -> weekly-cto-review,
-              ceo-updates -> write-ceo-update.
-          dzcto collect-issue-bundle <project> [--output <zip>] [--no-redact]
-              Create a troubleshooting bundle with redacted sidecar metadata and stale checks.
-
-        Learning
-          dzcto learning --project <project> [--date YYYY-MM-DD] --select
-              Select the next due learning item.
-          dzcto learning --project <project> --add --id <id> --title <title> [--summary <text>] [--details <text>|--details-file <path>] [--source <text>] [--tags <csv>]
-              Add one learning item.
-          dzcto learning --project <project> --seed-file <json>
-              Seed multiple learning items from a JSON file.
-          dzcto learning --project <project> --record <rating> --id <id> [--note <text>] [--date YYYY-MM-DD]
-              Record a review rating such as Needs Work, Familiar, or Confident.
-          dzcto learning --project <project> --stats
-              Print learning counts and progress.
-
-        Skill prompt workflows
-          day-zero-cto:refine-core-context
-              Interview, draft, approve, write source Markdown, and refresh core context.
-          day-zero-cto:review-decisions
-              Walk recorded decisions one at a time and reaffirm, supersede, punt, or mark evidence needed.
-          day-zero-cto:review-risks
-              Walk active risks one at a time and keep, update, close, punt, or mark evidence needed.
-          day-zero-cto:review-engineering-risk
-              Create a fresh engineering-risk report artifact.
-          day-zero-cto:codebase-accountability
-              Generate a management-by-exception codebase accountability report from Git history and guardrail signals.
-          day-zero-cto:snapshot-report
-              Distill current reports, risks, decisions, cadence, and learning into the one CTO snapshot.
-
-        Editing rule
-          Edit Markdown sources under <project>/knowledge/wiki/core/, not generated HTML. For substantive updates,
-          ask an agent to use day-zero-cto:refine-core-context, then run dzcto refresh {project_arg}.
-          To steer report prompt cards, add reportPromptContext in .dzcto/config.json or a Prompt Context column
-          in core/OPERATING_CADENCE.md Index Cadence Rules.
-
-        More detail
-          Every command also supports argparse help:
-            dzcto <command> -h
         """
     ).strip()
 
 
 def print_help_topic(topic: str | None, project: Path | None = None) -> None:
-    project_arg = shell_project(project)
-    project_path = str(project) if project else "$HOME/Documents/Acme CTO"
+    artifacts_path = str(project) if project else "$HOME/Documents/Acme CEO Reports"
+    artifacts_arg = f'"{artifacts_path}"'
     topics = {
         "commands": command_reference_text(project),
-        "lfg": f"""
-            LFG (pick the next best action)
-
-            Run:
-              dzcto lfg {project_arg}
-
-            The helper checks the project in this order:
-              setup readiness, cadence due items, risk reviews or risk intake, decision reviews or decision intake, then learning.
-
-            It prints the next concrete command or agent prompt to run. Use --json if another tool should consume the recommendation.
-        """,
-        "onboarding": f"""
-            Onboarding checklist
-
-            1. Decide the company name and a short company description first; folder options follow from the name.
-            2. Choose a project folder outside the code repo, such as ~/Documents/<Company> CTO.
-            3. Note any read-only code repo paths to add with --repo when code evidence exists.
-            4. Primary path: ask your agent to use day-zero-cto:bootstrap-cto-context for guided setup
-               (company context, core files, first reports, learning seed).
-               Manual equivalent: dzcto init {project_arg} --company-name "<name>" --company-description "<summary>".
-            5. Open the command center: dzcto serve {project_arg}.
-            6. Use the dashboard setup checklist to finish core context, cadence rules, first reports, and learning seed.
-        """,
-        "editing": f"""
-            Editing core context
-
-            Edit source Markdown, not generated HTML:
-              {project_path}/knowledge/wiki/core/STRATEGY.md
-              {project_path}/knowledge/wiki/core/TEAM.md
-              {project_path}/knowledge/wiki/core/OPERATING_CADENCE.md
-              {project_path}/knowledge/wiki/core/DECISIONS.md
-              {project_path}/knowledge/wiki/core/RISKS.md
-
-            For substantive changes, ask an agent to use day-zero-cto:refine-core-context.
-            For recorded decision reviews, use day-zero-cto:review-decisions.
-            For active risk-register reviews, use day-zero-cto:review-risks.
-            Risk cards, core/risks.html, risks/registry.json, and risks/risk-*.html detail pages are generated from RISKS.md plus report signals;
-            edit RISKS.md as the source of truth.
-            Decision cards, core/decisions.html, decisions/registry.json, and decisions/decision-*.html detail pages are generated from DECISIONS.md plus report signals;
-            edit DECISIONS.md as the source of truth.
-            Report risk and decision sections are candidate signals; the generated Risks and Decisions pages roll them up
-            so they can be promoted, merged, or dismissed from one place. Matched signals link to focused item pages
-            that list every report/source reference pointing at the risk or decision.
-            Every active risk needs a calendar Next Review date. External triggers can be included, but should not replace the date.
-            For report prompt steering, add reportPromptContext to .dzcto/config.json or add a Prompt Context
-            column to the Index Cadence Rules table in OPERATING_CADENCE.md.
-
-            Then run:
-              dzcto refresh {project_arg}
-        """,
         "reports": f"""
-            Report loop
+            CEO reports
 
-            Primary readout
-              Snapshot: the one document for what the CTO needs to understand, communicate up,
-              communicate down, and prioritize.
+            Init captures weekly defaults and tone:
+              dzcto init --artifacts-dir {artifacts_arg} --weekly-range previous_completed_week --weekly-start-day Monday --weekly-end-day Sunday --ceo-report-tone "<tone>"
 
-            Drill-down reports
-              Weekly CTO Review: delivery, risks, decisions, team/process, next focus.
-              CEO Update: audience-specific progress, risks/blockers, asks/decisions, next.
-              Engineering Risk: top risks, mitigations, watchpoints.
-              Tech Stack: architecture shape, stack components, candidate risks, onboarding notes.
-              Codebase Accountability: repo movement, management exceptions, provenance, guardrail checks,
-              and agent/author activity.
+            Weekly report:
+              /dzcto-ceo-report-weekly
 
-            Operating reviews
-              Review Risks: walk the risk register one item at a time and update RISKS.md.
-              Review Decisions: revisit durable choices by trigger and update DECISIONS.md.
+            Custom range:
+              /dzcto-ceo-report
 
-            Reports are written under:
-              {project_path}/knowledge/wiki/reports/
-
-            The dashboard shows the latest report cards and cadence due state after:
-              dzcto refresh {project_arg}
+            Reports render under:
+              {artifacts_path}/reports/ceo-updates/
         """,
-        "serve": f"""
-            Local server
+        "install": """
+            Install/update
 
-            Run:
-              dzcto serve {project_arg}
+            Local Codex plugin install:
+              bin/dzcto setup
 
-            Then open the printed URL, usually:
-              http://127.0.0.1:8765/
+            Stable shell command:
+              bin/dzcto install-command
 
-            Serving locally lets generated pages load search-index.json reliably and enables local refresh from the dashboard.
-        """,
-        "troubleshooting": f"""
-            Troubleshooting
-
-            Check install health:
-              dzcto doctor --project {project_arg}
-
-            Check generated-page and cadence freshness:
-              dzcto check-stale {project_arg}
-
-            Check setup readiness:
-              dzcto status {project_arg}
-
-            Create a redacted issue bundle:
-              dzcto collect-issue-bundle {project_arg}
-
-            Rebuild generated pages:
-              dzcto refresh {project_arg}
-        """,
-        "learning": f"""
-            Learning
-
-            Select the next due item:
-              dzcto learning --project {project_arg} --select
-
-            Seed multiple items:
-              dzcto learning --project {project_arg} --seed-file learning-items.json
-
-            Record a review:
-              dzcto learning --project {project_arg} --record Familiar --id <item-id>
-
-            Show stats:
-              dzcto learning --project {project_arg} --stats
-        """,
-        "artifacts": f"""
-            Artifacts
-
-            Generate structured reports with JSON data:
-              dzcto artifact --project {project_arg} --kind weekly-reviews --title "Weekly CTO Review" --data-file weekly.json
-
-            Supported kinds (note the --kind token differs from the skill name):
-              snapshot          from the snapshot-report skill
-              tech-stack        from the tech-stack skill
-              engineering-risk  from the review-engineering-risk skill
-              codebase-accountability from the codebase-accountability skill
-              weekly-reviews    from the weekly-cto-review skill
-              ceo-updates       from the write-ceo-update skill
-
-            Prefer --data-file so reports get structured sections and action summaries. Use --body-file only for legacy raw HTML.
+            Update:
+              bin/dzcto update
         """,
     }
     if topic in topics:
@@ -2021,36 +1841,28 @@ def collect_issue_bundle(project: Path, output: Path | None, do_redact: bool) ->
 def claude_desktop_skill_markdown() -> str:
     return """---
 name: day-zero-cto
-description: "Run Day Zero CTO workflows for early-stage technical leaders: onboarding, CTO context, primary Snapshot reports, drill-down tech stack/accountability/risk/weekly/CEO reports, risk reviews, decision-log reviews, and spaced-repetition learning. Use when the user asks for Day Zero CTO, CTO onboarding, startup technical leadership workflows, or durable CTO artifacts."
+description: "Run the simplified Day Zero CTO CEO-report workflow: initialize artifact storage, generate weekly CEO reports, and generate custom date-range CEO reports."
 ---
 
 # Day Zero CTO
 
-Use Day Zero CTO to help an early-stage technical leader organize company context, operating cadence, reports, decisions, risks, and learning.
+Use Day Zero CTO to help an early-stage technical leader turn engineering reality into CEO-facing reports.
 
 ## Surface Notes
 
 - In Claude Desktop chat, create or update downloadable artifacts inside Claude's available workspace unless the user has provided a mounted writable folder.
-- For local filesystem wikis, ask the user to run the local helper from a terminal or from an agent with filesystem access: `dzcto init`, `dzcto refresh`, `dzcto serve`, and `dzcto artifact`.
-- For self-serve setup guidance, ask the user to run `dzcto quickstart`, `dzcto help onboarding`, or `dzcto status "<project folder>"`.
+- For local filesystem report indexes, ask the user to run the local helper from a terminal or from an agent with filesystem access: `dzcto init --artifacts-dir <dir>` and `dzcto artifact --artifacts-dir <dir> --kind ceo-updates ...`.
 - If the helper lives under a versioned plugin cache path, ask the user to run `dzcto install-command` once to create a stable `~/.local/bin/dzcto` command.
 - Do not write Day Zero CTO artifacts into a code repo unless the user explicitly asks.
-- Treat code repos as read-only evidence by default; multiple repos are allowed.
+- Treat code repos as read-only evidence.
 
 ## Workflows
 
 Read the matching reference file when needed:
 
-- `references/bootstrap-cto-context.md`: onboarding and project wiki setup.
-- `references/snapshot-report.md`: primary CTO Snapshot report.
-- `references/tech-stack.md`: codebase stack mapping.
-- `references/codebase-accountability.md`: repo movement, provenance, guardrails, and agent activity.
-- `references/review-engineering-risk.md`: engineering risk report.
-- `references/review-risks.md`: risk-register review and update workflow.
-- `references/weekly-cto-review.md`: supporting weekly CTO operating detail.
-- `references/write-ceo-update.md`: supporting CEO-facing communication draft.
-- `references/review-decisions.md`: decision-log review and revisit workflow.
-- `references/learning.md`: spaced-repetition learning.
+- `references/dzcto-init.md`: initialize artifact storage, weekly defaults, and CEO tone.
+- `references/dzcto-ceo-report-weekly.md`: create a CEO report using configured weekly defaults.
+- `references/dzcto-ceo-report.md`: create a CEO report for a custom date range.
 
 Use concise, evidence-grounded judgment. When durable local HTML is needed, prefer the bundled Python helper if the environment can run it; otherwise provide the user with the exact `dzcto` command to run locally.
 """
@@ -2219,7 +2031,7 @@ def main(argv: list[str]) -> int:
     help_cmd.add_argument(
         "topic",
         nargs="?",
-        choices=["onboarding", "editing", "reports", "commands", "lfg", "serve", "troubleshooting", "learning", "artifacts"],
+        choices=["reports", "commands", "install"],
         help="Optional help topic",
     )
     help_cmd.add_argument("--project", help="Optional project folder for command examples")
@@ -2259,15 +2071,21 @@ def main(argv: list[str]) -> int:
 
     init = sub.add_parser(
         "init",
-        help="Create or refresh a project knowledge wiki",
+        help="Create or refresh a simplified CEO-report workspace",
         epilog="--company-name, --company-url, --company-description, --report-prompt-context, and --repo are saved to "
         "<project>/knowledge/wiki/.dzcto/config.json and persist across refreshes. You can also edit that file by hand.",
     )
-    init.add_argument("project", help="Project folder, such as ~/Documents/Acme")
+    init.add_argument("project", nargs="?", help="Project folder, such as ~/Documents/Acme. Optional when --artifacts-dir is provided.")
+    init.add_argument("--artifacts-dir", help="Folder that directly stores CEO report artifacts, index.html, reports/, and .dzcto/")
     init.add_argument("--company-name", help="Company name; persisted as companyName in .dzcto/config.json")
     init.add_argument("--company-description", help="Short company summary; persisted as companyDescription in .dzcto/config.json")
     init.add_argument("--company-url", help="Company URL; persisted as companyUrl in .dzcto/config.json")
     init.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards; persisted as reportPromptContext in .dzcto/config.json")
+    init.add_argument("--weekly-range", help="Default CEO weekly report range, such as previous_completed_week or last_7_days")
+    init.add_argument("--weekly-start-day", help="Default weekly report start day, such as Monday")
+    init.add_argument("--weekly-end-day", help="Default weekly report end day, such as Sunday")
+    init.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
+    init.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports; persisted as ceoReportTone in .dzcto/config.json")
     init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated. Persisted as codeRepos in .dzcto/config.json")
 
     refresh = sub.add_parser("refresh", help="Refresh wiki indexes, core HTML pages, and cadence alerts")
@@ -2322,7 +2140,8 @@ def main(argv: list[str]) -> int:
     accountability.add_argument("--no-artifact", action="store_true", help="Only write/print JSON; do not render HTML artifact")
 
     artifact = sub.add_parser("artifact", help="Generate a structured report artifact")
-    artifact.add_argument("--project", required=True)
+    artifact.add_argument("--project")
+    artifact.add_argument("--artifacts-dir", help="Folder that directly stores index.html, reports/, and .dzcto/")
     artifact.add_argument("--kind", required=True)
     artifact.add_argument("--title", required=True)
     artifact.add_argument("--date")
@@ -2416,8 +2235,13 @@ def main(argv: list[str]) -> int:
         return run_script("dzcto_doctor.py", doctor_args)
 
     if args.command == "init":
-        project = resolve_project(args.project)
-        init_args = ["--project", str(project), "--init"]
+        if not args.project and not args.artifacts_dir:
+            parser.error("dzcto init requires a project folder or --artifacts-dir")
+        init_args = ["--init"]
+        if args.project:
+            init_args.extend(["--project", str(resolve_project(args.project))])
+        if args.artifacts_dir:
+            init_args.extend(["--artifacts-dir", str(Path(args.artifacts_dir).expanduser().resolve())])
         if args.company_name:
             init_args.extend(["--company-name", args.company_name])
         if args.company_description:
@@ -2426,6 +2250,16 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--company-url", args.company_url])
         if args.report_prompt_context:
             init_args.extend(["--report-prompt-context", args.report_prompt_context])
+        if args.weekly_range:
+            init_args.extend(["--weekly-range", args.weekly_range])
+        if args.weekly_start_day:
+            init_args.extend(["--weekly-start-day", args.weekly_start_day])
+        if args.weekly_end_day:
+            init_args.extend(["--weekly-end-day", args.weekly_end_day])
+        if args.weekly_lookback_days is not None:
+            init_args.extend(["--weekly-lookback-days", str(args.weekly_lookback_days)])
+        if args.ceo_report_tone:
+            init_args.extend(["--ceo-report-tone", args.ceo_report_tone])
         for repo in args.repo:
             init_args.extend(["--repo", repo])
         return run_script("dzcto_artifact.py", init_args)
@@ -2478,7 +2312,13 @@ def main(argv: list[str]) -> int:
         return run_codebase_accountability(args)
 
     if args.command == "artifact":
-        artifact_args = ["--project", args.project, "--kind", args.kind, "--title", args.title]
+        if not args.project and not args.artifacts_dir:
+            parser.error("dzcto artifact requires --project or --artifacts-dir")
+        artifact_args = ["--kind", args.kind, "--title", args.title]
+        if args.project:
+            artifact_args.extend(["--project", args.project])
+        if args.artifacts_dir:
+            artifact_args.extend(["--artifacts-dir", args.artifacts_dir])
         if args.date:
             artifact_args.extend(["--date", args.date])
         if args.data_file:

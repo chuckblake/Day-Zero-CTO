@@ -1,0 +1,4 @@
+interface:
+  display_name: "DZ CTO CEO Report Weekly"
+  short_description: "Create the weekly CEO report."
+  default_prompt: "Generate this week's CEO report using my DZ CTO weekly defaults."

@@ -35,7 +35,11 @@ REPORT_FOLDERS = {
     "engineering-risk": "Engineering Risk",
     "codebase-accountability": "Codebase Accountability",
     "weekly-reviews": "Weekly Reviews",
-    "ceo-updates": "CEO Updates",
+    "ceo-updates": "CEO Reports",
+}
+
+ACTIVE_REPORT_FOLDERS = {
+    "ceo-updates": "CEO Reports",
 }
 
 REPORT_ROLES = {
@@ -311,9 +315,27 @@ def apply_init_metadata(
     company_description_value: str | None = None,
     company_url: str | None = None,
     report_prompt_context: str | None = None,
+    weekly_range: str | None = None,
+    weekly_start_day: str | None = None,
+    weekly_end_day: str | None = None,
+    weekly_lookback_days: int | None = None,
+    ceo_report_tone: str | None = None,
     repos: list[str] | None = None,
 ) -> None:
-    if not any([company_name_value, company_description_value, company_url, report_prompt_context, repos]):
+    if not any(
+        [
+            company_name_value,
+            company_description_value,
+            company_url,
+            report_prompt_context,
+            weekly_range,
+            weekly_start_day,
+            weekly_end_day,
+            weekly_lookback_days,
+            ceo_report_tone,
+            repos,
+        ]
+    ):
         return
 
     config_path = sidecar_dir(wiki_root) / "config.json"
@@ -329,6 +351,21 @@ def apply_init_metadata(
         config["companyDescription"] = description
     if report_prompt_context and report_prompt_context.strip():
         config["reportPromptContext"] = report_prompt_context.strip()
+    if ceo_report_tone and ceo_report_tone.strip():
+        config["ceoReportTone"] = ceo_report_tone.strip()
+    weekly_defaults = config.get("weeklyReportDefaults")
+    if not isinstance(weekly_defaults, dict):
+        weekly_defaults = {}
+    if weekly_range and weekly_range.strip():
+        weekly_defaults["range"] = weekly_range.strip()
+    if weekly_start_day and weekly_start_day.strip():
+        weekly_defaults["startDay"] = weekly_start_day.strip()
+    if weekly_end_day and weekly_end_day.strip():
+        weekly_defaults["endDay"] = weekly_end_day.strip()
+    if weekly_lookback_days is not None:
+        weekly_defaults["lookbackDays"] = weekly_lookback_days
+    if weekly_defaults:
+        config["weeklyReportDefaults"] = weekly_defaults
     if repos:
         existing = [str(item) for item in config.get("codeRepos", []) if str(item).strip()]
         for repo in repos:
@@ -5509,8 +5546,6 @@ def write_core_pages(
 def render_index(wiki_root: Path, project_folder: Path) -> None:
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
-    learning_dir = wiki_root / "learning"
-    today = dt.date.today()
     ensure_sidecar(wiki_root, project_folder, "render-index")
 
     config = project_config(wiki_root)
@@ -5519,300 +5554,75 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     description = company_description(strategy_path, config)
     stable_title = dashboard_title(company)
     prune_manifest_report_artifacts(wiki_root)
-    risk_registry = write_risk_registry(wiki_root, project_folder)
-    decision_registry = write_decision_registry(wiki_root, project_folder)
-    write_risk_detail_pages(wiki_root, project_folder, risk_registry, stable_title)
-    write_decision_detail_pages(wiki_root, project_folder, decision_registry, stable_title)
-    refresh_structured_report_pages(wiki_root, project_folder, stable_title, risk_registry=risk_registry, decision_registry=decision_registry)
-    core_pages = write_core_pages(wiki_root, project_folder, risk_registry=risk_registry, decision_registry=decision_registry)
-    core_ready = sum(1 for page in core_pages if page["source_exists"])
-
-    report_entries = [(folder, label, sorted((reports_dir / folder).glob("*.html"), reverse=True)) for folder, label in REPORT_FOLDERS.items()]
-    report_links_by_folder = {folder: links for folder, _label, links in report_entries}
-    snapshot_links = report_links_by_folder.get("snapshot", [])
-    supporting_report_entries = [(folder, label, links) for folder, label, links in report_entries if folder != "snapshot"]
-    report_count = sum(len(links) for _folder, _label, links in report_entries)
-    supporting_report_count = sum(len(links) for _folder, _label, links in supporting_report_entries)
-    tech_stack_links = next((links for folder, _label, links in report_entries if folder == "tech-stack"), [])
-    tech_stack_href = tech_stack_links[0].relative_to(wiki_root).as_posix() if tech_stack_links else "#sec-reports"
-
-    def report_card(folder: str, label: str, links: list[Path], *, primary: bool = False) -> str:
-        role_label, role_detail = report_role(folder)
-        card_classes = "report report-primary" if primary else "report"
-        latest = report_run_date(links[0]) if links else ""
-        if links:
-            latest_path = links[0]
-            href = latest_path.relative_to(wiki_root).as_posix()
-            preview = report_summary_for_path(latest_path) or "Generated report artifact."
-            history_items = []
-            history_search = []
-            for path in links[1:5]:
-                item_href = path.relative_to(wiki_root).as_posix()
-                item_title = html_title(path)
-                item_date = report_run_date(path)
-                item_summary = report_summary_for_path(path, 120) or item_title
-                history_search.extend([item_title, item_date, item_summary])
-                history_items.append(
-                    f"""<a class="rh-item" href="{esc(item_href)}">
-  <span>{esc(item_date)}</span>
-  <strong>{esc(item_summary)}</strong>
-</a>"""
-                )
-            history_more = f'<span class="rh-more">{esc(len(links) - 5)} older</span>' if len(links) > 5 else ""
-            history_html = (
-                f"""<div class="report-history">
-  <div class="rh-label">Previous reports</div>
-  {''.join(history_items)}
-  {history_more}
-</div>"""
-                if history_items or history_more
-                else ""
-            )
-            previous_count = max(len(links) - 1, 0)
-            report_meta = latest if not previous_count else f"{latest} / {pluralize(previous_count, 'previous report')}"
-            return f"""<article class="{card_classes}" data-search-text="{search_text_attr(label, role_label, role_detail, preview, latest, *history_search)}">
-  <div class="rp-top">
-    <div class="rp-head"><span class="rp-role">{esc(role_label)}</span><span class="rp-name">{esc(label)}</span><span class="rp-date">{esc(report_meta)}</span></div>
-    <a class="rp-open-top" href="{esc(href)}">Open latest</a>
-  </div>
-  <p class="rp-purpose">{esc(role_detail)}</p>
-  <p class="rp-prev">{esc(preview)}</p>
-  {history_html}
-</article>"""
-        if primary:
-            return f"""<article class="{card_classes} empty" data-search-text="{search_text_attr(label, role_label, role_detail, 'No snapshot generated yet')}">
-  <div class="rp-top">
-    <div class="rp-head"><span class="rp-role">{esc(role_label)}</span><span class="rp-name">{esc(label)}</span><span class="rp-date">No snapshot yet</span></div>
-    <span class="rp-count">Needed</span>
-  </div>
-  <p class="rp-purpose">{esc(role_detail)}</p>
-  <p class="rp-prev">Generate the Snapshot after the supporting reports have enough signal. It becomes the one CTO readout for leadership prep, team communication, and priorities.</p>
-  <code class="report-command">dzcto snapshot "{esc(str(project_folder))}"</code>
-</article>"""
-        return f"""<article class="{card_classes} empty" data-search-text="{search_text_attr(label, role_label, role_detail, 'No reports generated yet')}">
-  <div class="rp-top">
-    <div class="rp-head"><span class="rp-role">{esc(role_label)}</span><span class="rp-name">{esc(label)}</span></div>
-    <span class="rp-count">No reports</span>
-  </div>
-  <p class="rp-purpose">{esc(role_detail)}</p>
-  <p class="rp-prev">No supporting report generated yet.</p>
-  <div class="rp-foot"><span class="rp-date">No runs</span></div>
-</article>"""
-
-    snapshot_card = report_card("snapshot", REPORT_FOLDERS["snapshot"], snapshot_links, primary=True)
-    supporting_report_sections = [report_card(folder, label, links) for folder, label, links in supporting_report_entries]
-    reports_html = f"""
-      <div class="report-stack">
-        {snapshot_card}
-        <div class="report-subhead">
-          <div>
-            <h3>Drill-down reports</h3>
-            <p>Use these as evidence and source material for the Snapshot, not as competing top-level dashboards.</p>
-          </div>
-          <span>{esc(pluralize(supporting_report_count, "artifact"))}</span>
-        </div>
-        <div class="reports reports-supporting">{''.join(supporting_report_sections)}</div>
-      </div>
-"""
-
-    core_links = []
-    for page in core_pages:
-        card_class = "core-card" if page["source_exists"] else "core-card missing-card"
-        core_links.append(
-            f"""<a class="{card_class}" href="{esc(page["html"])}">
-  <span class="cc-ico">{esc(core_icon(page["doc"]))}</span>
-  <span class="cc-name">{esc(page["title"])}</span>
-  <span class="cc-desc">{esc(page["description"])}</span>
-  <span class="cc-stat">{'Ready' if page["source_exists"] else 'Needs source'}</span>
-</a>"""
-        )
-
-    cadence_rules = parse_cadence_rules(core_dir / "OPERATING_CADENCE.md")
-    alerts = cadence_alerts(cadence_rules, reports_dir, today)
-    risks = active_registry_risks(risk_registry)
-    decisions = registry_decisions(decision_registry)
-    due_decisions = due_decision_entries(decisions, today)
-    due_risks = due_risk_entries(risks, today)
-    critical_risks = sum(1 for risk in risks if risk["severity"] == "Critical")
-    learning_items = read_learning_items(learning_dir)
-    learning_reviews = read_learning_reviews(learning_dir)
-    write_learning_index(wiki_root, project_folder, company, learning_items, learning_reviews, today)
-
-    if not cadence_rules:
-        cadence_status_html = '<div class="cadence-alert"><strong>No cadence rules</strong><p>Add an Index Cadence Rules table to Operating Cadence when this project has recurring DZCTO reports.</p></div>'
-        cadence_label = "No rules"
-        cadence_class = "status-warn"
-        cadence_tone_attr = ' data-tone="warn"'
-    elif not alerts:
-        cadence_status_html = '<div class="cadence-ok"><strong>Cadence current</strong><p>All scheduled Day Zero CTO report cadences are current.</p></div>'
-        cadence_label = "Current"
-        cadence_class = ""
-        cadence_tone_attr = ""
-    else:
-        alert_cards = "\n".join(
-            f'<div class="cadence-alert"><strong>{esc(alert["label"])}</strong><p>{esc(alert["reason"])}</p><code>{esc(display_command(alert["command"]))}</code></div>'
-            for alert in alerts
-        )
-        cadence_status_html = f'<div class="cadence-list">{alert_cards}</div>'
-        cadence_label = f"{len(alerts)} due"
-        cadence_class = "status-danger"
-        cadence_tone_attr = ' data-tone="crit"'
-    cadence_class_attr = f" {cadence_class}" if cadence_class else ""
-
-    snapshot_href = snapshot_links[0].relative_to(wiki_root).as_posix() if snapshot_links else "#sec-reports"
-    snapshot_latest = report_run_date(snapshot_links[0]) if snapshot_links else ""
-    snapshot_tone_attr = "" if snapshot_links else ' data-tone="warn"'
-    snapshot_sub = f"Latest {snapshot_latest}" if snapshot_links else "Generate first snapshot"
-    snapshot_status = f"Snapshot {snapshot_latest}" if snapshot_links else "Snapshot needed"
-    report_status = f"{snapshot_status} / {pluralize(supporting_report_count, 'drill-down artifact')}"
-    if alerts:
-        report_status = f"{report_status} / {pluralize(len(alerts), 'cadence alert')}"
-    risk_tone_attr = ' data-tone="crit"' if critical_risks else ' data-tone="warn"' if due_risks else ""
-    risk_sub = f"{pluralize(len(due_risks), 'review')} due" if due_risks else "Open risk page"
-    decision_tone_attr = ' data-tone="warn"' if due_decisions else ""
-    decision_sub = f"{pluralize(len(due_decisions), 'review')} due" if due_decisions else "Recorded choices"
-    learning_status = learning_summary(learning_items, today)
-    learning_counts_value = learning_counts(learning_items, today)
     repos = [str(item).strip() for item in (config.get("codeRepos", []) or []) if str(item).strip()]
     repo_count = len(repos)
-    setup_items = setup_checklist_items(
-        wiki_root=wiki_root,
-        strategy_path=strategy_path,
-        config=config,
-        core_ready=core_ready,
-        cadence_rules=cadence_rules,
-        report_count=report_count,
-        learning_items=learning_items,
-        repos=repos,
-    )
-    setup_remaining = any(item["state"] != "done" for item in setup_items)
-    setup_top_html = setup_dashboard_summary_html(setup_items) if setup_remaining else ""
-    setup_bottom_html = "" if setup_remaining else dashboard_setup_section_html(setup_items)
-    write_setup_page(wiki_root, project_folder, company, setup_items)
-    write_search_index(
-        wiki_root,
-        project_folder,
-        company=company,
-        description=description,
-        core_pages=core_pages,
-        report_entries=report_entries,
-        learning_items=learning_items,
-        setup_items=setup_items,
-        risk_registry=risk_registry,
-        decision_registry=decision_registry,
-    )
-
+    report_folder = "ceo-updates"
+    report_label = ACTIVE_REPORT_FOLDERS[report_folder]
+    report_links = sorted((reports_dir / report_folder).glob("*.html"), reverse=True)
+    report_count = len(report_links)
+    latest_href = report_links[0].relative_to(wiki_root).as_posix() if report_links else "#sec-reports"
+    latest_date = report_run_date(report_links[0]) if report_links else "No reports yet"
+    weekly_defaults = config.get("weeklyReportDefaults") if isinstance(config.get("weeklyReportDefaults"), dict) else {}
+    weekly_range = text_value(weekly_defaults.get("range")) or "previous_completed_week"
+    weekly_start = text_value(weekly_defaults.get("startDay")) or "Monday"
+    weekly_end = text_value(weekly_defaults.get("endDay")) or "Sunday"
+    lookback = text_value(weekly_defaults.get("lookbackDays"))
+    weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
+    if lookback:
+        weekly_label = f"{weekly_label}; {lookback} days"
+    tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
+    artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
     report_prompt_context = configured_report_prompt_context(config)
-    ai_prompts = [
-        (
-            rule["label"],
-            enrich_ai_prompt(
-                rule["label"],
-                exact_prompt(
-                    display_command(rule["command"]),
-                    project_folder,
-                    repos,
-                    combine_prompt_context(report_prompt_context, str(rule.get("prompt_context") or "")),
-                ),
-            ),
-        )
-        for rule in cadence_rules
-        if display_command(rule["command"])
+
+    def command_card(card_id: str, label: str, command: str) -> str:
+        return copy_card(card_id, label, command, "Command")
+
+    weekly_prompt = exact_prompt(
+        f"Run /dzcto-ceo-report-weekly for {company}. Use the configured weekly defaults ({weekly_label}) and CEO tone guidance: {tone}.",
+        project_folder,
+        repos,
+        report_prompt_context,
+    )
+    custom_prompt = exact_prompt(
+        f"Run /dzcto-ceo-report for {company}. Ask for a concrete start and end date, then write the CEO report using tone guidance: {tone}.",
+        project_folder,
+        repos,
+        report_prompt_context,
+    )
+    prompt_items = [
+        copy_card("ai-prompt-weekly-ceo-report", "/dzcto-ceo-report-weekly", weekly_prompt, "Prompt"),
+        copy_card("ai-prompt-custom-ceo-report", "/dzcto-ceo-report", custom_prompt, "Prompt"),
     ]
-    ai_prompts.extend(default_ai_prompts(company, project_folder, repos, report_prompt_context))
-    seen: set[str] = set()
-    seen_labels: set[str] = set()
-    ai_prompt_items = []
-    for index, (label, prompt) in enumerate(ai_prompts, start=1):
-        normalized = prompt.lower()
-        normalized_label = label.lower()
-        if not prompt or normalized in seen or normalized_label in seen_labels:
-            continue
-        seen.add(normalized)
-        seen_labels.add(normalized_label)
-        ai_prompt_items.append(copy_card(f"ai-prompt-{index}-{slugify(label)}", label, prompt, "Prompt"))
-
-    local_command_items = [
-        copy_card(f"local-command-{index}-{slugify(label)}", label, command, "Command")
-        for index, (label, command) in enumerate(local_helper_commands(project_folder), start=1)
+    command_items = [
+        command_card("local-command-init", "Refresh Init", f'dzcto init --artifacts-dir "{artifact_dir}"'),
+        command_card("local-command-serve", "Serve Index", f'python3 -m http.server 8765 --directory "{artifact_dir}"'),
     ]
-    help_html = dashboard_help_html(project_folder, ai_prompt_items, local_command_items)
 
-    learning_cards = f"""
-<a class="learning-card" href="learning/index.html">
-  <span class="learning-title">Spaced Repetition</span>
-  <span class="learning-meta">{esc(learning_status)}</span>
-</a>
-<div class="learning-card">
-  <span class="learning-title">Mastery</span>
-  <span class="learning-meta">{esc(learning_counts_value["active"] - learning_counts_value["new"])} seen / {esc(learning_counts_value["new"])} new</span>
-</div>
-"""
-
-    decision_rows = (
-        "\n".join(
-            f"""<a class="dec" href="{esc(text_value(decision.get("detailPath")) or decision_detail_relative_path(text_value(decision.get("id")) or decision_id_for_title(decision["title"])))}" data-search-text="{search_text_attr(decision["title"], decision["owner"], decision["when"], decision["context"])}">
-  <span class="idx">{index}</span>
-  <div class="d-body">
-    <div class="d-title">{esc(decision["title"])}</div>
-    <div class="d-meta"><span class="owner-tag">{esc(decision["owner"])}</span><span>/</span><span>{esc(decision["when"])}</span></div>
+    if report_links:
+        report_items = []
+        for path in report_links[:12]:
+            href = path.relative_to(wiki_root).as_posix()
+            title = html_title(path)
+            date = report_run_date(path)
+            summary = report_summary_for_path(path, 180) or title
+            report_items.append(
+                f"""<a class="report" href="{esc(href)}" data-search-text="{search_text_attr(title, date, summary)}">
+  <div class="rp-top">
+    <div class="rp-head"><span class="rp-role">CEO report</span><span class="rp-name">{esc(title)}</span><span class="rp-date">{esc(date)}</span></div>
+    <span class="rp-open-top">Open</span>
   </div>
+  <p class="rp-prev">{esc(summary)}</p>
 </a>"""
-            for index, decision in enumerate(due_decisions[:5], start=1)
-        )
-        if due_decisions
-        else '<p class="empty-item">No decision revisit triggers are due or marked triggered.</p>'
-    )
-
-    due_risk_rows = (
-        "\n".join(
-            f"""<a class="mini-risk" href="{esc(text_value(risk.get("detailPath")) or risk_detail_relative_path(text_value(risk.get("id")) or risk_id_for_title(risk["title"])))}">
-  <span class="sev-dot dot-{severity_token(risk["severity"])}"></span>
-  <div class="mr-body">
-    <div class="mr-title">{esc(risk["title"])}</div>
-    <div class="mr-meta">{esc(risk["severity"])} / {esc(risk["owner"])} / {esc(risk["source"])} / review {esc(risk["review"])}</div>
+            )
+        reports_html = f'<div class="reports reports-supporting">{"".join(report_items)}</div>'
+    else:
+        reports_html = f"""<article class="report report-primary empty" data-search-text="No CEO reports generated yet">
+  <div class="rp-top">
+    <div class="rp-head"><span class="rp-role">CEO report</span><span class="rp-name">{esc(report_label)}</span><span class="rp-date">No reports yet</span></div>
+    <span class="rp-count">Start here</span>
   </div>
-</a>"""
-            for risk in due_risks[:5]
-        )
-        if due_risks
-        else '<p class="empty-item">No risk reviews are due today.</p>'
-    )
-
-    cadence_today_html = (
-        "\n".join(
-            f"""<a class="cad-mini" href="core/operating-cadence.html">
-  <div>
-    <div class="cm-name">{esc(alert["label"])}</div>
-    <div class="cm-sub">{esc(alert["reason"])}</div>
-  </div>
-  <span class="cm-when">{esc(relative_date(alert["due_date"], today))}</span>
-</a>"""
-            for alert in alerts[:5]
-        )
-        if alerts
-        else (
-            '<p class="empty-item">No cadence items are due today.</p>'
-            if cadence_rules
-            else '<p class="empty-item">No cadence rules yet.</p>'
-        )
-    )
-
-    learning_percent = 0
-    if learning_counts_value["active"]:
-        learning_percent = round(((learning_counts_value["active"] - learning_counts_value["new"]) / learning_counts_value["active"]) * 100)
-    learning_items_preview = (
-        "\n".join(
-            f"""<div class="li-card">
-  <span class="li-new">{esc(learning_item_status(item, today))}</span>
-  <div class="li-t">{esc(text_value(item.get("title") or item.get("id") or "Learning item"))}</div>
-  <div class="li-d">{esc(snippet(text_value(item.get("summary") or item.get("details") or item.get("detail")), 120))}</div>
-</div>"""
-            for item in active_learning_items(learning_items)[:8]
-        )
-        if active_learning_items(learning_items)
-        else '<div class="li-card"><div class="li-t">No learning items yet</div><div class="li-d">Run the learning skill to seed the first system concepts.</div></div>'
-    )
+  <p class="rp-purpose">Run /dzcto-ceo-report-weekly for the default weekly window, or /dzcto-ceo-report for a custom date range.</p>
+</article>"""
 
     generated_at = utc_now()
     provenance = provenance_payload(
@@ -5820,124 +5630,76 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         artifact_id="wiki-index",
         artifact_kind="wiki-index",
         relative_path="index.html",
-        title=f"{company} Day Zero CTO Knowledge Wiki",
+        title=f"{company} Day Zero CTO CEO Reports",
         generated_at=generated_at,
     )
     content = f"""
   <div class="kpis">
-    <a class="kpi{cadence_class_attr}" href="core/operating-cadence.html"{cadence_tone_attr}>
-      <div class="k-label">Cadence due</div>
-      <div class="k-val">{esc(len(alerts))}<span class="unit">/ {esc(len(cadence_rules))}</span></div>
-      <div class="k-sub">{esc(cadence_label)}</div>
+    <a class="kpi" href="{esc(latest_href)}">
+      <div class="k-label">CEO reports</div>
+      <div class="k-val">{esc(report_count)}</div>
+      <div class="k-sub">{esc(latest_date)}</div>
     </a>
-    <a class="kpi" href="core/risks.html"{risk_tone_attr}>
-      <div class="k-label">Open risks</div>
-      <div class="k-val">{esc(len(risks))}{f'<span class="unit">/ {critical_risks} crit</span>' if critical_risks else ''}</div>
-      <div class="k-sub">{esc(risk_sub)}</div>
-    </a>
-    <a class="kpi" href="core/decisions.html"{decision_tone_attr}>
-      <div class="k-label">Decisions</div>
-      <div class="k-val">{esc(len(decisions))}</div>
-      <div class="k-sub">{esc(decision_sub)}</div>
-    </a>
-    <a class="kpi" href="{esc(snapshot_href)}"{snapshot_tone_attr}>
-      <div class="k-label">Snapshot</div>
-      <div class="k-val">{esc(1 if snapshot_links else 0)}<span class="unit">/ primary</span></div>
-      <div class="k-sub">{esc(snapshot_sub)}</div>
-    </a>
-    <a class="kpi" href="learning/index.html">
-      <div class="k-label">Learning due</div>
-      <div class="k-val">{esc(learning_counts_value["due"])}<span class="unit">/ {esc(learning_counts_value["new"])} new</span></div>
-      <div class="k-sub">Spaced repetition</div>
-    </a>
-    <a class="kpi" href="{esc(tech_stack_href)}">
-      <div class="k-label">Repos</div>
+    <div class="kpi">
+      <div class="k-label">Weekly default</div>
+      <div class="k-val">{esc(weekly_start[:3])}<span class="unit"> to {esc(weekly_end[:3])}</span></div>
+      <div class="k-sub">{esc(weekly_range)}</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">Evidence repos</div>
       <div class="k-val">{esc(repo_count)}</div>
       <div class="k-sub">Read-only sources</div>
-    </a>
+    </div>
   </div>
 
-  {setup_top_html}
-
-  <section class="today" aria-label="Today">
-    <div class="today-head">
-      <h2><span class="pulse" aria-hidden="true"></span>What needs you today</h2>
-      <span class="stamp">{esc(today.isoformat())} / generated {esc(display_timestamp(generated_at))}</span>
-    </div>
-    <div class="today-grid">
-      <div class="today-col">
-        <div class="col-h">Decision reviews due <span class="cnt">{esc(len(due_decisions))}</span></div>
-        {decision_rows}
-      </div>
-      <div class="today-col">
-        <div class="col-h">Risk reviews due <span class="cnt">{esc(len(due_risks))}</span></div>
-        {due_risk_rows}
-      </div>
-      <div class="today-col">
-        <div class="col-h">Operating cadence due <span class="cnt">{esc(len(alerts))}</span></div>
-        {cadence_today_html}
-      </div>
-    </div>
-  </section>
-
-  <details class="section" id="sec-reports">
+  <details class="section" id="sec-reports" open>
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">01</span>
-      <span class="sec-title">Reports</span>
-      <span class="sec-meta" data-report-count>{esc(report_status)}</span>
+      <span class="sec-title">CEO Reports</span>
+      <span class="sec-meta" data-report-count>{esc(pluralize(report_count, "report"))}</span>
     </summary>
     <div class="sec-body">
       {reports_html}
     </div>
   </details>
 
-  <details class="section" id="sec-core">
+  <details class="section" id="sec-settings" open>
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">02</span>
-      <span class="sec-title">Core Context</span>
-      <span class="sec-meta">{core_ready}/{len(CORE_DOCS)} ready</span>
+      <span class="sec-title">Defaults</span>
+      <span class="sec-meta">CEO report settings</span>
     </summary>
     <div class="sec-body">
-      <div class="core">{''.join(core_links)}</div>
-    </div>
-  </details>
-
-  <details class="section" id="sec-learning">
-    <summary>
-      <span class="chev" aria-hidden="true"></span>
-      <span class="sec-num">03</span>
-      <span class="sec-title">Learning</span>
-      <span class="sec-meta">{esc(learning_status)}</span>
-    </summary>
-    <div class="sec-body">
-      <div class="learn">
-        <a class="learn-panel" href="learning/index.html">
-          <div class="lp-h">Spaced Repetition</div>
-          <div class="lp-sub">One concept per prompt. Self-rate to schedule the next review.</div>
-          <div class="learn-stats">
-            <div class="ls"><b>{esc(learning_counts_value["active"])}</b><span>Active</span></div>
-            <div class="ls"><b>{esc(learning_counts_value["due"])}</b><span>Due</span></div>
-            <div class="ls"><b>{esc(learning_counts_value["new"])}</b><span>New</span></div>
-          </div>
-          <div class="mastery">
-            <div class="m-bar"><div class="m-fill" style="width:{esc(learning_percent)}%"></div></div>
-            <div class="m-txt">Mastery: {esc(learning_percent)}%</div>
-          </div>
-        </a>
-        <div class="learn-items">{learning_items_preview}</div>
+      <div class="reports reports-supporting">
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Weekly range</span><span class="rp-name">{esc(weekly_label)}</span></div></div>
+          <p class="rp-prev">Used by /dzcto-ceo-report-weekly.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Tone</span><span class="rp-name">CEO report voice</span></div></div>
+          <p class="rp-prev">{esc(tone)}</p>
+        </article>
       </div>
     </div>
   </details>
 
-  {help_html}
-
-  {setup_bottom_html}
+  <details class="section" id="sec-prompts">
+    <summary>
+      <span class="chev" aria-hidden="true"></span>
+      <span class="sec-num">03</span>
+      <span class="sec-title">Commands</span>
+      <span class="sec-meta">copy prompts</span>
+    </summary>
+    <div class="sec-body">
+      <div class="copy-grid">{''.join(prompt_items)}{''.join(command_items)}</div>
+    </div>
+  </details>
 """
     body = page_shell(
         content,
-        eyebrow="Command Center - Day Zero CTO",
+        eyebrow="CEO Reports - Day Zero CTO",
         title=dashboard_title(company),
         subtitle=description,
         stamp=f"Last updated {display_timestamp(generated_at)}",
@@ -5950,6 +5712,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Generate Day Zero CTO artifacts")
     parser.add_argument("--project", help="Project folder; creates/uses PATH/knowledge/wiki")
+    parser.add_argument("--artifacts-dir", help="Folder that directly stores index.html, reports/, and .dzcto/")
     parser.add_argument("--home", help="Legacy: wiki root folder")
     parser.add_argument("--kind", choices=REPORT_FOLDERS.keys())
     parser.add_argument("--title")
@@ -5961,13 +5724,26 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--company-description", help="Short company description to store in wiki metadata")
     parser.add_argument("--company-url", help="Company website URL; used as context and optional description source")
     parser.add_argument("--report-prompt-context", help="Extra context appended to report and operating prompt cards")
+    parser.add_argument("--weekly-range", help="Default CEO weekly report range, such as previous_completed_week or last_7_days")
+    parser.add_argument("--weekly-start-day", help="Default weekly report start day, such as Monday")
+    parser.add_argument("--weekly-end-day", help="Default weekly report end day, such as Sunday")
+    parser.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
+    parser.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports")
     parser.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
     args = parser.parse_args(argv)
 
-    if not args.project and not args.home:
-        parser.error("--project or --home is required")
+    if not args.project and not args.home and not args.artifacts_dir:
+        parser.error("--project, --artifacts-dir, or --home is required")
 
-    if args.project:
+    if args.artifacts_dir:
+        wiki_root = Path(args.artifacts_dir).expanduser().resolve()
+        if not args.init and not wiki_root.exists():
+            raise SystemExit(
+                f"--artifacts-dir path does not exist: {wiki_root}\n"
+                f"  If the report workspace is new, run `dzcto init --artifacts-dir <path>` first."
+            )
+        project_folder = Path(args.project).expanduser().resolve() if args.project else wiki_root
+    elif args.project:
         project_folder = Path(args.project).expanduser().resolve()
         if not project_folder.exists():
             raise SystemExit(
@@ -6006,7 +5782,8 @@ def main(argv: list[str]) -> int:
     learning_dir = wiki_root / "learning"
 
     core_dir.mkdir(parents=True, exist_ok=True)
-    for folder in REPORT_FOLDERS:
+    folders_to_create = ACTIVE_REPORT_FOLDERS if args.init and not args.kind else REPORT_FOLDERS
+    for folder in folders_to_create:
         (reports_dir / folder).mkdir(parents=True, exist_ok=True)
     learning_dir.mkdir(parents=True, exist_ok=True)
     ensure_sidecar(wiki_root, project_folder, "init" if args.init else "generate-artifact")
@@ -6017,6 +5794,11 @@ def main(argv: list[str]) -> int:
         company_description_value=args.company_description,
         company_url=args.company_url,
         report_prompt_context=args.report_prompt_context,
+        weekly_range=args.weekly_range,
+        weekly_start_day=args.weekly_start_day,
+        weekly_end_day=args.weekly_end_day,
+        weekly_lookback_days=args.weekly_lookback_days,
+        ceo_report_tone=args.ceo_report_tone,
         repos=args.repo,
     )
     stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
