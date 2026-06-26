@@ -17,12 +17,24 @@ Everything else is legacy reference material for now. The old broad CTO workflow
 `/dzcto-init` should collect:
 
 - The artifact/report folder. This folder directly contains `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json`.
-- Weekly report defaults, such as `previous_completed_week`, start day, end day, and optional rolling lookback days.
+- Weekly report defaults. Init should ask for the schedule explicitly, such as `Fri-Thu`, `Mon-Sun`, or `rolling last 7 days`; it should not silently choose a default.
 - CEO report tone guidance.
 - Optional company metadata.
 - Optional read-only code repo paths for evidence.
 
 The equivalent helper command is:
+
+```bash
+dzcto init \
+  --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
+  --company-name "Acme" \
+  --weekly-range "previous_completed_week" \
+  --weekly-start-day "Friday" \
+  --weekly-end-day "Thursday" \
+  --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
+```
+
+For a Monday-through-Sunday reporting week:
 
 ```bash
 dzcto init \
@@ -39,6 +51,14 @@ The helper creates an index at:
 ```text
 <artifacts-dir>/index.html
 ```
+
+It also saves preferences to:
+
+```text
+~/.dzcto/config.json
+```
+
+That global config stores the default artifact directory, weekly schedule, CEO report tone, and optional evidence repos so the same skill can be used from any code repo.
 
 ## CEO Reports
 
@@ -130,7 +150,7 @@ The slash commands are the primary interface. The local helper still exists for 
 | Command | Purpose |
 | --- | --- |
 | `dzcto init --artifacts-dir <dir>` | Create or refresh the CEO report workspace. |
-| `dzcto artifact --artifacts-dir <dir> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report and refresh the index. |
+| `dzcto artifact --artifacts-dir <dir> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report and refresh the index. If `--artifacts-dir` is omitted, the helper uses `~/.dzcto/config.json`. |
 | `dzcto install-command` | Create `~/.local/bin/dzcto`. |
 | `dzcto setup` | Install the local Codex plugin entry. |
 | `dzcto update` | Pull/refresh a local install and run doctor. |
@@ -146,7 +166,6 @@ skills/
   dzcto-init/
   dzcto-ceo-report-weekly/
   dzcto-ceo-report/
-legacy-skills/
 scripts/
 bin/
 ```

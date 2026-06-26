@@ -14,9 +14,11 @@ from typing import Any
 
 
 TOOL_NAME = "day-zero-cto"
-TOOL_VERSION = "0.7.0"
+TOOL_VERSION = "0.7.1"
 SCHEMA_VERSION = "1.0"
 SIDECAR_DIR_NAME = ".dzcto"
+GLOBAL_CONFIG_DIR = Path.home() / ".dzcto"
+GLOBAL_CONFIG_FILE = GLOBAL_CONFIG_DIR / "config.json"
 
 
 def utc_now() -> str:
@@ -51,6 +53,15 @@ def read_json(path: Path, default: Any) -> Any:
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def read_global_config() -> dict[str, Any]:
+    value = read_json(GLOBAL_CONFIG_FILE, {})
+    return value if isinstance(value, dict) else {}
+
+
+def write_global_config(payload: dict[str, Any]) -> None:
+    write_json(GLOBAL_CONFIG_FILE, payload)
 
 
 def sha256_text(value: str) -> str:

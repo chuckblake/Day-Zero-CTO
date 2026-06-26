@@ -1,4 +1,0 @@
-interface:
-  display_name: "Review Decisions"
-  short_description: "Walk the decision log and resolve revisits."
-  default_prompt: "Review the Day Zero CTO decision log."

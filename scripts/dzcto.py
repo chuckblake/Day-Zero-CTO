@@ -1195,8 +1195,8 @@ def print_quickstart(project: Path | None = None) -> None:
                dzcto init --artifacts-dir {artifacts_arg} \\
                  --company-name "Acme" \\
                  --weekly-range "previous_completed_week" \\
-                 --weekly-start-day "Monday" \\
-                 --weekly-end-day "Sunday" \\
+                 --weekly-start-day "Friday" \\
+                 --weekly-end-day "Thursday" \\
                  --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
 
             3. Generate reports
@@ -1229,10 +1229,11 @@ def command_reference_text(project: Path | None = None) -> str:
           dzcto init --artifacts-dir {artifacts_arg} [--company-name <name>] [--company-description <summary>] [--company-url <url>]
                      [--weekly-range <range>] [--weekly-start-day <day>] [--weekly-end-day <day>]
                      [--weekly-lookback-days N] [--ceo-report-tone <text>] [--repo <path> ...]
-              Create or refresh the artifact folder, .dzcto/config.json, reports/ceo-updates/, and index.html.
+              Create or refresh the artifact folder, .dzcto/config.json, reports/ceo-updates/, index.html,
+              and ~/.dzcto/config.json for cross-repo defaults.
           dzcto artifact --artifacts-dir {artifacts_arg} --kind ceo-updates --title <title>
                          [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
-              Render a CEO report and refresh the index. Prefer --data-file.
+              Render a CEO report and refresh the index. If --artifacts-dir is omitted, use ~/.dzcto/config.json.
           dzcto setup
               Install the local Codex plugin marketplace entry.
           dzcto install-command
@@ -1256,7 +1257,7 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
             CEO reports
 
             Init captures weekly defaults and tone:
-              dzcto init --artifacts-dir {artifacts_arg} --weekly-range previous_completed_week --weekly-start-day Monday --weekly-end-day Sunday --ceo-report-tone "<tone>"
+              dzcto init --artifacts-dir {artifacts_arg} --weekly-range previous_completed_week --weekly-start-day Friday --weekly-end-day Thursday --ceo-report-tone "<tone>"
 
             Weekly report:
               /dzcto-ceo-report-weekly
@@ -2025,7 +2026,7 @@ def serve_project(project: Path, host: str, port: int) -> int:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="dzcto", description="Day Zero CTO local skill helper")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
     help_cmd = sub.add_parser("help", help="Print Day Zero CTO workflow help")
     help_cmd.add_argument(
@@ -2041,7 +2042,7 @@ def main(argv: list[str]) -> int:
 
     sub.add_parser("version", help="Print the Day Zero CTO helper version")
 
-    lfg = sub.add_parser("lfg", help="Pick the next best Day Zero CTO operating action")
+    lfg = sub.add_parser("lfg", help=argparse.SUPPRESS)
     lfg.add_argument("project", help="Project folder")
     lfg.add_argument("--json", action="store_true", help="Print JSON")
 
@@ -2086,12 +2087,13 @@ def main(argv: list[str]) -> int:
     init.add_argument("--weekly-end-day", help="Default weekly report end day, such as Sunday")
     init.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
     init.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports; persisted as ceoReportTone in .dzcto/config.json")
+    init.add_argument("--no-save-preferences", action="store_true", help="Do not update ~/.dzcto/config.json")
     init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated. Persisted as codeRepos in .dzcto/config.json")
 
-    refresh = sub.add_parser("refresh", help="Refresh wiki indexes, core HTML pages, and cadence alerts")
+    refresh = sub.add_parser("refresh", help=argparse.SUPPRESS)
     refresh.add_argument("project", help="Project folder")
 
-    serve = sub.add_parser("serve", help="Serve the wiki locally so the HTML refresh button can run Python")
+    serve = sub.add_parser("serve", help=argparse.SUPPRESS)
     serve.add_argument("project", help="Project folder")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
@@ -2100,16 +2102,16 @@ def main(argv: list[str]) -> int:
     install_command.add_argument("--dest", default=str(DEFAULT_COMMAND_DEST), help="Destination command path")
     install_command.add_argument("--force", action="store_true", help="Replace an existing command at --dest")
 
-    stale = sub.add_parser("check-stale", help="Check whether generated artifacts need attention")
+    stale = sub.add_parser("check-stale", help=argparse.SUPPRESS)
     stale.add_argument("project", help="Project folder")
     stale.add_argument("--json", action="store_true", help="Print JSON")
     stale.add_argument("--fail-on-stale", action="store_true", help="Exit 1 when stale items are found")
 
-    status = sub.add_parser("status", help="Show project setup checklist and operating health")
+    status = sub.add_parser("status", help=argparse.SUPPRESS)
     status.add_argument("project", help="Project folder")
     status.add_argument("--json", action="store_true", help="Print JSON")
 
-    bundle = sub.add_parser("collect-issue-bundle", help="Create a redacted troubleshooting bundle")
+    bundle = sub.add_parser("collect-issue-bundle", help=argparse.SUPPRESS)
     bundle.add_argument("project", help="Project folder")
     bundle.add_argument("--output", help="Optional zip output path")
     bundle.add_argument("--no-redact", action="store_true", help="Do not redact config/log text")
@@ -2117,7 +2119,7 @@ def main(argv: list[str]) -> int:
     claude_desktop = sub.add_parser("package-claude-desktop", help="Build an uploadable Claude Desktop custom skill zip")
     claude_desktop.add_argument("--output", help="Zip output path")
 
-    snapshot = sub.add_parser("snapshot", help="Generate the CTO snapshot report from current Day Zero CTO artifacts")
+    snapshot = sub.add_parser("snapshot", help=argparse.SUPPRESS)
     snapshot.add_argument("project", help="Project folder")
     snapshot.add_argument("--start", help="Window start date, YYYY-MM-DD. Defaults to --end minus --days + 1")
     snapshot.add_argument("--end", help="Window end date, YYYY-MM-DD. Defaults to today")
@@ -2128,7 +2130,7 @@ def main(argv: list[str]) -> int:
     snapshot.add_argument("--json", action="store_true", help="Print structured JSON")
     snapshot.add_argument("--no-artifact", action="store_true", help="Only write/print JSON; do not render HTML artifact")
 
-    accountability = sub.add_parser("codebase-accountability", help="Generate a codebase accountability report from local Git history")
+    accountability = sub.add_parser("codebase-accountability", help=argparse.SUPPRESS)
     accountability.add_argument("project", help="Project folder")
     accountability.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
     accountability.add_argument("--since", help="Git --since value; defaults to --days")
@@ -2148,7 +2150,7 @@ def main(argv: list[str]) -> int:
     artifact.add_argument("--data-file")
     artifact.add_argument("--body-file")
 
-    learning = sub.add_parser("learning", help="Manage spaced-repetition learning state")
+    learning = sub.add_parser("learning", help=argparse.SUPPRESS)
     learning.add_argument("--project", required=True, help="Project folder")
     learning.add_argument("--date")
     learning_mode = learning.add_mutually_exclusive_group()
@@ -2165,6 +2167,8 @@ def main(argv: list[str]) -> int:
     learning.add_argument("--source")
     learning.add_argument("--tags")
     learning.add_argument("--note")
+
+    sub._choices_actions = [action for action in sub._choices_actions if action.help != argparse.SUPPRESS]
 
     args = parser.parse_args(argv)
 
@@ -2235,8 +2239,6 @@ def main(argv: list[str]) -> int:
         return run_script("dzcto_doctor.py", doctor_args)
 
     if args.command == "init":
-        if not args.project and not args.artifacts_dir:
-            parser.error("dzcto init requires a project folder or --artifacts-dir")
         init_args = ["--init"]
         if args.project:
             init_args.extend(["--project", str(resolve_project(args.project))])
@@ -2260,6 +2262,8 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--weekly-lookback-days", str(args.weekly_lookback_days)])
         if args.ceo_report_tone:
             init_args.extend(["--ceo-report-tone", args.ceo_report_tone])
+        if args.no_save_preferences:
+            init_args.append("--no-save-preferences")
         for repo in args.repo:
             init_args.extend(["--repo", repo])
         return run_script("dzcto_artifact.py", init_args)
@@ -2312,8 +2316,6 @@ def main(argv: list[str]) -> int:
         return run_codebase_accountability(args)
 
     if args.command == "artifact":
-        if not args.project and not args.artifacts_dir:
-            parser.error("dzcto artifact requires --project or --artifacts-dir")
         artifact_args = ["--kind", args.kind, "--title", args.title]
         if args.project:
             artifact_args.extend(["--project", args.project])

@@ -2,7 +2,7 @@
 
 This repo is a cross-agent skill/plugin bundle for Codex Desktop, Claude Code, and Claude Desktop custom-skill style usage.
 
-Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-weekly`, and `/dzcto-ceo-report`. Keep the active `skills/` directory focused on those commands. Older broad CTO workflows live under `legacy-skills/` for reference and should not be re-exposed unless the product scope deliberately expands again.
+Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-weekly`, and `/dzcto-ceo-report`. Keep the active `skills/` directory focused on those commands. Do not keep inactive legacy `SKILL.md` files anywhere in the plugin tree; some installers may scan all `SKILL.md` files.
 
 ## Layout
 
@@ -10,7 +10,6 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - `.claude-plugin/plugin.json` is the Claude Code plugin manifest.
 - `.claude-plugin/marketplace.json` lets Claude Code add this repo as a marketplace.
 - `skills/<skill>/SKILL.md` holds active shared skill instructions. Keep these agent-neutral.
-- `legacy-skills/` holds inactive historical workflows.
 - `skills/<skill>/agents/openai.yaml` is Codex UI metadata; Claude Code can ignore it.
 - `scripts/` holds deterministic Python helpers used by the skills.
 - `bin/` exposes helper wrappers for Claude Code plugin installs and local convenience. `bin/dzcto` is the canonical wrapper; `dzcto-artifact`, `dzcto-learning`, and `dzcto-doctor` are compatibility aliases.
@@ -19,7 +18,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 ## Editing Rules
 
 - Keep Day Zero CTO artifacts in the user's chosen artifact/report folder, not in a code repo unless the user explicitly chooses that folder.
-- `/dzcto-init` should ask for artifact/report location, company/project name, weekly report defaults, and CEO report tone.
+- `/dzcto-init` should ask for artifact/report location, company/project name, weekly report defaults such as `Fri-Thu`, and CEO report tone. It must not silently choose a reporting week.
 - Treat user code repos as read-only evidence unless the user explicitly asks for code changes.
 - Support multiple read-only codebase paths when the user provides them.
 - Keep skill bodies concise and procedural. Do not add per-skill README files.
@@ -33,7 +32,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - The active generated index is a CEO report index, not a full CTO command center.
 - Generated pages should keep a visible footer with the Day Zero CTO skills version so users can identify what regenerated the wiki.
 - Generated pages should include sticky top navigation with breadcrumbs back to the dashboard, page title, search, and theme toggle.
-- `.dzcto/config.json` stores `weeklyReportDefaults`, `ceoReportTone`, optional `reportPromptContext`, optional company metadata, and optional `codeRepos`.
+- The artifact-local `.dzcto/config.json` and global `~/.dzcto/config.json` store `weeklyReportDefaults`, `ceoReportTone`, optional `reportPromptContext`, optional company metadata, and optional `codeRepos`. The global file also stores `defaultArtifactsDir` so the same skills work across repos.
 - The index should link CEO reports, show the weekly defaults and tone, and expose copyable prompts for `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report`.
 - Generated report list sections such as Progress, Risks / Blockers, Asks / Decisions, Watchpoints, and Sources should render as simple bold-led lists, not bordered cards. Keep cards for action summaries, KPIs, repeated dashboard objects, and genuinely framed tools.
 - When adding or changing install behavior, update `README.md` and `INSTALL_FOR_AGENTS.md`.

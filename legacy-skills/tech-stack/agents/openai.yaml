@@ -1,4 +1,0 @@
-interface:
-  display_name: "Tech Stack"
-  short_description: "Map the codebase stack."
-  default_prompt: "Create a Tech Stack report for this startup."

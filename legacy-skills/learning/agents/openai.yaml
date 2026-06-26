@@ -1,4 +1,0 @@
-interface:
-  display_name: "Learning"
-  short_description: "Learn the system with spaced repetition."
-  default_prompt: "Run a Day Zero CTO learning prompt."

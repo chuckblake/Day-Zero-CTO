@@ -8,7 +8,7 @@ Before running `/dzcto-init`, gather:
 
 - Artifact/report folder.
 - Company or project name.
-- Weekly report defaults: range style, start day, end day, and optional lookback days.
+- Weekly report defaults: ask for the exact reporting week schedule, such as `Fri-Thu`, `Mon-Sun`, or `rolling last 7 days`. Do not silently choose a default.
 - CEO report tone guidance.
 - Optional company description or URL.
 - Optional read-only code repo paths for evidence.
@@ -20,6 +20,8 @@ index.html
 reports/ceo-updates/
 .dzcto/config.json
 ```
+
+`dzcto init` also writes `~/.dzcto/config.json` with the default artifact folder, weekly schedule, CEO report tone, and optional evidence repos. That global preference file is what lets the same skills work from any repo later.
 
 ## Codex Desktop
 
@@ -84,8 +86,8 @@ dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
   --company-name "Acme" \
   --weekly-range "previous_completed_week" \
-  --weekly-start-day "Monday" \
-  --weekly-end-day "Sunday" \
+  --weekly-start-day "Friday" \
+  --weekly-end-day "Thursday" \
   --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
 
 dzcto artifact \

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Review Engineering Risk"
-  short_description: "Fresh engineering-risk assessment report."
-  default_prompt: "Produce a fresh engineering-risk assessment report for this startup from current evidence. To maintain the existing risk register row by row instead, use Review Risks."

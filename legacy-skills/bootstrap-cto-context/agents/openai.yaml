@@ -1,4 +1,0 @@
-interface:
-  display_name: "Onboard Day Zero CTO"
-  short_description: "Set up the CTO wiki."
-  default_prompt: "Onboard Day Zero CTO for this startup."

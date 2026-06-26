@@ -9,8 +9,8 @@ Create the CEO report for the configured weekly window.
 
 ## Workflow
 
-1. Resolve the artifact/report folder. Look for `.dzcto/config.json` in the provided folder, or ask one concise question if no folder is known.
-2. Read `.dzcto/config.json`. Use `weeklyReportDefaults` for the date window and `ceoReportTone` for the report voice.
+1. Resolve the artifact/report folder. First read `~/.dzcto/config.json` and use `defaultArtifactsDir` when present. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
+2. Read `<artifact folder>/.dzcto/config.json`. Use `weeklyReportDefaults` for the date window and `ceoReportTone` for the report voice. Fall back to matching values in `~/.dzcto/config.json`.
 3. If weekly defaults are missing, ask for the start and end dates or run `/dzcto-init` first.
 4. Gather evidence for only the selected week:
    - User notes in the conversation.
@@ -46,4 +46,5 @@ python3 scripts/dzcto.py artifact \
 - Make asks and decisions explicit.
 - Separate known facts from judgment.
 - Do not write reports into a code repo unless the user explicitly chose that folder during init.
+- Do not run or offer non-CEO Day Zero CTO workflows.
 - End with the generated report path and a brief summary.

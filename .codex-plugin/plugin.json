@@ -1,6 +1,6 @@
 {
   "name": "day-zero-cto",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "A simplified Day Zero CTO workflow for CEO reports and durable report artifacts.",
   "author": {
     "name": "Chuck Blake"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Day Zero CTO",
     "shortDescription": "CEO reports and durable artifacts.",
-    "longDescription": "Day Zero CTO is now intentionally small: initialize a report workspace, store weekly date defaults and CEO report tone, generate weekly CEO reports, generate custom-range CEO reports, and keep an index page that links every report artifact.",
+    "longDescription": "Day Zero CTO is now intentionally small: initialize a report workspace, ask for and store weekly date defaults such as Fri-Thu, save CEO report tone and artifact preferences globally for use across repos, generate weekly CEO reports, generate custom-range CEO reports, and keep an index page that links every report artifact.",
     "developerName": "Chuck Blake",
     "category": "Productivity",
     "capabilities": [],

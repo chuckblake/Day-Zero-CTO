@@ -19,12 +19,14 @@ from dzcto_common import (
     ensure_sidecar,
     provenance_block,
     provenance_payload,
+    read_global_config,
     read_json,
     sha256_text,
     sidecar_dir,
     source_hashes as collect_source_hashes,
     update_manifest,
     utc_now,
+    write_global_config,
     write_json,
 )
 
@@ -408,6 +410,44 @@ Unknown
 """,
             encoding="utf-8",
         )
+
+
+def default_artifacts_dir_from_global() -> Path | None:
+    config = read_global_config()
+    for key in ("defaultArtifactsDir", "artifactsDir", "artifactDirectory", "wikiRoot"):
+        value = str(config.get(key) or "").strip()
+        if value:
+            return Path(value).expanduser().resolve()
+    return None
+
+
+def save_global_preferences(wiki_root: Path, project_folder: Path) -> None:
+    config = project_config(wiki_root)
+    global_config = read_global_config()
+    global_config.update(
+        {
+            "tool": "day-zero-cto",
+            "toolVersion": TOOL_VERSION,
+            "schemaVersion": "1.0",
+            "updatedAt": utc_now(),
+            "defaultArtifactsDir": str(wiki_root.expanduser().resolve()),
+            "artifactDirectory": str(wiki_root.expanduser().resolve()),
+            "projectFolder": str(project_folder.expanduser().resolve()),
+        }
+    )
+    for key in (
+        "companyName",
+        "companyDescription",
+        "companyUrl",
+        "weeklyReportDefaults",
+        "ceoReportTone",
+        "reportPromptContext",
+        "codeRepos",
+    ):
+        value = config.get(key)
+        if value:
+            global_config[key] = value
+    write_global_config(global_config)
 
 
 def split_markdown_row(row: str) -> list[str]:
@@ -5563,13 +5603,14 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     latest_href = report_links[0].relative_to(wiki_root).as_posix() if report_links else "#sec-reports"
     latest_date = report_run_date(report_links[0]) if report_links else "No reports yet"
     weekly_defaults = config.get("weeklyReportDefaults") if isinstance(config.get("weeklyReportDefaults"), dict) else {}
-    weekly_range = text_value(weekly_defaults.get("range")) or "previous_completed_week"
-    weekly_start = text_value(weekly_defaults.get("startDay")) or "Monday"
-    weekly_end = text_value(weekly_defaults.get("endDay")) or "Sunday"
+    weekly_range = text_value(weekly_defaults.get("range")) or "not_configured"
+    weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
+    weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
     lookback = text_value(weekly_defaults.get("lookbackDays"))
     weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
     if lookback:
         weekly_label = f"{weekly_label}; {lookback} days"
+    weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
     tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
     artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
     report_prompt_context = configured_report_prompt_context(config)
@@ -5642,7 +5683,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     </a>
     <div class="kpi">
       <div class="k-label">Weekly default</div>
-      <div class="k-val">{esc(weekly_start[:3])}<span class="unit"> to {esc(weekly_end[:3])}</span></div>
+      <div class="k-val">{esc(weekly_kpi_value)}</div>
       <div class="k-sub">{esc(weekly_range)}</div>
     </div>
     <div class="kpi">
@@ -5729,11 +5770,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--weekly-end-day", help="Default weekly report end day, such as Sunday")
     parser.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
     parser.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports")
+    parser.add_argument("--no-save-preferences", action="store_true", help="Do not update ~/.dzcto/config.json during init")
     parser.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
     args = parser.parse_args(argv)
 
     if not args.project and not args.home and not args.artifacts_dir:
-        parser.error("--project, --artifacts-dir, or --home is required")
+        default_artifacts_dir = default_artifacts_dir_from_global()
+        if default_artifacts_dir:
+            args.artifacts_dir = str(default_artifacts_dir)
+        else:
+            parser.error("--project, --artifacts-dir, or --home is required. Run dzcto init --artifacts-dir <path> once to save preferences.")
 
     if args.artifacts_dir:
         wiki_root = Path(args.artifacts_dir).expanduser().resolve()
@@ -5801,6 +5847,8 @@ def main(argv: list[str]) -> int:
         ceo_report_tone=args.ceo_report_tone,
         repos=args.repo,
     )
+    if args.init and not args.no_save_preferences:
+        save_global_preferences(wiki_root, project_folder)
     stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
 
     written_report: Path | None = None

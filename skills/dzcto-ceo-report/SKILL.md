@@ -9,9 +9,9 @@ Create a CEO report for a user-selected date range.
 
 ## Workflow
 
-1. Resolve the artifact/report folder. Look for `.dzcto/config.json` in the provided folder, or ask one concise question if no folder is known.
+1. Resolve the artifact/report folder. First read `~/.dzcto/config.json` and use `defaultArtifactsDir` when present. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
 2. Ask for the report date range when the user did not provide it. Use concrete `YYYY-MM-DD` start and end dates.
-3. Read `.dzcto/config.json` and use `ceoReportTone` when present. If no tone is configured, use direct, concise, business-facing language.
+3. Read `<artifact folder>/.dzcto/config.json` and use `ceoReportTone` when present. Fall back to `~/.dzcto/config.json`. If no tone is configured, use direct, concise, business-facing language.
 4. Gather evidence for only the requested range:
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
@@ -45,4 +45,5 @@ python3 scripts/dzcto.py artifact \
 - Keep technical detail subordinate to CEO judgment.
 - Preserve nuance when news is mixed.
 - Flag unsupported claims instead of smoothing them over.
+- Do not run or offer non-CEO Day Zero CTO workflows.
 - End with the generated report path and a brief summary.

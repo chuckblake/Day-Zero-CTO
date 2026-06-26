@@ -1,4 +1,0 @@
-interface:
-  display_name: "Weekly CTO Review"
-  short_description: "Create the weekly operating drill-down."
-  default_prompt: "Run the supporting weekly CTO review for this startup."
