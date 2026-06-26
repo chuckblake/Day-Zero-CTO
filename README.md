@@ -6,7 +6,7 @@ The active command surface is:
 
 | Command | Purpose |
 | --- | --- |
-| `/dzcto-init` | Choose where artifacts/reports live, set weekly report defaults, set CEO report tone, and create the report index. |
+| `/dzcto-init` | Choose where artifacts/reports live, capture company context, set weekly report defaults, set CEO report tone, and create the report index. |
 | `/dzcto-ceo-report-weekly` | Generate a CEO report using the weekly defaults from init. |
 | `/dzcto-ceo-report` | Generate a CEO report for a date range the user provides. |
 
@@ -18,9 +18,9 @@ Everything else is legacy reference material for now. The old broad CTO workflow
 
 - The artifact/report folder. This folder directly contains `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json`.
 - A profile name, such as `getmusic`, for the company/CTO context. This is how one DZ CTO install supports multiple repos or multiple CTO clients.
+- A company name and one-sentence company context summary for the report index and CEO report prompts.
 - Weekly report defaults. Init should ask for the schedule explicitly, such as `Fri-Thu`, `Mon-Sun`, or `rolling last 7 days`; it should not silently choose a default.
 - CEO report tone guidance.
-- Optional company metadata.
 - Optional read-only code repo paths for evidence.
 
 The equivalent helper command is:
@@ -30,6 +30,7 @@ dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
   --profile "acme" \
   --company-name "Acme" \
+  --company-description "Acme helps operators coordinate field service teams." \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Friday" \
   --weekly-end-day "Thursday" \
@@ -43,6 +44,7 @@ dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
   --profile "acme" \
   --company-name "Acme" \
+  --company-description "Acme helps operators coordinate field service teams." \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Monday" \
   --weekly-end-day "Sunday" \
@@ -69,6 +71,8 @@ That global config stores named profiles so the same skill can be used from any 
   "profiles": {
     "getmusic": {
       "artifactsDir": "/Users/chuck/dzcto/GetMusic",
+      "companyName": "GetMusic",
+      "companyDescription": "GetMusic helps artists plan, release, and promote music.",
       "weeklyReportDefaults": {
         "range": "previous_completed_week",
         "startDay": "Friday",
@@ -175,7 +179,7 @@ The slash commands are the primary interface. The local helper still exists for 
 
 | Command | Purpose |
 | --- | --- |
-| `dzcto init --artifacts-dir <dir> --profile <name>` | Create or refresh one CEO report workspace and save/update a global profile. |
+| `dzcto init --artifacts-dir <dir> --profile <name> --company-description <summary>` | Create or refresh one CEO report workspace and save/update a global profile. |
 | `dzcto artifact --profile <name> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report using a named global profile. If `--profile` is omitted, the helper uses `defaultProfile`. |
 | `dzcto install-command` | Create `~/.local/bin/dzcto`. |
 | `dzcto setup` | Install the local Codex plugin entry. |

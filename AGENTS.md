@@ -18,7 +18,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 ## Editing Rules
 
 - Keep Day Zero CTO artifacts in the user's chosen artifact/report folder, not in a code repo unless the user explicitly chooses that folder.
-- `/dzcto-init` should ask for artifact/report location, company/project name, weekly report defaults such as `Fri-Thu`, and CEO report tone. It must not silently choose a reporting week.
+- `/dzcto-init` should ask for artifact/report location, company/project name, one-sentence company context, weekly report defaults such as `Fri-Thu`, and CEO report tone. It must not silently choose a reporting week.
 - Treat user code repos as read-only evidence unless the user explicitly asks for code changes.
 - Support multiple read-only codebase paths when the user provides them.
 - Keep skill bodies concise and procedural. Do not add per-skill README files.

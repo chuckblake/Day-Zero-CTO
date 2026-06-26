@@ -8,9 +8,10 @@ Before running `/dzcto-init`, gather:
 
 - Artifact/report folder.
 - Company, CTO, or project profile name, such as `getmusic`.
+- Company name and one-sentence company context summary for the report index and CEO report prompts.
 - Weekly report defaults: ask for the exact reporting week schedule, such as `Fri-Thu`, `Mon-Sun`, or `rolling last 7 days`. Do not silently choose a default.
 - CEO report tone guidance.
-- Optional company description or URL.
+- Optional company URL.
 - Optional read-only code repo paths for evidence.
 
 The artifact folder directly stores:
@@ -86,6 +87,7 @@ dzcto init \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
   --profile "acme" \
   --company-name "Acme" \
+  --company-description "Acme helps operators coordinate field service teams." \
   --weekly-range "previous_completed_week" \
   --weekly-start-day "Friday" \
   --weekly-end-day "Thursday" \

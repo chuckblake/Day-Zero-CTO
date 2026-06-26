@@ -8,6 +8,7 @@ import datetime as dt
 import html
 import json
 import re
+import shlex
 import sys
 import urllib.error
 import urllib.request
@@ -245,17 +246,20 @@ def project_config(wiki_root: Path) -> dict[str, Any]:
 
 
 def company_name(strategy_path: Path, project_folder: Path, config: dict[str, Any] | None = None) -> str:
+    if config and str(config.get("companyName") or "").strip():
+        return str(config["companyName"]).strip()
     if strategy_path.exists():
         for line in strategy_path.read_text(encoding="utf-8").splitlines():
             if line.startswith("# "):
                 title = re.sub(r"\s+Strategy$", "", line[2:].strip(), flags=re.I)
                 return title
-    if config and str(config.get("companyName") or "").strip():
-        return str(config["companyName"]).strip()
     return project_folder.name
 
 
 def company_description(strategy_path: Path, config: dict[str, Any] | None = None) -> str:
+    configured = str((config or {}).get("companyDescription") or "").strip()
+    if configured:
+        return plain_markdown(configured)
     paragraph = (
         first_markdown_paragraph(markdown_section(strategy_path, "Product Thesis"))
         or first_markdown_paragraph(markdown_section(strategy_path, "Company"))
@@ -263,9 +267,8 @@ def company_description(strategy_path: Path, config: dict[str, Any] | None = Non
     )
     if paragraph and plain_markdown(paragraph).lower() in {"unknown", "tbd", "to be determined"}:
         paragraph = None
-    configured = str((config or {}).get("companyDescription") or "").strip()
-    fallback = "Company context has not been captured yet. Add a Product Thesis section to the Strategy source file to enrich this summary."
-    return plain_markdown(paragraph or configured or fallback)
+    fallback = "Company context has not been captured yet. Run /dzcto-init with a one-sentence company summary to enrich this report index."
+    return plain_markdown(paragraph or fallback)
 
 
 def dashboard_title(company: str) -> str:
@@ -279,14 +282,14 @@ def has_real_value(value: Any) -> bool:
 
 
 def has_captured_company_description(strategy_path: Path, config: dict[str, Any] | None = None) -> bool:
+    if has_real_value((config or {}).get("companyDescription")):
+        return True
     paragraph = (
         first_markdown_paragraph(markdown_section(strategy_path, "Product Thesis"))
         or first_markdown_paragraph(markdown_section(strategy_path, "Company"))
         or first_markdown_paragraph(markdown_section(strategy_path, "Stage"))
     )
-    if has_real_value(plain_markdown(paragraph)):
-        return True
-    return has_real_value((config or {}).get("companyDescription"))
+    return has_real_value(plain_markdown(paragraph))
 
 
 def fetch_company_description(url: str) -> str | None:
@@ -850,9 +853,9 @@ def setup_checklist_items(
         item(
             "Company context",
             has_captured_company_description(strategy_path, config),
-            "Description is captured" if has_captured_company_description(strategy_path, config) else "Add the company thesis or summary",
-            "core/strategy.html",
-            "Refine Strategy",
+            "Description is captured" if has_captured_company_description(strategy_path, config) else "Run init with a one-sentence company summary",
+            "index.html#sec-settings",
+            "Run Init",
         ),
         item(
             "Read-only repos",
@@ -5685,6 +5688,18 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     def command_card(card_id: str, label: str, command: str) -> str:
         return copy_card(card_id, label, command, "Command")
 
+    init_command_parts = [
+        "dzcto init",
+        "--artifacts-dir",
+        shlex.quote(artifact_dir),
+        "--profile",
+        shlex.quote(profile_name),
+        "--company-name",
+        shlex.quote(company),
+    ]
+    if has_captured_company_description(strategy_path, config):
+        init_command_parts.extend(["--company-description", shlex.quote(description)])
+
     weekly_prompt = exact_prompt(
         f"Run /dzcto-ceo-report-weekly for {company} using DZ CTO profile `{profile_name}`. Use the configured weekly defaults ({weekly_label}) and CEO tone guidance: {tone}.",
         project_folder,
@@ -5702,7 +5717,7 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
         copy_card("ai-prompt-custom-ceo-report", "/dzcto-ceo-report", custom_prompt, "Prompt"),
     ]
     command_items = [
-        command_card("local-command-init", "Refresh Init", f'dzcto init --artifacts-dir "{artifact_dir}" --profile "{profile_name}"'),
+        command_card("local-command-init", "Refresh Init", " ".join(init_command_parts)),
         command_card("local-command-serve", "Serve Index", f'python3 -m http.server 8765 --directory "{artifact_dir}"'),
     ]
 

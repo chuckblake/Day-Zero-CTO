@@ -1195,6 +1195,7 @@ def print_quickstart(project: Path | None = None) -> None:
                dzcto init --artifacts-dir {artifacts_arg} \\
                  --profile "acme" \\
                  --company-name "Acme" \\
+                 --company-description "Acme helps operators coordinate field service teams." \\
                  --weekly-range "previous_completed_week" \\
                  --weekly-start-day "Friday" \\
                  --weekly-end-day "Thursday" \\
@@ -1220,7 +1221,7 @@ def command_reference_text(project: Path | None = None) -> str:
 
         Slash commands
           /dzcto-init
-              Ask for artifact/report location, weekly report defaults, CEO report tone, then create index.html.
+              Ask for artifact/report location, company context, weekly report defaults, CEO report tone, then create index.html.
           /dzcto-ceo-report-weekly
               Generate a CEO report using the weekly defaults captured by init.
           /dzcto-ceo-report
@@ -1257,8 +1258,8 @@ def print_help_topic(topic: str | None, project: Path | None = None) -> None:
         "reports": f"""
             CEO reports
 
-            Init captures weekly defaults and tone:
-              dzcto init --artifacts-dir {artifacts_arg} --profile acme --weekly-range previous_completed_week --weekly-start-day Friday --weekly-end-day Thursday --ceo-report-tone "<tone>"
+            Init captures company context, weekly defaults, and tone:
+              dzcto init --artifacts-dir {artifacts_arg} --profile acme --company-name "Acme" --company-description "<one-sentence summary>" --weekly-range previous_completed_week --weekly-start-day Friday --weekly-end-day Thursday --ceo-report-tone "<tone>"
 
             Weekly report:
               /dzcto-ceo-report-weekly
@@ -1322,13 +1323,13 @@ def project_status_checks(project: Path) -> list[dict[str, str]]:
     add(
         "pass" if has_real_value(company_name) else "warn",
         "Company name",
-        str(company_name).strip() if has_real_value(company_name) else "Missing from .dzcto/config.json or Strategy title",
+        str(company_name).strip() if has_real_value(company_name) else "Missing from .dzcto/config.json; run init with --company-name",
         f"dzcto init {sh_quote(str(project))} --company-name \"<name>\"",
     )
     add(
         "pass" if has_real_value(company_description) else "warn",
         "Company description",
-        "Captured" if has_real_value(company_description) else "Add a Product Thesis or run init with --company-description",
+        "Captured" if has_real_value(company_description) else "Run init with --company-description \"<one-sentence summary>\"",
         f"dzcto init {sh_quote(str(project))} --company-description \"<summary>\"",
     )
     add(
@@ -1863,7 +1864,7 @@ Use Day Zero CTO to help an early-stage technical leader turn engineering realit
 
 Read the matching reference file when needed:
 
-- `references/dzcto-init.md`: initialize artifact storage, weekly defaults, and CEO tone.
+- `references/dzcto-init.md`: initialize artifact storage, company context, weekly defaults, and CEO tone.
 - `references/dzcto-ceo-report-weekly.md`: create a CEO report using configured weekly defaults.
 - `references/dzcto-ceo-report.md`: create a CEO report for a custom date range.
 
