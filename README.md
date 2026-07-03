@@ -98,27 +98,33 @@ CEO reports are stored as durable HTML plus structured JSON under:
 <artifacts-dir>/reports/ceo-updates/
 ```
 
-Agents should write structured JSON with these fields:
+All reports follow the canonical template in [docs/ceo-report-template.md](docs/ceo-report-template.md),
+including a week-over-week section that diffs against the prior report automatically.
+Agents should write structured JSON (schema v1) with these fields:
 
 | Field | Meaning |
 | --- | --- |
-| `window` | Start/end date and label for the report period. |
+| `schema_version` | `"ceo-report/1"`. Stamped by the renderer when absent. |
+| `report_type` | `"weekly"` or `"ad_hoc"`. Drives week-over-week prior selection. |
+| `company` | Company/product name. Filled from the profile when absent. |
+| `window` | `{ "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" }` — ISO dates for the report period. |
+| `generated_at` | UTC ISO timestamp. Stamped by the renderer when absent. |
 | `headline` | The most important engineering truth for the CEO. |
-| `progress` | What moved and why it matters. |
-| `risks_blockers` | Risks, blockers, or uncertainty that affects business judgment. |
-| `asks_decisions` | Decisions or help needed from the CEO/founders. |
-| `next` | What engineering is focusing on next. |
-| `metrics` | Optional metric cards. |
+| `progress` | Array of `{ "area", "status", "summary", "items": [] }`. |
+| `risks_blockers` | Array of `{ "risk", "detail", "severity" }`. |
+| `asks_decisions` | Array of `{ "ask", "context", "owner" }`. |
+| `next` | Array of strings — what engineering is focusing on next. |
+| `metrics` | Optional flat `{ "label": scalar }` map; numeric values get week-over-week deltas. |
 | `sources` | Notes, commits, reports, or files used as evidence. |
+| `prior_report` | Written by the renderer — path of the report diffed against, or null. |
 
-Render a report with:
+Render a report with (the report date is derived from `window.end`):
 
 ```bash
 dzcto artifact \
   --artifacts-dir "$HOME/Documents/Acme CEO Reports" \
   --kind ceo-updates \
   --title "CEO Report 2026-06-15 to 2026-06-21" \
-  --date "2026-06-21" \
   --data-file "./ceo-report.json"
 ```
 
