@@ -6,7 +6,8 @@ description: "Generate a simplified Day Zero CTO CEO report for an explicit date
 # DZ CTO CEO Report
 
 Create a CEO report for a user-selected date range, following the canonical template in
-`docs/ceo-report-template.md`.
+`docs/ceo-report-template.md` (repo reference — the schema section below is self-contained,
+so this skill works even where `docs/` is not installed).
 
 ## Workflow
 

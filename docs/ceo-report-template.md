@@ -44,7 +44,7 @@ Top-level keys (all required unless marked optional):
 | `next` | array | Strings. |
 | `metrics` | object (optional) | Flat `{ "label": scalar }` map. Scalars only — numeric values in consecutive reports get week-over-week deltas. |
 | `sources` | array | Strings — notes, commits, reports, or files used as evidence. |
-| `prior_report` | string or null | Recorded by the renderer: path (relative to the reports folder) of the report diffed against, or null. Do not author this field. |
+| `prior_report` | string or null | Recorded by the renderer: workspace-relative path (e.g. `reports/ceo-updates/<file>.json`) of the report diffed against, or null. Do not author this field. |
 
 Legacy reports with looser shapes (bare-string list items, missing metadata) still render —
 the renderer's alias tolerance is unchanged — but produce validation warnings on stderr.
@@ -69,15 +69,15 @@ authors it (mechanical diffs cannot hallucinate).
 - Candidates: sibling `*.json` files excluding `data.json` and the report being written.
   Effective date = `window.end`, else the ISO filename prefix, else the candidate is skipped
   with a stderr note. Corrupt JSON is skipped. Ties break on `generated_at`.
-- `weekly` reports diff against the most recent prior `weekly`. When none exists (every
-  workspace predating schema v1), they fall back to the most recent prior of any type and the
-  section notes "prior report predates cadence tagging."
+- `weekly` reports diff against the most recent prior `weekly`. When none exists, they fall
+  back to the most recent prior of any type; the section notes "prior report predates cadence
+  tagging" for untyped legacy priors, or "no prior weekly report" for typed `ad_hoc` priors.
 - `ad_hoc` reports diff against the most recent prior of any type. Legacy reports without
   `report_type` count as `ad_hoc`.
 - Weekly-vs-weekly comparison uses `window.end` ordering with no overlap caveat —
   rolling-lookback windows overlap by design. Cross-cadence comparison requires the prior
-  window to end before the current window starts; when only overlapping priors exist, the
-  most recent is used and the section carries an "overlapping windows — deltas may
+  window to end before the current window starts; when only overlapping or same-day priors
+  exist, the most recent is used and the section carries an "overlapping windows — deltas may
   double-count" caveat.
 
 **Section content**, in order:

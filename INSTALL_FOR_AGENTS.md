@@ -97,7 +97,6 @@ dzcto artifact \
   --profile "acme" \
   --kind ceo-updates \
   --title "CEO Report 2026-06-15 to 2026-06-21" \
-  --date "2026-06-21" \
   --data-file "./ceo-report.json"
 
 dzcto doctor

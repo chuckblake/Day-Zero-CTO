@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import html
 import json
+import math
 import re
 import shlex
 import sys
@@ -1842,6 +1843,14 @@ def summarize_change_list(values: list[str], limit: int = 2) -> str:
     return text
 
 
+def format_metric_value(value: int | float, signed: bool = False) -> str:
+    # Ints get thousands separators (":g" would render CEO-scale numbers like ARR
+    # in scientific notation); floats keep the compact ":g" form.
+    if isinstance(value, int):
+        return f"{value:+,}" if signed else f"{value:,}"
+    return f"{value:+g}" if signed else f"{value:g}"
+
+
 def metric_delta_items(data: dict[str, Any], previous_data: dict[str, Any]) -> list[str]:
     current = data.get("metrics")
     previous = previous_data.get("metrics")
@@ -1854,16 +1863,27 @@ def metric_delta_items(data: dict[str, Any], previous_data: dict[str, Any]) -> l
             continue
         if not isinstance(value, (int, float)) or not isinstance(prior, (int, float)):
             continue
+        if isinstance(value, float) and not math.isfinite(value):
+            continue  # NaN != NaN would render a phantom delta on every run
+        if isinstance(prior, float) and not math.isfinite(prior):
+            continue
         if value == prior:
             continue
-        items.append(
-            f"<li><strong>{esc(text_value(label))}:</strong> {esc(f'{prior:g}')} → {esc(f'{value:g}')} ({esc(f'{value - prior:+g}')})</li>"
-        )
+        try:
+            rendered = (
+                f"<li><strong>{esc(text_value(label))}:</strong> "
+                f"{esc(format_metric_value(prior))} → {esc(format_metric_value(value))} "
+                f"({esc(format_metric_value(value - prior, signed=True))})</li>"
+            )
+        except (OverflowError, ValueError):
+            continue  # e.g. int too large for float math — skip the delta, never abort the write
+        items.append(rendered)
     return items
 
 
 CHANGE_NOTE_TEXT = {
     "cadence_fallback": "Prior report predates cadence tagging.",
+    "no_weekly_prior": "No prior weekly report — compared against the most recent report of any type.",
     "overlap": "Overlapping windows — deltas may double-count.",
 }
 
@@ -1899,9 +1919,11 @@ def report_changes_html(
         changes.extend(metric_items)
 
     group_changes = 0
+    not_comparable = 0
     for label, fields in REPORT_CHANGE_GROUPS.get(kind, []):
         if per_group and not any(field in previous_data for field in fields):
             changes.append(f"<li><strong>{esc(label)}:</strong> Not comparable — prior report lacked this section.</li>")
+            not_comparable += 1
             continue
         current = report_change_values(data, fields)
         previous = report_change_values(previous_data, fields)
@@ -1928,7 +1950,9 @@ def report_changes_html(
         if len(changes) >= 4:
             break
 
-    if (per_group and group_changes == 0 and not metric_items) or not changes:
+    # Skip the "no material changes" fallback when not-comparable lines rendered —
+    # "not comparable" and "broadly consistent" would contradict each other.
+    if (per_group and group_changes == 0 and not metric_items and not not_comparable) or not changes:
         current_summary = report_lead_summary(data, 160)
         previous_summary = report_lead_summary(previous_data, 160)
         if current_summary and current_summary != previous_summary:
@@ -2500,21 +2524,29 @@ def locate_prior_report(json_path: Path, data: dict[str, Any]) -> tuple[Path | N
 
     notes: list[str] = []
     chosen = None
+    weekly_pool_missed = False
     if current_type == "weekly":
         # Same-cadence comparison orders by window.end with no overlap caveat:
         # rolling-lookback weekly windows overlap by design.
         chosen = newest([c for c in candidates if c[4] == "weekly" and c[0] < current_end])
         if chosen is None:
-            notes.append("cadence_fallback")
+            weekly_pool_missed = True
     if chosen is None:
         chosen = newest([c for c in candidates if current_start is not None and c[0] < current_start])
         if chosen is None:
-            chosen = newest([c for c in candidates if c[0] < current_end])
+            # "<=" so a same-day prior (equal effective date, different window) is still
+            # found instead of falsely claiming "first report"; self and same-window
+            # reruns were already excluded above.
+            chosen = newest([c for c in candidates if c[0] <= current_end])
             if chosen is not None:
                 notes.append("overlap")
     if chosen is None:
         return None, None, "", []
-    eff, _generated_at, path, cand, _cand_type = chosen
+    eff, _generated_at, path, cand, cand_type = chosen
+    if weekly_pool_missed and cand_type != "weekly":
+        # Name the situation accurately: untyped legacy priors predate cadence tagging;
+        # a typed ad_hoc prior is simply not a weekly.
+        notes.insert(0, "cadence_fallback" if cand.get("report_type") not in CEO_REPORT_TYPES else "no_weekly_prior")
     return path, cand, eff.isoformat(), notes
 
 
@@ -6105,11 +6137,13 @@ def main(argv: list[str]) -> int:
 
         report_date = args.date or dt.date.today().isoformat()
         if structured_data is not None and args.kind == "ceo-updates":
-            for warning in validate_ceo_report(structured_data):
-                print(f"dzcto: ceo-report schema warning: {warning}", file=sys.stderr)
+            # Stamp renderer-owned metadata before validating so warnings reflect what
+            # actually ships (company is documented as "filled from the profile when absent").
             structured_data.setdefault("schema_version", CEO_REPORT_SCHEMA_VERSION)
             structured_data.setdefault("generated_at", utc_now())
             structured_data.setdefault("company", company)
+            for warning in validate_ceo_report(structured_data):
+                print(f"dzcto: ceo-report schema warning: {warning}", file=sys.stderr)
             window = structured_data.get("window")
             window_end = date_value(window.get("end")) if isinstance(window, dict) else None
             if window_end:

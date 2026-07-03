@@ -6,7 +6,8 @@ description: "Generate the simplified Day Zero CTO weekly CEO report using the w
 # DZ CTO CEO Report Weekly
 
 Create the CEO report for the configured weekly window, following the canonical template in
-`docs/ceo-report-template.md`.
+`docs/ceo-report-template.md` (repo reference — the schema section below is self-contained,
+so this skill works even where `docs/` is not installed).
 
 ## Workflow
 

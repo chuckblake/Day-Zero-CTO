@@ -186,6 +186,41 @@ class TestLocatePriorReport(unittest.TestCase):
         path, _data, _date, _notes = artifact.locate_prior_report(self.target(), self.current())
         self.assertIsNone(path)
 
+    def test_weekly_fallback_to_typed_ad_hoc_gets_no_weekly_prior_note(self):
+        expected = write_report(
+            self.folder,
+            "2026-06-25-ceo-report-adhoc.json",
+            v1_report(report_type="ad_hoc"),
+        )
+        path, _data, _date, notes = artifact.locate_prior_report(self.target(), self.current())
+        self.assertEqual(path, expected)
+        self.assertEqual(notes, ["no_weekly_prior"])
+
+    def test_same_day_prior_with_different_window_is_found(self):
+        # A morning ad-hoc ending the same day must not leave the afternoon report
+        # falsely claiming "first report".
+        expected = write_report(
+            self.folder,
+            "2026-07-02-ceo-report-morning.json",
+            v1_report(report_type="ad_hoc", window={"start": "2026-07-01", "end": "2026-07-02"}),
+        )
+        path, _data, _date, notes = artifact.locate_prior_report(
+            self.target(), self.current(start="2026-06-26", end="2026-07-02", report_type="ad_hoc")
+        )
+        self.assertEqual(path, expected)
+        self.assertEqual(notes, ["overlap"])
+
+    def test_equal_effective_dates_tiebreak_on_generated_at(self):
+        # Distinct windows sharing the same end date (a same-window pair would be excluded).
+        older = v1_report(window={"start": "2026-06-18", "end": "2026-06-25"})
+        older["generated_at"] = "2026-06-25T08:00:00Z"
+        newer = v1_report(window={"start": "2026-06-19", "end": "2026-06-25"})
+        newer["generated_at"] = "2026-06-25T18:00:00Z"
+        write_report(self.folder, "2026-06-25-ceo-report-a.json", older)
+        expected = write_report(self.folder, "2026-06-25-ceo-report-b.json", newer)
+        path, _data, _date, _notes = artifact.locate_prior_report(self.target(), self.current())
+        self.assertEqual(path, expected)
+
 
 class TestReportChangesHtml(unittest.TestCase):
     def test_no_prior_renders_placeholder_for_ceo_updates(self):
@@ -243,6 +278,38 @@ class TestReportChangesHtml(unittest.TestCase):
         )
         self.assertIn("predates cadence tagging", html)
         self.assertIn("deltas may double-count", html)
+
+    def test_not_comparable_suppresses_no_material_changes_line(self):
+        previous = v1_report()
+        del previous["risks_blockers"]
+        html = artifact.report_changes_html("ceo-updates", v1_report(), previous, "2026-06-25")
+        self.assertIn("Not comparable", html)
+        self.assertNotIn("No material structured changes", html)
+
+    def test_headline_only_change_renders_updated_emphasis(self):
+        current = v1_report(headline="A very different emphasis this week.")
+        html = artifact.report_changes_html("ceo-updates", current, v1_report(), "2026-06-25")
+        self.assertIn("Updated emphasis", html)
+        self.assertIn("A very different emphasis this week.", html)
+
+    def test_large_int_metrics_render_with_separators_not_scientific(self):
+        previous = v1_report(metrics={"arr": 1_200_000})
+        current = v1_report(metrics={"arr": 1_534_500})
+        html = artifact.report_changes_html("ceo-updates", current, previous, "2026-06-25")
+        self.assertIn("1,200,000 → 1,534,500", html)
+        self.assertIn("(+334,500)", html)
+        self.assertNotIn("e+", html)
+
+    def test_huge_int_metric_never_aborts_rendering(self):
+        previous = v1_report(metrics={"absurd": 10**400, "prs_merged": 5})
+        current = v1_report(metrics={"absurd": 10**400 + 1, "prs_merged": 8})
+        html = artifact.report_changes_html("ceo-updates", current, previous, "2026-06-25")
+        self.assertIn("5 → 8", html)  # the sane metric still renders
+
+    def test_nonfinite_and_bool_metrics_are_skipped(self):
+        previous = v1_report(metrics={"nan": float("nan"), "launched": False, "prs_merged": 5})
+        current = v1_report(metrics={"nan": float("nan"), "launched": True, "prs_merged": 5})
+        self.assertEqual(artifact.metric_delta_items(current, previous), [])
 
 
 class TestSkillSchemaLockstep(unittest.TestCase):

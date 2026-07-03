@@ -43,5 +43,6 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 
 - Validate JSON manifests after edits.
 - Run `python3 -m py_compile` on Python scripts after changing them.
+- Run the unit tests with `python3 -m unittest discover -s tests` after changing report or artifact behavior.
 - Smoke-test `dzcto init --artifacts-dir` and `dzcto artifact --artifacts-dir --kind ceo-updates --data-file` against a temporary folder after changing artifact behavior.
 - Validate package generation when changing active skills or Claude Desktop packaging.
