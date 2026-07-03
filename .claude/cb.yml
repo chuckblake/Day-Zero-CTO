@@ -1,7 +1,7 @@
 # .claude/cb.yml — per-repo cb workflow config (committed; NO secrets here).
 # Secrets (e.g. LINEAR_API_KEY) live in ~/.claude/cb.env (global, gitignored).
 project:   { key: DAYZEROCTO }
-backlog:   { backend: markdown, dir: /Users/chuckblake/Documents/Code/chuck-vault/dzcto/day-zeto-cto }     # linear | markdown | none
+backlog:   { backend: markdown, dir: /Users/chuckblake/Documents/Code/chuck-vault/cb-dev/dzcto }     # linear | markdown | none
 worktree:  { tool: superset, base: main } # plain | rails | superset | none
 worklog:   { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/journal/worklog }
 conventions: { enabled: false }

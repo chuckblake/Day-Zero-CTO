@@ -14,6 +14,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - `scripts/` holds deterministic Python helpers used by the skills.
 - `bin/` exposes helper wrappers for Claude Code plugin installs and local convenience. `bin/dzcto` is the canonical wrapper; `dzcto-artifact`, `dzcto-learning`, and `dzcto-doctor` are compatibility aliases.
 - `INSTALL_FOR_AGENTS.md` is the pasteable install handoff for Codex Desktop, Claude Code, Claude Desktop, and future agent sessions.
+- `docs/solutions/` holds documented learnings from past work — bug fixes, design patterns, conventions — organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant context when implementing or debugging in a documented area.
 
 ## Editing Rules
 
@@ -43,5 +44,6 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 
 - Validate JSON manifests after edits.
 - Run `python3 -m py_compile` on Python scripts after changing them.
+- Run the unit tests with `python3 -m unittest discover -s tests` after changing report or artifact behavior.
 - Smoke-test `dzcto init --artifacts-dir` and `dzcto artifact --artifacts-dir --kind ceo-updates --data-file` against a temporary folder after changing artifact behavior.
 - Validate package generation when changing active skills or Claude Desktop packaging.

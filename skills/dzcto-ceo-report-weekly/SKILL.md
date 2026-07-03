@@ -5,7 +5,9 @@ description: "Generate the simplified Day Zero CTO weekly CEO report using the w
 
 # DZ CTO CEO Report Weekly
 
-Create the CEO report for the configured weekly window.
+Create the CEO report for the configured weekly window, following the canonical template in
+`docs/ceo-report-template.md` (repo reference — the schema section below is self-contained,
+so this skill works even where `docs/` is not installed).
 
 ## Workflow
 
@@ -16,9 +18,9 @@ Create the CEO report for the configured weekly window.
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
    - Optional read-only code repos from `codeRepos`; use non-mutating Git commands only.
-5. Write a CEO-facing report. Keep it business-facing: progress, impact, risk, asks, and what happens next. Do not include implementation detail unless it changes a CEO decision.
-6. Save structured JSON with these fields: `window`, `headline`, `progress`, `risks_blockers`, `asks_decisions`, `next`, `sources`, and optional `metrics`.
-7. Render the artifact:
+5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
+6. Write a CEO-facing report. Keep it business-facing: progress, impact, risk, asks, and what happens next. Do not include implementation detail unless it changes a CEO decision. Save structured JSON per the schema below, with `report_type` set to `"weekly"`.
+7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`):
 
 ```bash
 dzcto artifact \
@@ -26,7 +28,6 @@ dzcto artifact \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
-  --date "<end>" \
   --data-file "<json report data file>"
 ```
 
@@ -38,15 +39,36 @@ python3 scripts/dzcto.py artifact \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
-  --date "<end>" \
   --data-file "<json report data file>"
 ```
+
+## Report JSON schema (v1)
+
+<!-- Keep this section byte-identical in dzcto-ceo-report/SKILL.md and
+dzcto-ceo-report-weekly/SKILL.md; a unit test enforces the lockstep.
+Canon: docs/ceo-report-template.md. -->
+
+Save structured JSON with these fields:
+
+- `report_type`: `"weekly"` for the weekly skill, `"ad_hoc"` for the date-range skill.
+- `company`: company or product name.
+- `window`: `{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}` — ISO dates only, no label text.
+- `headline`: one sentence — the most important engineering truth for the CEO.
+- `progress`: array of `{"area", "status", "summary", "items": []}` objects.
+- `risks_blockers`: array of `{"risk", "detail", "severity"}` objects.
+- `asks_decisions`: array of `{"ask", "context", "owner"}` objects.
+- `next`: array of strings.
+- `metrics` (optional): flat object of `"label": scalar`; numeric values in consecutive reports render week-over-week deltas.
+- `sources`: array of strings — the evidence used.
+
+Do not author `schema_version`, `generated_at`, or `prior_report` — the renderer stamps them. The renderer also computes the week-over-week section from the prior report; never write that section yourself.
 
 ## Standards
 
 - Be direct, concise, and calm about uncertainty.
 - Make asks and decisions explicit.
 - Separate known facts from judgment.
+- Use ISO `YYYY-MM-DD` dates in the title and `window`.
 - Do not write reports into a code repo unless the user explicitly chose that folder during init.
 - Do not run or offer non-CEO Day Zero CTO workflows.
 - End with the generated report path and a brief summary.
