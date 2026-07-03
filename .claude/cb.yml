@@ -1,0 +1,42 @@
+# .claude/cb.yml — per-repo cb workflow config (committed; NO secrets here).
+# Secrets (e.g. LINEAR_API_KEY) live in ~/.claude/cb.env (global, gitignored).
+project:   { key: DAYZEROCTO }
+backlog:   { backend: markdown, dir: /Users/chuckblake/Documents/Code/chuck-vault/dzcto/day-zeto-cto }     # linear | markdown | none
+worktree:  { tool: superset, base: main } # plain | rails | superset | none
+worklog:   { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/journal/worklog }
+conventions: { enabled: false }
+ci:        { provider: none }                        # github | none
+hooks:     { branch_guard: true, worklog_stop: true }
+
+# --- Multi-project Markdown backend (optional; e.g. a vault hosting several projects) ---
+# Replace the single-line `backlog:` above with a projects map. Each project gets its own
+# id prefix (key), directory, and cb-dev frontmatter defaults; cb:add-item routes by project
+# via CB_META and fills type/project/area/tags/themes. `statuses` overrides the default vocab.
+# backlog:
+#   backend: markdown
+#   default_project: GetMusic
+#   statuses: [todo, planning, in-progress, in-review, blocked, done, archived]
+#   projects:
+#     GetMusic: { key: GM,  dir: cb-dev/GetMusic,        frontmatter: { type: backlog-issue, project: GetMusic, tags: [backlog, development, getmusic] } }
+#     glnc.io:  { key: GLA, dir: cb-dev/glnc.io/backlog, frontmatter: { type: backlog-issue, project: glnc.io,  tags: [backlog, development, glnc-io] } }
+
+# --- Optional skill config (all have built-in defaults; uncomment to override) ---
+# plans:     { dir: plans, archive_dir: .plans-archive }   # cb:end-of-day, cb:learn-build
+# docs:      { solutions: docs/solutions }                 # cb:end-of-day
+# learnings: { dir: docs/learnings }                       # cb:learn, cb:learn-build, cb:end-of-day
+# dossier:   { dir: docs/knowledge/wiki/pr-reviews }       # cb:pr-dossier, cb:done
+# strategy:  { path: PRODUCT_STRATEGY.md }                 # cb:pdad (skill no-ops if file absent)
+# test:      { rspec_wrapper: auto }                       # cb:agent-rspec (auto|bundle|<path>)
+# design:    { ui_paths: [app/views, app/javascript, app/components, app/assets] }  # cb:design
+# reporting:
+#   dir: docs                                              # cb:backlog-sequencing report dir
+#   weekly_prep: { out_dir: docs/weekly-prep }             # cb:weekly-prep
+#   notion:                                                # cb:daily-summary, cb:weekly-prep, cb:eng-prefix-ids
+#     enabled: false                                       # master gate — Notion skills no-op unless true
+#     work_log_page:            ''                         # source: work-log database/page id
+#     daily_summary_parent:     ''                         # destination parent page id
+#     eng_tracker_data_source:  ''                         # Engineering Tracker data-source id
+#     future_work_page:         ''                         # weekly-prep source
+#     scope_page:               ''                         # weekly-prep source
+#     scope_url:                ''                         # weekly-prep source (optional)
+reporting: { notion: { enabled: false } }
