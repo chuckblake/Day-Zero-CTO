@@ -1842,26 +1842,93 @@ def summarize_change_list(values: list[str], limit: int = 2) -> str:
     return text
 
 
-def report_changes_html(kind: str, data: dict[str, Any], previous_data: dict[str, Any] | None, previous_date: str) -> str:
+def metric_delta_items(data: dict[str, Any], previous_data: dict[str, Any]) -> list[str]:
+    current = data.get("metrics")
+    previous = previous_data.get("metrics")
+    if not isinstance(current, dict) or not isinstance(previous, dict):
+        return []
+    items: list[str] = []
+    for label, value in current.items():
+        prior = previous.get(label)
+        if isinstance(value, bool) or isinstance(prior, bool):
+            continue
+        if not isinstance(value, (int, float)) or not isinstance(prior, (int, float)):
+            continue
+        if value == prior:
+            continue
+        items.append(
+            f"<li><strong>{esc(text_value(label))}:</strong> {esc(f'{prior:g}')} → {esc(f'{value:g}')} ({esc(f'{value - prior:+g}')})</li>"
+        )
+    return items
+
+
+CHANGE_NOTE_TEXT = {
+    "cadence_fallback": "Prior report predates cadence tagging.",
+    "overlap": "Overlapping windows — deltas may double-count.",
+}
+
+
+def report_changes_html(
+    kind: str,
+    data: dict[str, Any],
+    previous_data: dict[str, Any] | None,
+    previous_date: str,
+    change_notes: list[str] | None = None,
+) -> str:
+    per_group = kind == "ceo-updates"
     if not isinstance(previous_data, dict):
+        if per_group:
+            # The week-over-week section is always present on new CEO reports so the
+            # canonical section list stays invariant (docs/ceo-report-template.md).
+            return """
+<section class="report-changes">
+  <h2>Week over week</h2>
+  <ul><li><strong>First report</strong> — no prior baseline.</li></ul>
+</section>
+"""
         return ""
 
     changes: list[str] = []
+    metric_items: list[str] = []
+    if per_group:
+        for note in change_notes or []:
+            text = CHANGE_NOTE_TEXT.get(note)
+            if text:
+                changes.append(f"<li><strong>Note:</strong> {esc(text)}</li>")
+        metric_items = metric_delta_items(data, previous_data)
+        changes.extend(metric_items)
+
+    group_changes = 0
     for label, fields in REPORT_CHANGE_GROUPS.get(kind, []):
+        if per_group and not any(field in previous_data for field in fields):
+            changes.append(f"<li><strong>{esc(label)}:</strong> Not comparable — prior report lacked this section.</li>")
+            continue
         current = report_change_values(data, fields)
         previous = report_change_values(previous_data, fields)
         current_keys = {value.lower() for value in current}
         previous_keys = {value.lower() for value in previous}
         added = [value for value in current if value.lower() not in previous_keys]
         removed = [value for value in previous if value.lower() not in current_keys]
+        if per_group:
+            # Per-group bound for ceo-updates: every group renders its adds and removals;
+            # other kinds keep the legacy whole-section cap below.
+            if added:
+                changes.append(f"<li><strong>{esc(label)}:</strong> Added: {esc(summarize_change_list(added, 3))}</li>")
+                group_changes += 1
+            if removed:
+                changes.append(f"<li><strong>{esc(label)}:</strong> No longer listed: {esc(summarize_change_list(removed, 2))}</li>")
+                group_changes += 1
+            continue
         if added:
             changes.append(f"<li><strong>{esc(label)}:</strong> Added: {esc(summarize_change_list(added))}</li>")
+            group_changes += 1
         if removed and len(changes) < 4:
             changes.append(f"<li><strong>{esc(label)}:</strong> No longer listed: {esc(summarize_change_list(removed, 1))}</li>")
+            group_changes += 1
         if len(changes) >= 4:
             break
 
-    if not changes:
+    if (per_group and group_changes == 0 and not metric_items) or not changes:
         current_summary = report_lead_summary(data, 160)
         previous_summary = report_lead_summary(previous_data, 160)
         if current_summary and current_summary != previous_summary:
@@ -1871,10 +1938,11 @@ def report_changes_html(kind: str, data: dict[str, Any], previous_data: dict[str
 
     date_text = previous_date or "the previous run"
     heading = "Changed Since Last Snapshot" if kind == "snapshot" else f"Significant changes since the last report was run on {date_text}"
+    rendered = changes if per_group else changes[:4]
     return f"""
 <section class="report-changes">
   <h2>{esc(heading)}</h2>
-  <ul>{''.join(changes[:4])}</ul>
+  <ul>{''.join(rendered)}</ul>
 </section>
 """
 
@@ -1886,8 +1954,9 @@ def render_structured_report(
     decision_registry: dict[str, Any] | None = None,
     previous_data: dict[str, Any] | None = None,
     previous_date: str = "",
+    change_notes: list[str] | None = None,
 ) -> str:
-    change_summary = report_changes_html(kind, data, previous_data, previous_date)
+    change_summary = report_changes_html(kind, data, previous_data, previous_date, change_notes)
     if kind == "tech-stack":
         body = render_tech_stack(data, risk_registry)
     elif kind == "snapshot":
@@ -2328,15 +2397,125 @@ def report_summary_for_path(path: Path, limit: int = 190) -> str:
     return lead or report_summary(path, limit)
 
 
-def previous_report_json_path(json_path: Path) -> Path | None:
-    siblings = sorted(
-        [path for path in json_path.parent.glob("*.json") if path.name != "data.json"],
-        reverse=True,
-    )
-    for index, path in enumerate(siblings):
-        if path.resolve() == json_path.resolve():
-            return siblings[index + 1] if index + 1 < len(siblings) else None
+CEO_REPORT_SCHEMA_VERSION = "ceo-report/1"
+CEO_REPORT_TYPES = ("weekly", "ad_hoc")
+
+
+def validate_ceo_report(data: dict[str, Any]) -> list[str]:
+    """Warn-only schema v1 check for ceo-updates report JSON (docs/ceo-report-template.md)."""
+    warnings: list[str] = []
+    for key in ("report_type", "company", "window", "headline", "progress", "risks_blockers", "asks_decisions", "next", "sources"):
+        if key not in data:
+            warnings.append(f"missing required field: {key}")
+    report_type = data.get("report_type")
+    if report_type is not None and report_type not in CEO_REPORT_TYPES:
+        warnings.append(f"report_type must be one of {'/'.join(CEO_REPORT_TYPES)}, got: {report_type!r}")
+    window = data.get("window")
+    if window is not None:
+        if not isinstance(window, dict):
+            warnings.append("window must be an object with ISO start and end dates")
+        else:
+            start = date_value(window.get("start"))
+            end = date_value(window.get("end"))
+            if not start:
+                warnings.append("window.start must be an ISO YYYY-MM-DD date")
+            if not end:
+                warnings.append("window.end must be an ISO YYYY-MM-DD date")
+            if start and end and end < start:
+                warnings.append("window.end is earlier than window.start")
+    for field, required_key in (("progress", "area"), ("risks_blockers", "risk"), ("asks_decisions", "ask")):
+        for item in array_value(data.get(field)):
+            if not isinstance(item, dict):
+                warnings.append(f"{field} items should be objects (schema v1), got bare value: {snippet(text_value(item), 40)!r}")
+                break
+            if required_key not in item:
+                warnings.append(f"{field} items should carry {required_key!r} (schema v1)")
+                break
+    metrics = data.get("metrics")
+    if metrics is not None:
+        if not isinstance(metrics, dict):
+            warnings.append("metrics must be a flat object of label -> scalar")
+        else:
+            for label, value in metrics.items():
+                if isinstance(value, (dict, list)):
+                    warnings.append(f"metrics[{label!r}] must be a scalar, got {type(value).__name__}")
+    return warnings
+
+
+def report_effective_date(json_path: Path, data: Any) -> str | None:
+    """The date a report counts as, for prior-report ordering: window.end, else ISO filename prefix."""
+    if isinstance(data, dict):
+        window = data.get("window")
+        if isinstance(window, dict):
+            end = date_value(window.get("end"))
+            if end:
+                return end.isoformat()
+    if match := re.match(r"^(\d{4}-\d{2}-\d{2})-", json_path.name):
+        return match.group(1)
     return None
+
+
+def locate_prior_report(json_path: Path, data: dict[str, Any]) -> tuple[Path | None, dict[str, Any] | None, str, list[str]]:
+    """Select the prior report to diff against (rules in docs/ceo-report-template.md).
+
+    Returns (path, data, effective_date, notes). Notes may contain "cadence_fallback"
+    (weekly report diffed against an untyped/ad-hoc prior because no weekly prior exists)
+    and/or "overlap" (only overlapping-window priors were available).
+    """
+    current_type = data.get("report_type") if data.get("report_type") in CEO_REPORT_TYPES else "ad_hoc"
+    window = data.get("window") if isinstance(data.get("window"), dict) else {}
+    current_start = date_value(window.get("start"))
+    current_end = date_value(window.get("end")) or date_value(report_effective_date(json_path, data))
+    if current_start is None:
+        current_start = current_end
+
+    candidates: list[tuple[dt.date, str, Path, dict[str, Any], str]] = []
+    for path in sorted(json_path.parent.glob("*.json")):
+        if path.name == "data.json" or path.resolve() == json_path.resolve():
+            continue
+        cand = read_json_file(path, None)
+        if not isinstance(cand, dict):
+            print(f"dzcto: skipping prior-report candidate {path.name} (unreadable JSON)", file=sys.stderr)
+            continue
+        eff = date_value(report_effective_date(path, cand))
+        if eff is None:
+            print(f"dzcto: skipping prior-report candidate {path.name} (no resolvable date)", file=sys.stderr)
+            continue
+        cand_window = cand.get("window") if isinstance(cand.get("window"), dict) else {}
+        if (
+            current_start is not None
+            and current_end is not None
+            and date_value(cand_window.get("start")) == current_start
+            and date_value(cand_window.get("end")) == current_end
+        ):
+            continue  # a rerun of the same window is not its own prior
+        cand_type = cand.get("report_type") if cand.get("report_type") in CEO_REPORT_TYPES else "ad_hoc"
+        candidates.append((eff, str(cand.get("generated_at") or ""), path, cand, cand_type))
+
+    if current_end is None or not candidates:
+        return None, None, "", []
+
+    def newest(pool: list[tuple[dt.date, str, Path, dict[str, Any], str]]):
+        return max(pool, default=None, key=lambda item: (item[0], item[1]))
+
+    notes: list[str] = []
+    chosen = None
+    if current_type == "weekly":
+        # Same-cadence comparison orders by window.end with no overlap caveat:
+        # rolling-lookback weekly windows overlap by design.
+        chosen = newest([c for c in candidates if c[4] == "weekly" and c[0] < current_end])
+        if chosen is None:
+            notes.append("cadence_fallback")
+    if chosen is None:
+        chosen = newest([c for c in candidates if current_start is not None and c[0] < current_start])
+        if chosen is None:
+            chosen = newest([c for c in candidates if c[0] < current_end])
+            if chosen is not None:
+                notes.append("overlap")
+    if chosen is None:
+        return None, None, "", []
+    eff, _generated_at, path, cand, _cand_type = chosen
+    return path, cand, eff.isoformat(), notes
 
 
 def search_entry(
@@ -5341,54 +5520,6 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
 """
 
 
-def refresh_structured_report_pages(
-    wiki_root: Path,
-    project_folder: Path,
-    sticky_title: str,
-    *,
-    risk_registry: dict[str, Any] | None = None,
-    decision_registry: dict[str, Any] | None = None,
-) -> None:
-    reports_dir = wiki_root / "reports"
-    for kind in REPORT_FOLDERS:
-        report_dir = reports_dir / kind
-        if not report_dir.exists():
-            continue
-        for json_path in sorted(report_dir.glob("*.json")):
-            if json_path.name == "data.json":
-                continue
-            report_path = json_path.with_suffix(".html")
-            if not report_path.exists():
-                continue
-            data = read_json_file(json_path, {})
-            if not isinstance(data, dict):
-                continue
-            title = html_title(report_path) or report_name(report_path)
-            date = report_run_date(report_path)
-            previous_json = previous_report_json_path(json_path)
-            previous_data = read_json_file(previous_json, {}) if previous_json else None
-            body = render_structured_report(
-                kind,
-                data,
-                risk_registry=risk_registry,
-                decision_registry=decision_registry,
-                previous_data=previous_data if isinstance(previous_data, dict) else None,
-                previous_date=report_run_date(previous_json) if previous_json else "",
-            )
-            provenance = provenance_payload(
-                wiki_root,
-                artifact_id=f"{kind}:{report_path.stem}",
-                artifact_kind=kind,
-                relative_path=report_path.relative_to(wiki_root).as_posix(),
-                title=title,
-                generated_at=utc_now(),
-                source_hashes=collect_source_hashes([json_path]),
-                extra={"reportDate": date},
-            )
-            report_path.write_text(render_report_page(title, date, kind, body, provenance, sticky_title, lede=report_lead_summary(data)), encoding="utf-8")
-            update_manifest(wiki_root, provenance)
-
-
 def write_setup_page(wiki_root: Path, project_folder: Path, company: str, setup_items: list[dict[str, str]]) -> None:
     setup_dir = wiki_root / "setup"
     setup_dir.mkdir(parents=True, exist_ok=True)
@@ -5840,7 +5971,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--home", help="Legacy: wiki root folder")
     parser.add_argument("--kind", choices=REPORT_FOLDERS.keys())
     parser.add_argument("--title")
-    parser.add_argument("--date", default=dt.date.today().isoformat())
+    parser.add_argument("--date", help="Report date (YYYY-MM-DD); derived from the report JSON's window.end when omitted")
     parser.add_argument("--body-file", help="Legacy: raw HTML body file")
     parser.add_argument("--data-file", help="Structured JSON report data file")
     parser.add_argument("--init", action="store_true")
@@ -5938,12 +6069,14 @@ def main(argv: list[str]) -> int:
     if args.init and not args.no_save_preferences:
         saved_profile = save_global_preferences(wiki_root, project_folder, args.profile, set_default=not args.no_switch_default)
         args.profile = saved_profile
-    stable_title = dashboard_title(company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root)))
+    company = company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root))
+    stable_title = dashboard_title(company)
 
     written_report: Path | None = None
     if not args.init:
         report_sources: list[Path] = []
         structured_data: dict[str, Any] | None = None
+        body = ""
         if args.data_file:
             data_path = Path(args.data_file).expanduser()
             report_sources.append(data_path)
@@ -5951,7 +6084,6 @@ def main(argv: list[str]) -> int:
             if not isinstance(data, dict):
                 raise SystemExit("--data-file must contain a JSON object")
             structured_data = data
-            body = render_structured_report(args.kind, data)
         elif args.body_file:
             body_path = Path(args.body_file).expanduser()
             report_sources.append(body_path)
@@ -5966,14 +6098,48 @@ def main(argv: list[str]) -> int:
                 if isinstance(data, dict):
                     report_sources.append(auto_data_path)
                     structured_data = data
-                    body = render_structured_report(args.kind, data)
                 else:
                     body = sys.stdin.read()
             else:
                 body = sys.stdin.read()
 
-        slug = slugify(f"{args.date} {args.title}")
+        report_date = args.date or dt.date.today().isoformat()
+        if structured_data is not None and args.kind == "ceo-updates":
+            for warning in validate_ceo_report(structured_data):
+                print(f"dzcto: ceo-report schema warning: {warning}", file=sys.stderr)
+            structured_data.setdefault("schema_version", CEO_REPORT_SCHEMA_VERSION)
+            structured_data.setdefault("generated_at", utc_now())
+            structured_data.setdefault("company", company)
+            window = structured_data.get("window")
+            window_end = date_value(window.get("end")) if isinstance(window, dict) else None
+            if window_end:
+                if args.date and args.date != window_end.isoformat():
+                    print(
+                        f"dzcto: --date {args.date} disagrees with window.end {window_end.isoformat()}; using window.end",
+                        file=sys.stderr,
+                    )
+                report_date = window_end.isoformat()
+
+        slug = slugify(f"{report_date} {args.title}")
         report_path = reports_dir / args.kind / f"{slug}.html"
+
+        if structured_data is not None:
+            previous_data: dict[str, Any] | None = None
+            previous_date = ""
+            change_notes: list[str] = []
+            if args.kind == "ceo-updates":
+                prior_path, previous_data, previous_date, change_notes = locate_prior_report(
+                    report_path.with_suffix(".json"), structured_data
+                )
+                structured_data["prior_report"] = prior_path.relative_to(wiki_root).as_posix() if prior_path else None
+            body = render_structured_report(
+                args.kind,
+                structured_data,
+                previous_data=previous_data,
+                previous_date=previous_date,
+                change_notes=change_notes,
+            )
+
         relative_path = report_path.relative_to(wiki_root).as_posix()
         provenance = provenance_payload(
             wiki_root,
@@ -5983,9 +6149,9 @@ def main(argv: list[str]) -> int:
             title=args.title,
             generated_at=utc_now(),
             source_hashes=collect_source_hashes(report_sources),
-            extra={"reportDate": args.date},
+            extra={"reportDate": report_date},
         )
-        report_path.write_text(render_report_page(args.title, args.date, args.kind, body, provenance, stable_title, lede=report_lead_summary(structured_data)), encoding="utf-8")
+        report_path.write_text(render_report_page(args.title, report_date, args.kind, body, provenance, stable_title, lede=report_lead_summary(structured_data)), encoding="utf-8")
         if structured_data is not None:
             write_json(report_path.with_suffix(".json"), structured_data)
             write_json(reports_dir / args.kind / "data.json", structured_data)
