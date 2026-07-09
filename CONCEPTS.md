@@ -13,5 +13,8 @@ A report artifact addressed to a company's CEO, summarizing progress, risks, ask
 ### Prior report
 The previous report in the same cadence, selected as the comparison baseline so a new report can render an automatic week-over-week section. Its data is historical and outside the author's current control: it may predate current sanitization rules, so values carried forward from it are redacted if needed but are never allowed to block a new report.
 
+### Weekly streak
+The count of consecutive configured weekly cadence periods, ending at today, that contain a `weekly` CEO report. It is a best-effort local signal derived from report JSON on the index, not the canonical North Star metric with exclusions such as test runs or unopened reports.
+
 ### Provenance
 The embedded machine-readable record identifying which skill version generated an artifact and from what inputs, carried inside the artifact so a regenerated page is self-describing. Because it echoes user-supplied fields such as the report title, it is one of the inputs that must be sanitized before the artifact is written.
