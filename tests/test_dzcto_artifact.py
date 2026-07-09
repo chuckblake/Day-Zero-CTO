@@ -329,6 +329,21 @@ class TestSkillSchemaLockstep(unittest.TestCase):
         )
 
 
+class TestSkillBadNewsInstructions(unittest.TestCase):
+    SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
+
+    def skill_text(self, skill: str) -> str:
+        return (REPO / "skills" / skill / "SKILL.md").read_text(encoding="utf-8").lower()
+
+    def test_report_skills_prompt_bad_news_evidence(self):
+        for skill in self.SKILLS:
+            with self.subTest(skill=skill):
+                text = self.skill_text(skill)
+                self.assertIn("reverts or reverted commits", text)
+                self.assertIn("failing or red ci", text)
+                self.assertIn("slipped or descoped work", text)
+
+
 class TestArtifactWritePath(unittest.TestCase):
     """End-to-end runs of the artifact CLI against a temp workspace."""
 
