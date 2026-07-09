@@ -17,12 +17,19 @@ from pathlib import Path
 from typing import Any
 
 from dzcto_common import (
+    HIGH_CONFIDENCE,
+    LOCAL_PATH_KEYS,
+    LOW_CONFIDENCE,
     TOOL_VERSION,
+    SecretFinding,
     ensure_sidecar,
+    is_secret_key,
     provenance_block,
     provenance_payload,
     read_global_config,
     read_json,
+    redact_text,
+    redaction_placeholder,
     sha256_text,
     sidecar_dir,
     source_hashes as collect_source_hashes,
@@ -5995,6 +6002,109 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     update_manifest(wiki_root, provenance)
 
 
+LocatedSecretFinding = tuple[str, SecretFinding]
+
+
+def child_secret_location(parent: str, key: str) -> str:
+    if not parent:
+        return key
+    if key.startswith("["):
+        return f"{parent}{key}"
+    return f"{parent}.{key}"
+
+
+def synthetic_secret_finding(rule: str, confidence: str = LOW_CONFIDENCE) -> SecretFinding:
+    return SecretFinding(rule=rule, confidence=confidence, span=(0, 0), preview="<masked len=0>")
+
+
+def sanitize_report_value(value: Any, location: str = "") -> tuple[Any, list[LocatedSecretFinding]]:
+    findings: list[LocatedSecretFinding] = []
+    if isinstance(value, dict):
+        redacted: dict[Any, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            redacted_key_text, key_findings = redact_text(key_text)
+            location_key = redacted_key_text if key_findings else key_text
+            child_location = child_secret_location(location, location_key)
+            findings.extend((f"{child_location}<key>", finding) for finding in key_findings)
+
+            sanitized_item, child_findings = sanitize_report_value(item, child_location)
+            findings.extend(child_findings)
+            output_key = redacted_key_text if key_findings else key
+
+            if key_text in LOCAL_PATH_KEYS:
+                findings.append((child_location, synthetic_secret_finding("local_path_key")))
+                redacted[output_key] = redaction_placeholder("local_path")
+            elif is_secret_key(key_text):
+                findings.append((child_location, synthetic_secret_finding("secret_key")))
+                redacted[output_key] = redaction_placeholder("secret_key")
+            else:
+                redacted[output_key] = sanitized_item
+        return redacted, findings
+    if isinstance(value, list):
+        redacted_items = []
+        for index, item in enumerate(value):
+            child_location = child_secret_location(location, f"[{index}]")
+            sanitized_item, child_findings = sanitize_report_value(item, child_location)
+            redacted_items.append(sanitized_item)
+            findings.extend(child_findings)
+        return redacted_items, findings
+    if isinstance(value, str):
+        redacted_text, text_findings = redact_text(value)
+        return redacted_text, [(location or "value", finding) for finding in text_findings]
+    return value, findings
+
+
+def print_secret_blocks(findings: list[LocatedSecretFinding], *, block_all: bool = False) -> None:
+    blocked = [
+        (location, finding)
+        for location, finding in findings
+        if block_all or finding.confidence == HIGH_CONFIDENCE
+    ]
+    for location, finding in blocked:
+        print(
+            f"dzcto: secret detected in {location}: rule={finding.rule} ({finding.preview})",
+            file=sys.stderr,
+        )
+    if blocked:
+        raise SystemExit(1)
+
+
+def print_secret_redactions(findings: list[LocatedSecretFinding], *, label: str = "value(s)") -> None:
+    if not findings:
+        return
+    rules = ", ".join(sorted({finding.rule for _location, finding in findings}))
+    print(f"dzcto: redacted {len(findings)} {label}: {rules}", file=sys.stderr)
+
+
+def enforce_safe_report_title(title: str) -> None:
+    _redacted, findings = redact_text(title)
+    print_secret_blocks([("title", finding) for finding in findings], block_all=True)
+
+
+def sanitize_current_report_data(data: dict[str, Any]) -> dict[str, Any]:
+    sanitized, findings = sanitize_report_value(data)
+    print_secret_blocks(findings)
+    print_secret_redactions([item for item in findings if item[1].confidence == LOW_CONFIDENCE])
+    return sanitized
+
+
+def sanitize_current_report_body(body: str) -> str:
+    redacted, findings = redact_text(body)
+    located = [(f"body@{finding.span[0]}", finding) for finding in findings]
+    print_secret_blocks(located)
+    print_secret_redactions([item for item in located if item[1].confidence == LOW_CONFIDENCE])
+    return redacted
+
+
+def sanitize_prior_report_data(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    if data is None:
+        return None
+    sanitized, findings = sanitize_report_value(data)
+    print_secret_redactions(findings, label="prior-report value(s)")
+    return sanitized
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Generate Day Zero CTO artifacts")
     parser.add_argument("--project", help="Project folder; creates/uses PATH/knowledge/wiki")
@@ -6076,6 +6186,7 @@ def main(argv: list[str]) -> int:
             parser.error("--kind is required unless --init is used")
         if not args.title:
             parser.error("--title is required unless --init is used")
+        enforce_safe_report_title(args.title)
 
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
@@ -6136,23 +6247,29 @@ def main(argv: list[str]) -> int:
                 body = sys.stdin.read()
 
         report_date = args.date or dt.date.today().isoformat()
-        if structured_data is not None and args.kind == "ceo-updates":
-            # Stamp renderer-owned metadata before validating so warnings reflect what
-            # actually ships (company is documented as "filled from the profile when absent").
-            structured_data.setdefault("schema_version", CEO_REPORT_SCHEMA_VERSION)
-            structured_data.setdefault("generated_at", utc_now())
-            structured_data.setdefault("company", company)
-            for warning in validate_ceo_report(structured_data):
-                print(f"dzcto: ceo-report schema warning: {warning}", file=sys.stderr)
-            window = structured_data.get("window")
-            window_end = date_value(window.get("end")) if isinstance(window, dict) else None
-            if window_end:
-                if args.date and args.date != window_end.isoformat():
-                    print(
-                        f"dzcto: --date {args.date} disagrees with window.end {window_end.isoformat()}; using window.end",
-                        file=sys.stderr,
-                    )
-                report_date = window_end.isoformat()
+        if structured_data is not None:
+            if args.kind == "ceo-updates":
+                # Stamp renderer-owned metadata before sanitizing and validating so
+                # warnings reflect what actually ships (company is documented as
+                # "filled from the profile when absent").
+                structured_data.setdefault("schema_version", CEO_REPORT_SCHEMA_VERSION)
+                structured_data.setdefault("generated_at", utc_now())
+                structured_data.setdefault("company", company)
+            structured_data = sanitize_current_report_data(structured_data)
+            if args.kind == "ceo-updates":
+                for warning in validate_ceo_report(structured_data):
+                    print(f"dzcto: ceo-report schema warning: {warning}", file=sys.stderr)
+                window = structured_data.get("window")
+                window_end = date_value(window.get("end")) if isinstance(window, dict) else None
+                if window_end:
+                    if args.date and args.date != window_end.isoformat():
+                        print(
+                            f"dzcto: --date {args.date} disagrees with window.end {window_end.isoformat()}; using window.end",
+                            file=sys.stderr,
+                        )
+                    report_date = window_end.isoformat()
+        else:
+            body = sanitize_current_report_body(body)
 
         slug = slugify(f"{report_date} {args.title}")
         report_path = reports_dir / args.kind / f"{slug}.html"
@@ -6165,6 +6282,7 @@ def main(argv: list[str]) -> int:
                 prior_path, previous_data, previous_date, change_notes = locate_prior_report(
                     report_path.with_suffix(".json"), structured_data
                 )
+                previous_data = sanitize_prior_report_data(previous_data)
                 structured_data["prior_report"] = prior_path.relative_to(wiki_root).as_posix() if prior_path else None
             body = render_structured_report(
                 args.kind,

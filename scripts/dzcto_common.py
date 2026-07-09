@@ -6,9 +6,11 @@ import datetime as dt
 import hashlib
 import html
 import json
+import math
 import platform
 import re
-import sys
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -203,10 +205,207 @@ def source_hashes(paths: list[Path]) -> dict[str, str]:
     return hashes
 
 
-SECRET_KEY_PATTERN = re.compile(r"(token|secret|password|api[_-]?key|credential|authorization)", re.I)
-SECRET_VALUE_PATTERN = re.compile(r"(?i)(token|secret|password|api[_-]?key|authorization)(['\"\s:=]+)([^'\"\s,}]+)")
+HIGH_CONFIDENCE = "high"
+LOW_CONFIDENCE = "low"
+REDACTION_PLACEHOLDER_TEMPLATE = "[REDACTED:{rule}]"
+
+
+@dataclass(frozen=True)
+class SecretFinding:
+    rule: str
+    confidence: str
+    span: tuple[int, int]
+    preview: str
+
+
+@dataclass(frozen=True)
+class SecretRule:
+    name: str
+    regex: re.Pattern[str]
+
+
+PROVIDER_RULES = (
+    SecretRule("github_pat", re.compile(r"(?<![\w-])(?:gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{20,})(?![\w-])")),
+    SecretRule("aws_access_key", re.compile(r"(?<![\w-])(?:AKIA|ASIA)[A-Z0-9]{16}(?![\w-])")),
+    SecretRule("openai_key", re.compile(r"(?<![\w-])sk-(?:proj-)?[A-Za-z0-9_-]{16,}(?![\w-])")),
+    SecretRule("slack_token", re.compile(r"(?<![\w-])xox[baprs]-[A-Za-z0-9-]{10,}(?![\w-])")),
+    SecretRule("google_api_key", re.compile(r"(?<![\w-])AIza[0-9A-Za-z_-]{20,40}(?![\w-])")),
+    SecretRule("stripe_key", re.compile(r"(?<![\w-])(?:sk_live|rk_live)_[0-9A-Za-z]{16,}(?![\w-])")),
+    SecretRule("sendgrid_key", re.compile(r"(?<![\w-])SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}(?![\w-])")),
+    SecretRule("pem_private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)")),
+    SecretRule("jwt", re.compile(r"(?<![\w-])eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(?![\w-])")),
+)
+
+ASSIGNMENT_RULE = re.compile(
+    r"""
+    (?P<key>\b(?:api[_-]?key|access[_-]?key|client[_-]?secret|private[_-]?key|token|secret|password|authorization|credential)\b)
+    \s*[:=]\s*
+    (?:
+      (?P<quote>["'])(?P<quoted>[^"']+)(?P=quote)
+      |
+      (?P<bare>[^'"\s,}<]+)
+    )
+    """,
+    re.I | re.X,
+)
+BENIGN_SHA_PATTERN = re.compile(r"^[0-9a-f]{7,64}$")
+BENIGN_UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.I,
+)
+REDACTION_PLACEHOLDER_PATTERN = re.compile(r"^\[REDACTED:[A-Za-z0-9_-]+\]$")
 LOCAL_PATH_PATTERN = re.compile(r"(?<![\w.-])/(Users|home|private/tmp|tmp)/[^'\"\s,}]+")
 LOCAL_PATH_KEYS = {"projectFolder", "wikiRoot", "artifactDirectory"}
+SECRET_KEY_EXACT = {
+    "api-key",
+    "api_key",
+    "apikey",
+    "authorization",
+    "client-secret",
+    "client_secret",
+    "credential",
+    "github-token",
+    "github_token",
+    "openai-api-key",
+    "openai_api_key",
+    "password",
+    "private-key",
+    "private_key",
+    "secret",
+    "token",
+}
+SECRET_KEY_SUFFIXES = (
+    "_token",
+    "-token",
+    "_secret",
+    "-secret",
+    "_api_key",
+    "-api-key",
+    "_apikey",
+    "-apikey",
+    "_password",
+    "-password",
+    "_credential",
+    "-credential",
+)
+SECRET_KEY_PREFIXES = (
+    "authorization_",
+    "authorization-",
+    "credential_",
+    "credential-",
+    "password_",
+    "password-",
+    "secret_",
+    "secret-",
+)
+
+
+def redaction_placeholder(rule: str) -> str:
+    safe_rule = re.sub(r"[^A-Za-z0-9_-]+", "_", rule).strip("_") or "secret"
+    return REDACTION_PLACEHOLDER_TEMPLATE.format(rule=safe_rule)
+
+
+def masked_preview(value: str) -> str:
+    return f"<masked len={len(value)}>"
+
+
+def shannon_entropy(value: str) -> float:
+    if not value:
+        return 0.0
+    counts = Counter(value)
+    length = len(value)
+    return -sum((count / length) * math.log2(count / length) for count in counts.values())
+
+
+def is_benign_secret_shape(value: str) -> bool:
+    stripped = value.strip()
+    return (
+        not stripped
+        or REDACTION_PLACEHOLDER_PATTERN.match(stripped) is not None
+        or stripped.startswith("data:")
+        or BENIGN_SHA_PATTERN.match(stripped) is not None
+        or BENIGN_UUID_PATTERN.match(stripped) is not None
+    )
+
+
+def assignment_value_is_secret(value: str) -> bool:
+    stripped = value.strip()
+    if is_benign_secret_shape(stripped):
+        return False
+    is_hex = re.fullmatch(r"[0-9A-Fa-f]+", stripped) is not None
+    if len(stripped) < (16 if is_hex else 20):
+        return False
+    if re.fullmatch(r"[A-Za-z0-9_./+=:-]+", stripped) is None:
+        return False
+    return shannon_entropy(stripped) >= 3.0
+
+
+def is_secret_key(key: str) -> bool:
+    normalized = re.sub(r"\s+", "_", key.strip().lower())
+    return (
+        normalized in SECRET_KEY_EXACT
+        or normalized.endswith(SECRET_KEY_SUFFIXES)
+        or normalized.startswith(SECRET_KEY_PREFIXES)
+    )
+
+
+def _selected_findings(findings: list[SecretFinding]) -> list[SecretFinding]:
+    priority = {HIGH_CONFIDENCE: 0, LOW_CONFIDENCE: 1}
+    selected: list[SecretFinding] = []
+    for finding in sorted(findings, key=lambda item: (priority.get(item.confidence, 9), item.span[0], -(item.span[1] - item.span[0]))):
+        start, end = finding.span
+        if any(start < existing.span[1] and existing.span[0] < end for existing in selected):
+            continue
+        selected.append(finding)
+    return sorted(selected, key=lambda item: item.span)
+
+
+def scan_secrets(text: str) -> list[SecretFinding]:
+    if not text:
+        return []
+    findings: list[SecretFinding] = []
+    for rule in PROVIDER_RULES:
+        for match in rule.regex.finditer(text):
+            findings.append(
+                SecretFinding(
+                    rule=rule.name,
+                    confidence=HIGH_CONFIDENCE,
+                    span=match.span(),
+                    preview=masked_preview(match.group(0)),
+                )
+            )
+    for match in ASSIGNMENT_RULE.finditer(text):
+        value_group = "quoted" if match.group("quoted") is not None else "bare"
+        value = match.group(value_group)
+        if assignment_value_is_secret(value):
+            findings.append(
+                SecretFinding(
+                    rule="generic_assignment",
+                    confidence=LOW_CONFIDENCE,
+                    span=match.span(value_group),
+                    preview=masked_preview(value),
+                )
+            )
+    return _selected_findings(findings)
+
+
+def redact_text(value: str) -> tuple[str, list[SecretFinding]]:
+    findings = scan_secrets(value)
+    for match in LOCAL_PATH_PATTERN.finditer(value):
+        findings.append(
+            SecretFinding(
+                rule="local_path",
+                confidence=LOW_CONFIDENCE,
+                span=match.span(),
+                preview=masked_preview(match.group(0)),
+            )
+        )
+    findings = _selected_findings(findings)
+    redacted = value
+    for finding in reversed(findings):
+        start, end = finding.span
+        redacted = f"{redacted[:start]}{redaction_placeholder(finding.rule)}{redacted[end:]}"
+    return redacted, findings
 
 
 def redact(value: Any) -> Any:
@@ -214,17 +413,16 @@ def redact(value: Any) -> Any:
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             if str(key) in LOCAL_PATH_KEYS:
-                redacted[key] = "<redacted path>"
-            elif SECRET_KEY_PATTERN.search(str(key)):
-                redacted[key] = "<redacted>"
+                redacted[key] = redaction_placeholder("local_path")
+            elif is_secret_key(str(key)):
+                redacted[key] = redaction_placeholder("secret_key")
             else:
                 redacted[key] = redact(item)
         return redacted
     if isinstance(value, list):
         return [redact(item) for item in value]
     if isinstance(value, str):
-        without_secrets = SECRET_VALUE_PATTERN.sub(r"\1\2<redacted>", value)
-        return LOCAL_PATH_PATTERN.sub("<redacted path>", without_secrets)
+        return redact_text(value)[0]
     return value
 
 

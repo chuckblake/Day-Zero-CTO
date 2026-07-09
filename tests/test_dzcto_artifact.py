@@ -12,6 +12,12 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import dzcto_artifact as artifact  # noqa: E402
 
+GITHUB_TOKEN = "ghp_" + "AbCdEf1234567890AbCdEf1234567890AbCd"
+AWS_TOKEN = "AKIAABCDEFGHIJKLMNOP"
+LOW_GENERIC_SECRET = "api_key = \"dGhpcy1pcy1hLXZlcnktc2VjcmV0LXRva2Vu\""
+LOW_GENERIC_VALUE = "dGhpcy1pcy1hLXZlcnktc2VjcmV0LXRva2Vu"
+GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
+
 
 def v1_report(**overrides):
     data = {
@@ -425,20 +431,21 @@ class TestArtifactWritePath(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.run_cli("--init", "--artifacts-dir", str(self.workspace), "--company-name", "Acme", "--no-save-preferences")
 
-    def run_cli(self, *cli_args):
+    def run_cli(self, *cli_args, check=True):
         return subprocess.run(
             [sys.executable, str(REPO / "scripts" / "dzcto_artifact.py"), *cli_args],
             capture_output=True,
             text=True,
-            check=True,
+            check=check,
         )
 
-    def generate(self, data, title, *extra):
+    def generate(self, data, title, *extra, check=True):
         data_file = self.workspace.parent / f"{artifact.slugify(title)}.json"
         data_file.write_text(json.dumps(data), encoding="utf-8")
         return self.run_cli(
             "--artifacts-dir", str(self.workspace), "--kind", "ceo-updates",
             "--title", title, "--data-file", str(data_file), *extra,
+            check=check,
         )
 
     def reports_dir(self) -> Path:
@@ -494,6 +501,120 @@ class TestArtifactWritePath(unittest.TestCase):
         result = self.generate(legacy, "CEO Report legacy")
         self.assertIn("ceo-report schema warning", result.stderr)
         self.assertEqual(result.returncode, 0)
+
+    def test_high_confidence_secret_blocks_and_writes_no_report_artifact(self):
+        result = self.generate(
+            v1_report(headline=f"Leaked token {GITHUB_TOKEN}"),
+            "CEO Report blocked",
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("secret detected in headline", result.stderr)
+        self.assertIn("github_pat", result.stderr)
+        self.assertEqual(list(self.reports_dir().glob("*.html")), [])
+        self.assertEqual(list(self.reports_dir().glob("*.json")), [])
+        self.assertFalse((self.reports_dir() / "data.json").exists())
+
+    def test_high_confidence_secret_in_title_blocks_before_slug_write(self):
+        data_file = self.workspace.parent / "clean-title-source.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        result = self.run_cli(
+            "--artifacts-dir", str(self.workspace), "--kind", "ceo-updates",
+            "--title", f"CEO Report {GITHUB_TOKEN}", "--data-file", str(data_file),
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("secret detected in title", result.stderr)
+        self.assertEqual(list(self.reports_dir().glob("*ghp*")), [])
+
+        self.generate(v1_report(), "CEO Report clean")
+        html = (self.reports_dir() / "2026-06-25-ceo-report-clean.html").read_text(encoding="utf-8")
+        self.assertNotIn(GITHUB_TOKEN, html)
+        self.assertIn("dzcto-provenance", html)
+
+    def test_high_confidence_secret_in_metric_value_blocks(self):
+        result = self.generate(
+            v1_report(metrics={"deploy_key": GITHUB_TOKEN}),
+            "CEO Report metric secret",
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("metrics.deploy_key", result.stderr)
+        self.assertIn("github_pat", result.stderr)
+        self.assertEqual(list(self.reports_dir().glob("*.html")), [])
+
+    def test_high_confidence_secret_in_raw_body_blocks(self):
+        body_file = self.workspace.parent / "body.html"
+        body_file.write_text(f"<p>{AWS_TOKEN}</p>", encoding="utf-8")
+        result = self.run_cli(
+            "--artifacts-dir", str(self.workspace), "--kind", "ceo-updates",
+            "--title", "CEO Report body secret", "--body-file", str(body_file),
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("body@", result.stderr)
+        self.assertIn("aws_access_key", result.stderr)
+        self.assertEqual(list(self.reports_dir().glob("*.html")), [])
+
+    def test_low_confidence_secret_is_redacted_and_warned(self):
+        result = self.generate(
+            v1_report(risks_blockers=[{"risk": "Leak", "detail": LOW_GENERIC_SECRET, "severity": "medium"}]),
+            "CEO Report low secret",
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("redacted", result.stderr)
+        self.assertIn("generic_assignment", result.stderr)
+        html = (self.reports_dir() / "2026-06-25-ceo-report-low-secret.html").read_text(encoding="utf-8")
+        emitted = (self.reports_dir() / "2026-06-25-ceo-report-low-secret.json").read_text(encoding="utf-8")
+        self.assertNotIn(LOW_GENERIC_VALUE, html)
+        self.assertNotIn(LOW_GENERIC_VALUE, emitted)
+        self.assertIn("[REDACTED:generic_assignment]", emitted)
+
+    def test_prose_and_git_sha_survive_end_to_end(self):
+        data = v1_report(
+            headline="The secret to our success was focus.",
+            progress=[{"area": "Core", "status": "on-track", "summary": f"Reviewed {GIT_SHA}", "items": []}],
+        )
+        self.generate(data, "CEO Report prose")
+        html = (self.reports_dir() / "2026-06-25-ceo-report-prose.html").read_text(encoding="utf-8")
+        self.assertIn("The secret to our success was focus.", html)
+        self.assertIn(GIT_SHA, html)
+
+    def test_redaction_is_stable_across_week_over_week_reports(self):
+        first = v1_report(risks_blockers=[{"risk": "Leak", "detail": LOW_GENERIC_SECRET, "severity": "medium"}])
+        second = v1_report(
+            window={"start": "2026-06-26", "end": "2026-07-02"},
+            risks_blockers=[{"risk": "Leak", "detail": LOW_GENERIC_SECRET, "severity": "medium"}],
+        )
+        self.generate(first, "CEO Report 2026-06-19 to 2026-06-25")
+        self.generate(second, "CEO Report 2026-06-26 to 2026-07-02")
+        first_json = json.loads((self.reports_dir() / "2026-06-25-ceo-report-2026-06-19-to-2026-06-25.json").read_text(encoding="utf-8"))
+        second_json = json.loads((self.reports_dir() / "2026-07-02-ceo-report-2026-06-26-to-2026-07-02.json").read_text(encoding="utf-8"))
+        self.assertEqual(first_json["risks_blockers"][0]["detail"], second_json["risks_blockers"][0]["detail"])
+        self.assertEqual(first_json["risks_blockers"][0]["detail"], 'api_key = "[REDACTED:generic_assignment]"')
+        self.assertTrue(second_json["prior_report"])
+        html = (self.reports_dir() / "2026-07-02-ceo-report-2026-06-26-to-2026-07-02.html").read_text(encoding="utf-8")
+        self.assertIn("report-changes", html)
+        self.assertNotIn(LOW_GENERIC_VALUE, html)
+
+    def test_secret_bearing_prior_report_is_redacted_without_blocking(self):
+        prior = v1_report(
+            progress=[{"area": "Legacy", "status": "at-risk", "summary": f"Remove {GITHUB_TOKEN}", "items": []}],
+            window={"start": "2026-06-19", "end": "2026-06-25"},
+        )
+        write_report(self.reports_dir(), "2026-06-25-ceo-report-prior.json", prior)
+        current = v1_report(
+            window={"start": "2026-06-26", "end": "2026-07-02"},
+            progress=[{"area": "Current", "status": "on-track", "summary": "Clean work", "items": ["Ship"]}],
+        )
+        result = self.generate(current, "CEO Report current")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("prior-report", result.stderr)
+        self.assertIn("github_pat", result.stderr)
+        html = (self.reports_dir() / "2026-07-02-ceo-report-current.html").read_text(encoding="utf-8")
+        self.assertIn("report-changes", html)
+        self.assertNotIn(GITHUB_TOKEN, html)
+        self.assertIn("[REDACTED:github_pat]", html)
 
 
 if __name__ == "__main__":
