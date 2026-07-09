@@ -1281,10 +1281,17 @@ def render_metrics(metrics: Any) -> str:
     return f'<div class="grid">\n{"".join(cards)}\n</div>'
 
 
-def render_list_section(title: str, items: Any) -> str:
+def render_list_section(title: str, items: Any, empty_note: str | None = None) -> str:
     rows = array_value(items)
     if not rows:
-        return ""
+        if not empty_note:
+            return ""
+        return f"""
+<section class="artifact-section">
+  <h2>{esc(title)}</h2>
+  <p class="empty-item">{esc(empty_note)}</p>
+</section>
+"""
 
     list_items = []
     for item in rows:
@@ -1473,20 +1480,26 @@ def source_entry_html(source: Any, *, prefix: str = "../../") -> str:
 """
 
 
-def render_sources(data: dict[str, Any]) -> str:
+def render_sources(data: dict[str, Any], empty_note: str | None = None) -> str:
     rows = [source_entry_html(source) for source in array_value(value_at(data, "sources", "source_list", "evidence_sources"))]
     rows = [row for row in rows if row]
     if not rows:
-        return ""
+        if not empty_note:
+            return ""
+        body = f'<p class="empty-item">{esc(empty_note)}</p>'
+    else:
+        body = f"""
+  <ul class="artifact-list source-list">
+    {"".join(rows)}
+  </ul>
+"""
     return f"""
 <details class="artifact-section source-section">
   <summary>
     <span>Sources</span>
     <small>{esc(pluralize(len(rows), "source"))}</small>
   </summary>
-  <ul class="artifact-list source-list">
-    {"".join(rows)}
-  </ul>
+  {body}
 </details>
 """
 
@@ -1606,11 +1619,11 @@ def render_ceo_update(data: dict[str, Any]) -> str:
     return "".join(
         [
             render_metrics(value_at(data, "metrics")),
-            render_list_section("Progress", value_at(data, "progress")),
-            render_list_section("Risks / Blockers", value_at(data, "risks_blockers", "risks", "blockers")),
-            render_list_section("Asks / Decisions", value_at(data, "asks_decisions", "asks", "decisions")),
-            render_list_section("Next", value_at(data, "next", "up_next")),
-            render_sources(data),
+            render_list_section("Progress", value_at(data, "progress"), "No progress to report for this window."),
+            render_list_section("Risks / Blockers", value_at(data, "risks_blockers", "risks", "blockers"), "No risks or blockers this window."),
+            render_list_section("Asks / Decisions", value_at(data, "asks_decisions", "asks", "decisions"), "No asks or decisions this window."),
+            render_list_section("Next", value_at(data, "next", "up_next"), "Nothing queued for the next window."),
+            render_sources(data, "No evidence sources recorded for this window."),
         ]
     )
 
@@ -1941,6 +1954,10 @@ def report_changes_html(
         if per_group:
             # Per-group bound for ceo-updates: every group renders its adds and removals;
             # other kinds keep the legacy whole-section cap below.
+            if not current and previous:
+                changes.append(f"<li><strong>{esc(label)}:</strong> No items this window (prior listed: {esc(summarize_change_list(previous, 2))}).</li>")
+                group_changes += 1
+                continue
             if added:
                 changes.append(f"<li><strong>{esc(label)}:</strong> Added: {esc(summarize_change_list(added, 3))}</li>")
                 group_changes += 1
@@ -2464,6 +2481,11 @@ def validate_ceo_report(data: dict[str, Any]) -> list[str]:
             if required_key not in item:
                 warnings.append(f"{field} items should carry {required_key!r} (schema v1)")
                 break
+    # This is only an empty-report tripwire. It cannot distinguish an intentional
+    # quiet window from forgotten structure, and carried-forward risks correctly
+    # suppress it.
+    if not any(array_value(data.get(field)) for field in ("progress", "risks_blockers", "asks_decisions", "next")):
+        warnings.append("report has no structured content; if the window was quiet, say so in headline")
     metrics = data.get("metrics")
     if metrics is not None:
         if not isinstance(metrics, dict):

@@ -76,6 +76,32 @@ class TestValidateCeoReport(unittest.TestCase):
         self.assertTrue(any("report_type" in w for w in warnings))
         self.assertTrue(any("metrics['prs']" in w for w in warnings))
 
+    def test_empty_structured_report_warns_to_narrate_headline(self):
+        data = v1_report(progress=[], risks_blockers=[], asks_decisions=[], next=[], sources=[])
+        warnings = artifact.validate_ceo_report(data)
+        self.assertEqual([warning for warning in warnings if "no structured content" in warning], [
+            "report has no structured content; if the window was quiet, say so in headline"
+        ])
+
+    def test_carried_forward_risk_suppresses_empty_report_warning(self):
+        data = v1_report(progress=[], asks_decisions=[], next=[], sources=[])
+        warnings = artifact.validate_ceo_report(data)
+        self.assertFalse(any("no structured content" in warning for warning in warnings))
+
+    def test_empty_metrics_and_sources_do_not_trigger_empty_report_warning(self):
+        data = v1_report(metrics={}, sources=[])
+        warnings = artifact.validate_ceo_report(data)
+        self.assertFalse(any("no structured content" in warning for warning in warnings))
+
+    def test_missing_required_sections_still_warn_without_crashing(self):
+        warnings = artifact.validate_ceo_report({"headline": "Quiet window."})
+        joined = "\n".join(warnings)
+        self.assertIn("missing required field: progress", joined)
+        self.assertIn("missing required field: risks_blockers", joined)
+        self.assertIn("missing required field: asks_decisions", joined)
+        self.assertIn("missing required field: next", joined)
+        self.assertIn("no structured content", joined)
+
 
 class TestReportEffectiveDate(unittest.TestCase):
     def test_window_end_wins_over_filename(self):
@@ -466,6 +492,53 @@ class TestReportChangesHtml(unittest.TestCase):
         self.assertIn("Not comparable", html)
         self.assertIn("prior report lacked this section", html)
 
+    def test_empty_current_group_names_prior_without_claiming_removal(self):
+        current = v1_report(progress=[], next=[])
+        html = artifact.report_changes_html("ceo-updates", current, v1_report(), "2026-06-25")
+        self.assertIn("Progress:</strong> No items this window", html)
+        self.assertIn("prior listed: Login shipped", html)
+        self.assertIn("Next:</strong> No items this window", html)
+        self.assertIn("prior listed: Billing", html)
+        self.assertNotIn("No longer listed", html)
+
+    def test_partial_group_removal_still_renders_no_longer_listed(self):
+        previous = v1_report(next=["Billing", "Launch"])
+        current = v1_report(next=["Billing"])
+        html = artifact.report_changes_html("ceo-updates", current, previous, "2026-06-25")
+        self.assertIn("Next:</strong> No longer listed: Launch", html)
+        self.assertNotIn("Next:</strong> No items this window", html)
+
+    def test_empty_current_and_prior_group_emits_no_group_line(self):
+        previous = v1_report(progress=[])
+        current = v1_report(progress=[])
+        html = artifact.report_changes_html("ceo-updates", current, previous, "2026-06-25")
+        self.assertNotIn("Progress:</strong>", html)
+        self.assertIn("No material structured changes", html)
+
+    def test_every_group_empty_against_populated_prior_suppresses_no_material_fallback(self):
+        current = v1_report(progress=[], risks_blockers=[], asks_decisions=[], next=[])
+        html = artifact.report_changes_html("ceo-updates", current, v1_report(), "2026-06-25")
+        for label in ("Progress", "Risks / Blockers", "Asks / Decisions", "Next"):
+            self.assertIn(f"{label}:</strong> No items this window", html)
+        self.assertNotIn("No material structured changes", html)
+        self.assertNotIn("No longer listed", html)
+
+    def test_not_comparable_wins_over_empty_current_group(self):
+        previous = v1_report()
+        del previous["progress"]
+        current = v1_report(progress=[])
+        html = artifact.report_changes_html("ceo-updates", current, previous, "2026-06-25")
+        self.assertIn("Progress:</strong> Not comparable", html)
+        self.assertNotIn("Progress:</strong> No items this window", html)
+
+    def test_rendered_quiet_report_uses_empty_group_diff_phrasing(self):
+        current = v1_report(progress=[], asks_decisions=[], next=[])
+        html = artifact.render_structured_report("ceo-updates", current, previous_data=v1_report(), previous_date="2026-06-25")
+        self.assertIn("Progress:</strong> No items this window", html)
+        self.assertIn("<h2>Progress</h2>", html)
+        self.assertIn("No progress to report for this window.", html)
+        self.assertNotIn("No longer listed", html)
+
     def test_disjoint_metrics_render_no_delta(self):
         previous = v1_report(metrics={"deploys": 2})
         html = artifact.report_changes_html("ceo-updates", v1_report(metrics={"prs_merged": 8}), previous, "d")
@@ -509,6 +582,92 @@ class TestReportChangesHtml(unittest.TestCase):
         previous = v1_report(metrics={"nan": float("nan"), "launched": False, "prs_merged": 5})
         current = v1_report(metrics={"nan": float("nan"), "launched": True, "prs_merged": 5})
         self.assertEqual(artifact.metric_delta_items(current, previous), [])
+
+
+class TestCeoQuietWindowRendering(unittest.TestCase):
+    def sparse_quiet_report(self):
+        return v1_report(
+            headline="Quiet week: no code shipped; rate-limit risk carries forward.",
+            progress=[],
+            risks_blockers=[{"risk": "Rate limits", "detail": "Near quota", "severity": "medium"}],
+            asks_decisions=[],
+            next=[],
+            metrics={},
+            sources=[],
+        )
+
+    def test_sparse_quiet_report_renders_required_empty_sections(self):
+        html = artifact.render_structured_report("ceo-updates", self.sparse_quiet_report(), previous_data=None)
+        self.assertIn("<h2>Progress</h2>", html)
+        self.assertIn("No progress to report for this window.", html)
+        self.assertIn("<h2>Risks / Blockers</h2>", html)
+        self.assertIn("Rate limits", html)
+        self.assertNotIn("No risks or blockers this window.", html)
+        self.assertIn("<h2>Asks / Decisions</h2>", html)
+        self.assertIn("No asks or decisions this window.", html)
+        self.assertIn("<h2>Next</h2>", html)
+        self.assertIn("Nothing queued for the next window.", html)
+        self.assertIn("<span>Sources</span>", html)
+        self.assertIn("0 sources", html)
+        self.assertIn("No evidence sources recorded for this window.", html)
+
+    def test_sparse_quiet_report_keeps_optional_sections_absent(self):
+        # One carried risk keeps the report sparse enough that Follow-up signals
+        # would only duplicate the body. Metrics is optional when omitted or empty.
+        html = artifact.render_structured_report("ceo-updates", self.sparse_quiet_report(), previous_data=None)
+        self.assertNotIn('<span class="label">PRs Merged</span>', html)
+        self.assertNotIn('aria-label="Follow-up signals"', html)
+
+    def test_quiet_required_sections_render_in_spine_order(self):
+        html = artifact.render_structured_report("ceo-updates", self.sparse_quiet_report(), previous_data=None)
+        anchors = [
+            "<h2>Week over week</h2>",
+            "<h2>Progress</h2>",
+            "<h2>Risks / Blockers</h2>",
+            "<h2>Asks / Decisions</h2>",
+            "<h2>Next</h2>",
+            "<span>Sources</span>",
+        ]
+        positions = [html.index(anchor) for anchor in anchors]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_empty_progress_variants_render_placeholder(self):
+        for progress in (None, [], [""], [{}], ["   "]):
+            with self.subTest(progress=progress):
+                html = artifact.render_structured_report(
+                    "ceo-updates",
+                    v1_report(progress=progress, asks_decisions=[], next=[], sources=[]),
+                    previous_data=None,
+                )
+                self.assertIn("<h2>Progress</h2>", html)
+                self.assertIn("No progress to report for this window.", html)
+
+    def test_populated_ceo_report_has_no_empty_placeholders(self):
+        html = artifact.render_structured_report("ceo-updates", v1_report(), previous_data=None)
+        self.assertNotIn("empty-item", html)
+
+    def test_other_report_kinds_still_omit_empty_list_sections_and_sources(self):
+        engineering = artifact.render_engineering_risk(
+            {
+                "top_risks": [{"risk": "Scaling", "evidence": "load test", "business_impact": "latency"}],
+                "mitigations": [],
+                "sources": [],
+            }
+        )
+        self.assertNotIn("<h2>Mitigations</h2>", engineering)
+        self.assertNotIn("<span>Sources</span>", engineering)
+        self.assertNotIn("this window", engineering)
+
+        tech_stack = artifact.render_tech_stack(
+            {
+                "stack_components": [{"layer": "Backend", "technology": "Python", "evidence": "repo"}],
+                "onboarding_notes": [],
+                "sources": [],
+            }
+        )
+        self.assertNotIn("<h2>Onboarding Notes</h2>", tech_stack)
+        self.assertNotIn("<span>Sources</span>", tech_stack)
+        self.assertNotIn("this window", tech_stack)
 
 
 class TestReportSectionSpine(unittest.TestCase):
@@ -615,6 +774,33 @@ class TestSkillBadNewsInstructions(unittest.TestCase):
                 self.assertIn("slipped or descoped work", text)
 
 
+class TestSkillQuietWindowInstructions(unittest.TestCase):
+    SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
+
+    def skill_text(self, skill: str) -> str:
+        return (REPO / "skills" / skill / "SKILL.md").read_text(encoding="utf-8").lower()
+
+    def test_report_skills_prompt_quiet_window_authoring(self):
+        for skill in self.SKILLS:
+            with self.subTest(skill=skill):
+                text = self.skill_text(skill)
+                self.assertIn("quiet", text)
+                self.assertIn("never pad", text)
+                self.assertIn("carry still-true risks, asks, and next items forward verbatim", text)
+                self.assertIn("metrics", text)
+                self.assertIn("prs_merged: 0", text)
+
+    def test_weekly_skill_names_quiet_week_without_streak_claims(self):
+        text = self.skill_text("dzcto-ceo-report-weekly")
+        self.assertIn("quiet week", text)
+        self.assertNotIn("streak", text)
+
+    def test_ad_hoc_skill_uses_window_neutral_quiet_language(self):
+        text = self.skill_text("dzcto-ceo-report")
+        self.assertNotIn("quiet week", text)
+        self.assertIn("quiet-window report", text)
+
+
 class TestArtifactWritePath(unittest.TestCase):
     """End-to-end runs of the artifact CLI against a temp workspace."""
 
@@ -694,6 +880,27 @@ class TestArtifactWritePath(unittest.TestCase):
         result = self.generate(legacy, "CEO Report legacy")
         self.assertIn("ceo-report schema warning", result.stderr)
         self.assertEqual(result.returncode, 0)
+
+    def test_quiet_empty_report_warns_but_still_renders_placeholders(self):
+        data = v1_report(
+            headline="Quiet week: no material engineering movement.",
+            progress=[],
+            risks_blockers=[],
+            asks_decisions=[],
+            next=[],
+            metrics={},
+            sources=[],
+        )
+        result = self.generate(data, "CEO Report quiet")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("ceo-report schema warning", result.stderr)
+        self.assertIn("no structured content", result.stderr)
+        html = (self.reports_dir() / "2026-06-25-ceo-report-quiet.html").read_text(encoding="utf-8")
+        self.assertIn("No progress to report for this window.", html)
+        self.assertIn("No risks or blockers this window.", html)
+        self.assertIn("No asks or decisions this window.", html)
+        self.assertIn("Nothing queued for the next window.", html)
+        self.assertIn("No evidence sources recorded for this window.", html)
 
     def test_high_confidence_secret_blocks_and_writes_no_report_artifact(self):
         result = self.generate(
