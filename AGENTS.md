@@ -15,6 +15,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - `bin/` exposes helper wrappers for Claude Code plugin installs and local convenience. `bin/dzcto` is the canonical wrapper; `dzcto-artifact`, `dzcto-learning`, and `dzcto-doctor` are compatibility aliases.
 - `INSTALL_FOR_AGENTS.md` is the pasteable install handoff for Codex Desktop, Claude Code, Claude Desktop, and future agent sessions.
 - `docs/solutions/` holds documented learnings from past work — bug fixes, design patterns, conventions — organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant context when implementing or debugging in a documented area.
+- `CONCEPTS.md` holds the shared domain vocabulary (entities, named processes, status concepts) — relevant when orienting to the codebase or discussing domain concepts.
 
 ## Editing Rules
 
