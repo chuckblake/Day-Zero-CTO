@@ -312,6 +312,78 @@ class TestReportChangesHtml(unittest.TestCase):
         self.assertEqual(artifact.metric_delta_items(current, previous), [])
 
 
+class TestReportSectionSpine(unittest.TestCase):
+    TEMPLATE = REPO / "docs" / "ceo-report-template.md"
+    TEMPLATE_HEADER = "## Section spine (fixed, in order)"
+    SPINE = [
+        ("Masthead", '<span class="eyebrow">CEO Reports - Day Zero CTO</span>'),
+        ("Lede", "Cadence held."),
+        ("Week over week", "<h2>Week over week</h2>"),
+        ("Follow-up signals", 'aria-label="Follow-up signals"'),
+        ("Metrics", '<span class="label">PRs Merged</span>'),
+        ("Progress", "<h2>Progress</h2>"),
+        ("Risks / Blockers", "<h2>Risks / Blockers</h2>"),
+        ("Asks / Decisions", "<h2>Asks / Decisions</h2>"),
+        ("Next", "<h2>Next</h2>"),
+        ("Sources", "<span>Sources</span>"),
+        ("Footer", '<footer class="app-footer">'),
+    ]
+
+    def documented_sections(self) -> list[str]:
+        text = self.TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn(self.TEMPLATE_HEADER, text, "docs/ceo-report-template.md lost its section spine")
+        block = text.split(self.TEMPLATE_HEADER, 1)[1].split("\n## ", 1)[0]
+        sections = []
+        for line in block.splitlines():
+            if not line.startswith("| "):
+                continue
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) < 2 or not cells[0].isdigit():
+                continue
+            section = cells[1].replace("**", "").replace("`", "")
+            sections.append(section.split(" \u2014 ", 1)[0])
+        return sections
+
+    def rendered_report(self) -> str:
+        data = v1_report(next=["Billing", "Launch"])
+        title = "CEO Report 2026-06-19 to 2026-06-25"
+        body = artifact.render_structured_report("ceo-updates", data, previous_data=None)
+        return artifact.render_report_page(
+            title,
+            data["window"]["end"],
+            "ceo-updates",
+            body,
+            {},
+            "Acme",
+            lede=artifact.report_lead_summary(data),
+        )
+
+    def test_spine_constant_matches_template_sections(self):
+        self.assertEqual(
+            self.documented_sections(),
+            [section for section, _anchor in self.SPINE],
+            "TestReportSectionSpine.SPINE must mirror docs/ceo-report-template.md",
+        )
+
+    def test_template_spine_sections_render_in_order(self):
+        html = self.rendered_report()
+        positions = []
+        for section, anchor in self.SPINE:
+            try:
+                positions.append((section, html.index(anchor)))
+            except ValueError:
+                self.fail(f"{section} anchor missing from rendered CEO report; see docs/ceo-report-template.md")
+
+        for previous, current in zip(positions, positions[1:]):
+            previous_section, previous_index = previous
+            current_section, current_index = current
+            self.assertLess(
+                previous_index,
+                current_index,
+                f"{current_section} rendered before {previous_section}; see docs/ceo-report-template.md",
+            )
+
+
 class TestSkillSchemaLockstep(unittest.TestCase):
     HEADER = "## Report JSON schema (v1)"
 
