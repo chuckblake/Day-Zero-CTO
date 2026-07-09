@@ -2430,6 +2430,8 @@ def report_summary_for_path(path: Path, limit: int = 190) -> str:
 
 CEO_REPORT_SCHEMA_VERSION = "ceo-report/1"
 CEO_REPORT_TYPES = ("weekly", "ad_hoc")
+DEFAULT_WEEKLY_CADENCE_DAYS = 7
+NORTH_STAR_STREAK_WEEKS = 3
 
 
 def validate_ceo_report(data: dict[str, Any]) -> list[str]:
@@ -2484,6 +2486,66 @@ def report_effective_date(json_path: Path, data: Any) -> str | None:
     if match := re.match(r"^(\d{4}-\d{2}-\d{2})-", json_path.name):
         return match.group(1)
     return None
+
+
+def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
+    dates: set[dt.date] = set()
+    if not reports_dir.exists():
+        return []
+    for path in sorted(reports_dir.glob("*.json")):
+        if path.name == "data.json":
+            continue
+        data = read_json_file(path, None)
+        if not isinstance(data, dict):
+            print(f"dzcto: skipping weekly-streak candidate {path.name} (unreadable JSON)", file=sys.stderr)
+            continue
+        if data.get("report_type") != "weekly":
+            continue
+        effective_date = date_value(report_effective_date(path, data))
+        if effective_date is None:
+            print(f"dzcto: skipping weekly-streak candidate {path.name} (no resolvable date)", file=sys.stderr)
+            continue
+        dates.add(effective_date)
+    return sorted(dates, reverse=True)
+
+
+def rounded_period_index(delta_days: int, cadence_days_value: int) -> int:
+    # Avoid Python's banker's rounding; cadence buckets need stable half-up periods.
+    return (delta_days * 2 + cadence_days_value) // (2 * cadence_days_value)
+
+
+def weekly_streak(dates: list[dt.date], today: dt.date, cadence_days_value: int) -> int:
+    cadence = cadence_days_value if cadence_days_value > 0 else DEFAULT_WEEKLY_CADENCE_DAYS
+    ordered_dates = sorted(set(dates), reverse=True)
+    if not ordered_dates:
+        return 0
+
+    latest = ordered_dates[0]
+    if rounded_period_index((today - latest).days, cadence) >= 2:
+        return 0
+
+    periods = {
+        rounded_period_index((latest - report_date).days, cadence)
+        for report_date in ordered_dates
+    }
+    streak = 0
+    while streak in periods:
+        streak += 1
+    return streak
+
+
+def resolve_weekly_cadence_days(core_dir: Path, report_folder: str) -> int:
+    target_folder = normalize_report_folder(report_folder)
+    for rule in parse_cadence_rules(core_dir / "OPERATING_CADENCE.md"):
+        if normalize_report_folder(str(rule.get("folder") or "")) != target_folder:
+            continue
+        try:
+            interval_days = int(rule.get("interval_days") or 0)
+        except (TypeError, ValueError):
+            interval_days = 0
+        if interval_days > 0:
+            return interval_days
+    return DEFAULT_WEEKLY_CADENCE_DAYS
 
 
 def locate_prior_report(json_path: Path, data: dict[str, Any]) -> tuple[Path | None, dict[str, Any] | None, str, list[str]]:
@@ -5822,10 +5884,11 @@ def write_core_pages(
     return pages
 
 
-def render_index(wiki_root: Path, project_folder: Path) -> None:
+def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> None:
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
     ensure_sidecar(wiki_root, project_folder, "render-index")
+    today = today or dt.date.today()
 
     config = project_config(wiki_root)
     strategy_path = core_dir / "STRATEGY.md"
@@ -5841,6 +5904,14 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
     report_count = len(report_links)
     latest_href = report_links[0].relative_to(wiki_root).as_posix() if report_links else "#sec-reports"
     latest_date = report_run_date(report_links[0]) if report_links else "No reports yet"
+    weekly_cadence = resolve_weekly_cadence_days(core_dir, report_folder)
+    weekly_streak_count = weekly_streak(weekly_report_dates(reports_dir / report_folder), today, weekly_cadence)
+    if weekly_streak_count == 0:
+        weekly_streak_sub = "Start a weekly report"
+    elif weekly_streak_count >= NORTH_STAR_STREAK_WEEKS:
+        weekly_streak_sub = "North Star met"
+    else:
+        weekly_streak_sub = f"of {NORTH_STAR_STREAK_WEEKS} - North Star"
     weekly_defaults = config.get("weeklyReportDefaults") if isinstance(config.get("weeklyReportDefaults"), dict) else {}
     weekly_range = text_value(weekly_defaults.get("range")) or "not_configured"
     weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
@@ -5933,6 +6004,11 @@ def render_index(wiki_root: Path, project_folder: Path) -> None:
       <div class="k-val">{esc(report_count)}</div>
       <div class="k-sub">{esc(latest_date)}</div>
     </a>
+    <div class="kpi">
+      <div class="k-label">Weekly streak</div>
+      <div class="k-val">{esc(weekly_streak_count)}</div>
+      <div class="k-sub">{esc(weekly_streak_sub)}</div>
+    </div>
     <div class="kpi">
       <div class="k-label">Weekly default</div>
       <div class="k-val">{esc(weekly_kpi_value)}</div>

@@ -1,5 +1,6 @@
 """Tests for the CEO report schema v1 + week-over-week machinery (DAYZEROCTO-1)."""
 
+import datetime as dt
 import json
 import subprocess
 import sys
@@ -86,6 +87,198 @@ class TestReportEffectiveDate(unittest.TestCase):
 
     def test_unresolvable_returns_none(self):
         self.assertIsNone(artifact.report_effective_date(Path("ceo-report-old.json"), {}))
+
+
+class TestWeeklyStreak(unittest.TestCase):
+    def d(self, value: str) -> dt.date:
+        return dt.date.fromisoformat(value)
+
+    def test_three_consecutive_weeklies_count_from_today(self):
+        dates = [self.d("2026-06-25"), self.d("2026-06-18"), self.d("2026-06-11")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 7), 3)
+
+    def test_single_live_weekly_counts_as_one(self):
+        self.assertEqual(artifact.weekly_streak([self.d("2026-06-25")], self.d("2026-06-26"), 7), 1)
+
+    def test_empty_dates_return_zero(self):
+        self.assertEqual(artifact.weekly_streak([], self.d("2026-06-26"), 7), 0)
+
+    def test_ten_days_since_latest_is_late_but_live(self):
+        dates = [self.d("2026-06-25"), self.d("2026-06-18")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-05"), 7), 2)
+
+    def test_eleven_days_since_latest_is_lapsed(self):
+        dates = [self.d("2026-06-25"), self.d("2026-06-18")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-06"), 7), 0)
+
+    def test_rerun_inside_same_period_does_not_inflate_streak(self):
+        dates = [self.d("2026-06-25"), self.d("2026-06-22"), self.d("2026-06-18")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 7), 2)
+
+    def test_gap_period_stops_the_streak(self):
+        dates = [
+            self.d("2026-07-02"),
+            self.d("2026-06-25"),
+            self.d("2026-06-18"),
+            self.d("2026-06-04"),
+            self.d("2026-05-28"),
+        ]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-03"), 7), 3)
+
+    def test_duplicate_dates_count_once(self):
+        dates = [self.d("2026-06-25"), self.d("2026-06-25"), self.d("2026-06-18")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 7), 2)
+
+    def test_fourteen_day_cadence_counts_fourteen_day_periods(self):
+        dates = [
+            self.d("2026-06-25"),
+            self.d("2026-06-18"),
+            self.d("2026-06-11"),
+            self.d("2026-05-28"),
+        ]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 14), 3)
+
+    def test_zero_cadence_falls_back_to_weekly(self):
+        dates = [self.d("2026-06-25"), self.d("2026-06-18")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 0), 2)
+
+
+class TestWeeklyReportDates(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_collects_weekly_report_dates_newest_first(self):
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            [dt.date(2026, 6, 25), dt.date(2026, 6, 18)],
+        )
+
+    def test_excludes_data_json_even_when_weekly(self):
+        write_report(self.folder, "data.json", v1_report())
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+
+    def test_excludes_ad_hoc_and_legacy_reports(self):
+        write_report(self.folder, "2026-06-25-ceo-report-adhoc.json", v1_report(report_type="ad_hoc"))
+        legacy = v1_report()
+        del legacy["report_type"]
+        write_report(self.folder, "2026-06-18-ceo-report-legacy.json", legacy)
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+
+    def test_skips_bad_dates_and_invalid_json(self):
+        write_report(self.folder, "ceo-report-bad-date.json", v1_report(window={"start": "2026-06-19", "end": "not-a-date"}))
+        (self.folder / "2026-06-25-ceo-report-bad-json.json").write_text("{not json", encoding="utf-8")
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+
+    def test_uses_iso_filename_prefix_when_window_missing(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(window={}))
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+
+    def test_empty_and_missing_directories_return_empty_lists(self):
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+        self.assertEqual(artifact.weekly_report_dates(self.folder / "missing"), [])
+
+
+class TestResolveWeeklyCadenceDays(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.core_dir = Path(self._tmp.name) / "core"
+        self.core_dir.mkdir()
+        self.addCleanup(self._tmp.cleanup)
+
+    def write_cadence(self, body: str) -> None:
+        (self.core_dir / "OPERATING_CADENCE.md").write_text(body, encoding="utf-8")
+
+    def test_configured_cadence_rule_wins(self):
+        self.write_cadence(
+            """# Operating Cadence
+
+## Index Cadence Rules
+
+| Report | Folder | Cadence | Day | Command |
+| --- | --- | --- | --- | --- |
+| CEO updates | ceo-updates | every 2 weeks | Thursday | /dzcto-ceo-report-weekly |
+"""
+        )
+        self.assertEqual(artifact.resolve_weekly_cadence_days(self.core_dir, "ceo-updates"), 14)
+
+    def test_missing_cadence_file_falls_back_to_weekly(self):
+        self.assertEqual(artifact.resolve_weekly_cadence_days(self.core_dir, "ceo-updates"), 7)
+
+    def test_file_without_rules_falls_back_to_weekly(self):
+        self.write_cadence("# Operating Cadence\n\nNo table yet.\n")
+        self.assertEqual(artifact.resolve_weekly_cadence_days(self.core_dir, "ceo-updates"), 7)
+
+    def test_table_without_matching_folder_falls_back_to_weekly(self):
+        self.write_cadence(
+            """# Operating Cadence
+
+## Index Cadence Rules
+
+| Report | Folder | Cadence | Day | Command |
+| --- | --- | --- | --- | --- |
+| Other | investor-updates | every 2 weeks | Friday | /other |
+"""
+        )
+        self.assertEqual(artifact.resolve_weekly_cadence_days(self.core_dir, "ceo-updates"), 7)
+
+
+class TestRenderIndexWeeklyStreak(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.reports_dir = self.workspace / "reports" / "ceo-updates"
+        self.reports_dir.mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def render(self, today: str) -> str:
+        artifact.render_index(self.workspace, self.workspace, today=dt.date.fromisoformat(today))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def streak_tile(self, html: str) -> str:
+        start = html.index('<div class="k-label">Weekly streak</div>')
+        end = html.index('<div class="k-label">Weekly default</div>', start)
+        return html[start:end]
+
+    def test_two_consecutive_weeklies_render_streak_tile(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
+        tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn("Weekly streak", tile)
+        self.assertIn('<div class="k-val">2</div>', tile)
+        self.assertIn("of 3 - North Star", tile)
+
+    def test_three_consecutive_weeklies_render_north_star_met(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
+        write_report(self.reports_dir, "2026-06-11-ceo-report.json", v1_report(window={"start": "2026-06-05", "end": "2026-06-11"}))
+        tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn('<div class="k-val">3</div>', tile)
+        self.assertIn("North Star met", tile)
+        self.assertNotIn("of 3 - North Star", tile)
+
+    def test_zero_reports_render_call_to_action(self):
+        tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn("Weekly streak", tile)
+        self.assertIn('<div class="k-val">0</div>', tile)
+        self.assertIn("Start a weekly report", tile)
+
+    def test_lapsed_weekly_streak_renders_zero(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        tile = self.streak_tile(self.render("2026-07-06"))
+        self.assertIn("Weekly streak", tile)
+        self.assertIn('<div class="k-val">0</div>', tile)
+
+    def test_malformed_json_does_not_block_index_write(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
+        (self.reports_dir / "2026-06-11-ceo-report-bad.json").write_text("{not json", encoding="utf-8")
+        html = self.render("2026-06-26")
+        self.assertTrue((self.workspace / "index.html").exists())
+        self.assertIn('<div class="k-val">2</div>', self.streak_tile(html))
 
 
 class TestLocatePriorReport(unittest.TestCase):
