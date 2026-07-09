@@ -18,8 +18,9 @@ so this skill works even where `docs/` is not installed).
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
    - Optional read-only code repos from `codeRepos`; use non-mutating Git commands only.
+   - Bad-news signals: check the available evidence within the requested range for reverts or reverted commits, failing or red CI, and slipped or descoped work.
 5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
-6. Write a CEO-facing report focused on progress, business impact, risks or blockers, asks or decisions, and next focus. Save structured JSON per the schema below, with `report_type` set to `"ad_hoc"`.
+6. Write a CEO-facing report focused on progress, business impact, risks or blockers, asks or decisions, and next focus. If the requested range contains bad news, state it plainly in `headline`, `progress.status`, or `risks_blockers`; do not soften reversals, red CI, slipped work, or descopes. Save structured JSON per the schema below, with `report_type` set to `"ad_hoc"`.
 7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`):
 
 ```bash
@@ -68,6 +69,7 @@ Do not author `schema_version`, `generated_at`, or `prior_report` — the render
 - Keep technical detail subordinate to CEO judgment.
 - Preserve nuance when news is mixed.
 - Flag unsupported claims instead of smoothing them over.
+- Surface bad news plainly rather than softening it.
 - Use ISO `YYYY-MM-DD` dates in the title and `window`.
 - Do not run or offer non-CEO Day Zero CTO workflows.
 - End with the generated report path and a brief summary.

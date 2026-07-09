@@ -14,7 +14,7 @@ from typing import Any
 
 
 TOOL_NAME = "day-zero-cto"
-TOOL_VERSION = "0.9.0"
+TOOL_VERSION = "0.9.1"
 SCHEMA_VERSION = "1.0"
 SIDECAR_DIR_NAME = ".dzcto"
 GLOBAL_CONFIG_DIR = Path.home() / ".dzcto"

@@ -11,12 +11,12 @@ the human-readable canon; if it and the renderer disagree, fix one of them in th
 | # | Section | Rendered by |
 | --- | --- | --- |
 | 1 | Masthead — eyebrow, `CEO Report <start> to <end>` title, date stamp | page chrome (`render_report_page` / `page_shell`) |
-| 2 | Lede — the `headline` field as the masthead deck | page chrome (`report_lead_summary`) |
+| 2 | Lede — the `headline` field as the masthead deck; when bad news is the most important truth, it lands here | page chrome (`report_lead_summary`) |
 | 3 | **Week over week** — deltas since the prior report (see below) | `render_structured_report` prepend (`report_changes_html`) |
 | 4 | Follow-up signals — asks/risks/next preview strip | `render_action_summary` |
 | 5 | Metrics — tile grid | `render_ceo_update` → `render_metrics` |
-| 6 | Progress | `render_ceo_update` |
-| 7 | Risks / Blockers | `render_ceo_update` |
+| 6 | Progress — `progress.status` names slipped or descoped work when that is the honest status | `render_ceo_update` |
+| 7 | Risks / Blockers — `risks_blockers` names active bad-news risks, blockers, reversals, or red-CI signals | `render_ceo_update` |
 | 8 | Asks / Decisions | `render_ceo_update` |
 | 9 | Next | `render_ceo_update` |
 | 10 | Sources — collapsible evidence list | `render_ceo_update` → `render_sources` |
@@ -98,9 +98,11 @@ JSON keys and their v1 shapes, ISO date discipline, filename derivation, week-ov
 selection rules. Violations warn on stderr; rendering never aborts.
 
 **Aspirational (prompted in the skills, not machine-checked):** tone, keeping technical
-detail subordinate to CEO judgment, what counts as a risk vs. a blocker, editorial quality of
-delta narration. The skills also instruct the agent to carry still-true items forward
-verbatim — stable wording is what keeps the mechanical diff readable.
+detail subordinate to CEO judgment, what counts as a risk vs. a blocker, surfacing bad news
+plainly in `headline`, `progress.status`, or `risks_blockers` when the evidence shows reverts,
+red CI, or slipped or descoped work, and editorial quality of delta narration. The skills also
+instruct the agent to carry still-true items forward verbatim — stable wording is what keeps
+the mechanical diff readable.
 
 ## Appendix: drift catalogued before standardization (2026-07-03)
 
