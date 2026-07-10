@@ -15,11 +15,35 @@ so this skill works even where `docs/` is not installed).
 2. Ask for the report date range when the user did not provide it. Use concrete `YYYY-MM-DD` start and end dates.
 3. Read `<artifact folder>/.dzcto/config.json` and use `ceoReportTone` when present. Fall back to the selected global profile. If no tone is configured, use direct, concise, business-facing language.
 4. Gather evidence for only the requested range:
+   - Run `dzcto evidence` for the exact requested range first. Treat its JSON as the primary grounding source, and carry its `sources` entries into the report `sources` array for every claim based on Git activity.
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
-   - Optional read-only code repos from `codeRepos`; use non-mutating Git commands only.
    - Low-activity signals: note when the requested window has few or no commits, PRs, or merges.
    - Bad-news signals: check the available evidence within the requested range for reverts or reverted commits, failing or red CI, and slipped or descoped work.
+
+Collect the primary Git evidence with:
+
+```bash
+dzcto evidence \
+  --profile "<profile-name>" \
+  --artifacts-dir "<artifact/report folder>" \
+  --start "<start>" \
+  --end "<end>" \
+  --json
+```
+
+If `dzcto` is not on `PATH`, use:
+
+```bash
+python3 scripts/dzcto.py evidence \
+  --profile "<profile-name>" \
+  --artifacts-dir "<artifact/report folder>" \
+  --start "<start>" \
+  --end "<end>" \
+  --json
+```
+
+If the collector reports no configured repositories, continue with the secondary evidence sources instead of treating that as an error.
 5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true risks, asks, and next items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
 6. Write a CEO-facing report focused on progress, business impact, risks or blockers, asks or decisions, and next focus. If the requested window is quiet, state that plainly in `headline`; never pad by manufacturing progress, inflating minor work, or restating old wins as new. Keep `metrics` with explicit zero values such as `prs_merged: 0` instead of dropping the key, and leave genuinely empty sections empty because the renderer labels them. If the requested range contains bad news, state it plainly in `headline`, `progress.status`, or `risks_blockers`; do not soften reversals, red CI, slipped work, or descopes. Save structured JSON per the schema below, with `report_type` set to `"ad_hoc"`.
 7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`):

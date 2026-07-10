@@ -29,11 +29,14 @@ from dzcto_artifact import (
     core_doc_html_name,
     dates_in_text,
     decision_detail_relative_path,
+    default_artifacts_dir_for_profile,
+    default_artifacts_dir_from_global,
     display_command,
     due_decision_entries,
     due_risk_entries,
     item_headline,
     parse_cadence_rules,
+    profile_from_global,
     registry_decisions,
     read_learning_items,
     report_lead_summary,
@@ -118,6 +121,7 @@ def shell_project(project: Path | None) -> str:
 
 
 ISSUE_REF_PATTERN = re.compile(r"(?:[A-Z][A-Z0-9]+-\d+|#\d+|GH-\d+)", re.I)
+MERGE_PR_PATTERN = re.compile(r"\bMerge pull request (?P<pr>#\d+) from (?P<branch>\S+)", re.I)
 TEST_FILE_PATTERN = re.compile(r"(^|/)(test|tests|spec|__tests__)/|(_test|_spec|\.test|\.spec)\.", re.I)
 SOURCE_FILE_PATTERN = re.compile(r"\.(rb|py|js|jsx|ts|tsx|go|rs|java|kt|swift|php|cs|sql)$", re.I)
 DEPENDENCY_FILE_PATTERN = re.compile(r"(^|/)(Gemfile|Gemfile\.lock|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|requirements.*\.txt|pyproject\.toml|poetry\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock)$", re.I)
@@ -185,6 +189,142 @@ def parse_commit_rows(output: str) -> list[dict[str, str]]:
         full, short, date, author, subject = parts
         rows.append({"full": full, "short": short, "date": date, "author": author, "subject": subject})
     return rows
+
+
+def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
+    profile = profile_from_global(args.profile)
+    if args.artifacts_dir:
+        wiki_root = Path(args.artifacts_dir).expanduser().resolve()
+    elif args.profile:
+        wiki_root = default_artifacts_dir_for_profile(args.profile)
+    else:
+        wiki_root = default_artifacts_dir_from_global()
+
+    if wiki_root is None:
+        return None, []
+
+    values = project_repos(wiki_root)
+    values.extend(str(item) for item in (profile.get("codeRepos", []) or []) if str(item).strip())
+    values.extend(args.repo or [])
+
+    repos: list[Path] = []
+    seen: set[str] = set()
+    for value in values:
+        path = Path(value).expanduser().resolve()
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            repos.append(path)
+    return wiki_root, repos
+
+
+def evidence_log_args(start: dt.date, end: dt.date, *, merges_only: bool = False) -> list[str]:
+    args = ["log"]
+    if merges_only:
+        # All merge commits matter here, not just first-parent merges: evidence repos may use
+        # topic-branch merges that never land directly on the current branch's first-parent chain.
+        args.append("--merges")
+    args.extend(
+        [
+            f"--since={start.isoformat()} 00:00:00",
+            f"--until={end.isoformat()} 23:59:59",
+            "--date=short",
+            "--pretty=format:%H%x09%h%x09%ad%x09%an%x09%s",
+        ]
+    )
+    return args
+
+
+def evidence_commit(row: dict[str, str]) -> dict[str, Any]:
+    return {
+        "full": row["full"],
+        "short": row["short"],
+        "date": row["date"],
+        "author": row["author"],
+        "subject": row["subject"],
+        "refs": unique_sorted(ISSUE_REF_PATTERN.findall(row["subject"])),
+    }
+
+
+def evidence_merge(row: dict[str, str]) -> dict[str, Any]:
+    match = MERGE_PR_PATTERN.search(row["subject"])
+    return {
+        "full": row["full"],
+        "short": row["short"],
+        "date": row["date"],
+        "author": row["author"],
+        "subject": row["subject"],
+        "pr": match.group("pr") if match else None,
+        "source_branch": match.group("branch") if match else None,
+    }
+
+
+def build_evidence_data(repos: list[Path], *, start: dt.date, end: dt.date) -> dict[str, Any]:
+    repo_rows: list[dict[str, Any]] = []
+    skipped_repos: list[dict[str, str]] = []
+    issue_refs: list[str] = []
+    sources: list[str] = []
+    all_authors: set[str] = set()
+    total_commits = 0
+    total_merges = 0
+
+    for repo in repos:
+        if repo_git(repo, ["rev-parse", "--git-dir"]).returncode != 0:
+            skipped_repos.append({"repo": str(repo), "reason": "Not a readable Git repository"})
+            continue
+
+        # Git filters --since/--until on commit date; %ad deliberately surfaces author date.
+        commit_output = repo_git_text(repo, evidence_log_args(start, end))
+        commits = [evidence_commit(row) for row in parse_commit_rows(commit_output)]
+        merges = [
+            evidence_merge(row)
+            for row in parse_commit_rows(repo_git_text(repo, evidence_log_args(start, end, merges_only=True)))
+        ]
+        branch = repo_git_text(repo, ["branch", "--show-current"]) or "detached"
+        head = repo_git_text(repo, ["rev-parse", "--short", "HEAD"]) or "unknown"
+        authors = unique_sorted([commit["author"] for commit in commits])
+        repo_refs = unique_sorted([ref for commit in commits for ref in commit["refs"]])
+
+        total_commits += len(commits)
+        total_merges += len(merges)
+        all_authors.update(authors)
+        issue_refs.extend(repo_refs)
+        sources.append(
+            f"git log {repo} --since={start.isoformat()} --until={end.isoformat()} "
+            f"— {len(commits)} commits, {len(merges)} merges"
+        )
+        repo_rows.append(
+            {
+                "repo": str(repo),
+                "branch": branch,
+                "head": head,
+                "commits": commits,
+                "merges": merges,
+                "counts": {"commits": len(commits), "merges": len(merges), "authors": len(authors)},
+            }
+        )
+
+    data: dict[str, Any] = {
+        "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "repos": repo_rows,
+        "totals": {
+            "repos": len(repo_rows),
+            "commits": total_commits,
+            "merges": total_merges,
+            "authors": len(all_authors),
+        },
+        "issue_refs": unique_sorted(issue_refs),
+        "sources": sources,
+        "quiet": total_commits == 0,
+        "generated_at": utc_now(),
+    }
+    if skipped_repos:
+        data["skipped_repos"] = skipped_repos
+    if not repos:
+        data["note"] = "No code repositories are configured; use conversation notes and prior reports as fallback evidence."
+    elif not repo_rows:
+        data["note"] = "No configured code repositories were readable; use conversation notes and prior reports as fallback evidence."
+    return data
 
 
 def commit_files(repo: Path, commit: str) -> list[str]:
@@ -1177,6 +1317,34 @@ def run_snapshot(args: argparse.Namespace) -> int:
     )
 
 
+def run_evidence(args: argparse.Namespace) -> int:
+    wiki_root, repos = evidence_folder_and_repos(args)
+    if wiki_root is None:
+        sys.stderr.write(
+            "No artifact/report folder could be resolved. Pass --artifacts-dir or configure "
+            "a profile with artifactsDir in ~/.dzcto/config.json.\n"
+        )
+        return 2
+
+    start, end = snapshot_window(args)
+    data = build_evidence_data(repos, start=start, end=end)
+    generated_dir = sidecar_dir(wiki_root) / "generated"
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    data_path = (
+        Path(args.output_json).expanduser().resolve()
+        if args.output_json
+        else generated_dir / f"evidence-{start.isoformat()}-{end.isoformat()}.json"
+    )
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    data_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+    else:
+        print(data_path)
+    return 0
+
+
 def print_quickstart(project: Path | None = None) -> None:
     artifacts_path = str(project) if project else "$HOME/Documents/Acme CEO Reports"
     artifacts_arg = f'"{artifacts_path}"'
@@ -2135,6 +2303,16 @@ def main(argv: list[str]) -> int:
     snapshot.add_argument("--json", action="store_true", help="Print structured JSON")
     snapshot.add_argument("--no-artifact", action="store_true", help="Only write/print JSON; do not render HTML artifact")
 
+    evidence = sub.add_parser("evidence", help=argparse.SUPPRESS)
+    evidence.add_argument("--artifacts-dir", help="Folder that directly stores reports and .dzcto/config.json")
+    evidence.add_argument("--profile", help="Named global profile to use when --artifacts-dir is omitted")
+    evidence.add_argument("--repo", action="append", default=[], help="Additional read-only code repository path; may be repeated")
+    evidence.add_argument("--start", help="Window start date, YYYY-MM-DD. Defaults to --end minus --days + 1")
+    evidence.add_argument("--end", help="Window end date, YYYY-MM-DD. Defaults to today")
+    evidence.add_argument("--days", type=int, default=7, help="Default window length when --start is omitted")
+    evidence.add_argument("--output-json", help="Write evidence JSON to this path")
+    evidence.add_argument("--json", action="store_true", help="Print evidence JSON")
+
     accountability = sub.add_parser("codebase-accountability", help=argparse.SUPPRESS)
     accountability.add_argument("project", help="Project folder")
     accountability.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated")
@@ -2321,6 +2499,9 @@ def main(argv: list[str]) -> int:
 
     if args.command == "snapshot":
         return run_snapshot(args)
+
+    if args.command == "evidence":
+        return run_evidence(args)
 
     if args.command == "codebase-accountability":
         return run_codebase_accountability(args)
