@@ -130,6 +130,17 @@ dzcto artifact \
 
 The index refreshes automatically after each report.
 
+Collect the configured repositories' read-only Git evidence for an exact report window with:
+
+```bash
+dzcto evidence \
+  --profile "acme" \
+  --start "2026-06-15" \
+  --end "2026-06-21"
+```
+
+The command reads `codeRepos`, writes structured JSON under `<artifacts-dir>/.dzcto/generated/`, and is the primary Git grounding source for both CEO report skills.
+
 ## Config
 
 Project config lives at:

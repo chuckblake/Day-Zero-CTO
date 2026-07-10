@@ -774,6 +774,19 @@ class TestSkillBadNewsInstructions(unittest.TestCase):
                 self.assertIn("slipped or descoped work", text)
 
 
+class TestSkillEvidencePrimary(unittest.TestCase):
+    SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
+
+    def test_evidence_collector_precedes_conversation_notes_in_step_four(self):
+        for skill in self.SKILLS:
+            with self.subTest(skill=skill):
+                text = (REPO / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+                step_four = text.split("4. Gather evidence", 1)[1].split("\n5. ", 1)[0]
+                self.assertIn("dzcto evidence", step_four)
+                self.assertIn("primary grounding source", step_four)
+                self.assertLess(step_four.index("dzcto evidence"), step_four.index("User notes"))
+
+
 class TestSkillQuietWindowInstructions(unittest.TestCase):
     SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
 
