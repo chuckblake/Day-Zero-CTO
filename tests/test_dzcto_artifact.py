@@ -584,6 +584,46 @@ class TestReportChangesHtml(unittest.TestCase):
         self.assertEqual(artifact.metric_delta_items(current, previous), [])
 
 
+class TestCitedEvidenceSources(unittest.TestCase):
+    def test_empty_missing_and_blank_only_sources_are_not_cited(self):
+        for data in ({}, {"sources": []}, {"sources": [{}, {"detail": "No title"}, "   "]}):
+            with self.subTest(data=data):
+                self.assertEqual(artifact.cited_evidence_sources(data), [])
+
+    def test_populated_sources_are_returned(self):
+        sources = ["git log", {"title": "PR 123", "path": "pull/123"}]
+        self.assertEqual(artifact.cited_evidence_sources({"sources": sources}), sources)
+
+    def test_source_aliases_are_supported(self):
+        for key in ("source_list", "evidence_sources"):
+            with self.subTest(key=key):
+                self.assertEqual(artifact.cited_evidence_sources({key: ["git diff"]}), ["git diff"])
+
+    def test_render_sources_counts_only_cited_entries(self):
+        html = artifact.render_sources({"sources": [{"detail": "No title"}, "git log"]})
+        self.assertIn("1 source", html)
+        self.assertEqual(html.count("<li>"), 1)
+
+
+class TestThinEvidenceRendering(unittest.TestCase):
+    def test_empty_sources_prepend_banner_once(self):
+        html = artifact.render_structured_report("ceo-updates", v1_report(sources=[]), previous_data=None)
+        self.assertEqual(html.count('<aside class="report-thin-evidence"'), 1)
+        self.assertLess(html.index("report-thin-evidence"), html.index("report-changes"))
+        self.assertIn("<h2>Progress</h2>", html)
+
+    def test_populated_sources_do_not_render_banner(self):
+        html = artifact.render_structured_report("ceo-updates", v1_report(), previous_data=None)
+        self.assertNotIn('<aside class="report-thin-evidence"', html)
+
+    def test_non_ceo_structured_reports_get_the_same_banner(self):
+        html = artifact.render_structured_report(
+            "weekly-reviews",
+            {"headline": "Quiet review", "shipped_learned": [], "sources": []},
+        )
+        self.assertIn('<aside class="report-thin-evidence"', html)
+
+
 class TestCeoQuietWindowRendering(unittest.TestCase):
     def sparse_quiet_report(self):
         return v1_report(
@@ -901,6 +941,31 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertIn("No asks or decisions this window.", html)
         self.assertIn("Nothing queued for the next window.", html)
         self.assertIn("No evidence sources recorded for this window.", html)
+
+    def test_empty_sources_warn_and_annotate_without_blocking(self):
+        result = self.generate(v1_report(sources=[]), "CEO Report thin evidence")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("dzcto: no cited evidence sources", result.stderr)
+        html = (self.reports_dir() / "2026-06-25-ceo-report-thin-evidence.html").read_text(encoding="utf-8")
+        self.assertIn('<aside class="report-thin-evidence"', html)
+
+    def test_populated_sources_stay_quiet_and_unannotated(self):
+        result = self.generate(v1_report(), "CEO Report cited evidence")
+        self.assertNotIn("no cited evidence sources", result.stderr)
+        html = (self.reports_dir() / "2026-06-25-ceo-report-cited-evidence.html").read_text(encoding="utf-8")
+        self.assertNotIn('<aside class="report-thin-evidence"', html)
+
+    def test_body_only_report_is_excluded_from_evidence_warning(self):
+        body_file = self.workspace.parent / "body-only.html"
+        body_file.write_text("<p>Legacy body-only report.</p>", encoding="utf-8")
+        result = self.run_cli(
+            "--artifacts-dir", str(self.workspace), "--kind", "ceo-updates",
+            "--title", "CEO Report body only", "--date", "2026-06-25",
+            "--body-file", str(body_file),
+        )
+        self.assertNotIn("no cited evidence sources", result.stderr)
+        html = (self.reports_dir() / "2026-06-25-ceo-report-body-only.html").read_text(encoding="utf-8")
+        self.assertNotIn('<aside class="report-thin-evidence"', html)
 
     def test_high_confidence_secret_blocks_and_writes_no_report_artifact(self):
         result = self.generate(
