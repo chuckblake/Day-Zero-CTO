@@ -208,6 +208,46 @@ class TestDzctoEvidence(unittest.TestCase):
 
         self.assertNotIn("evidence", result.stdout)
 
+    def test_retired_commands_are_rejected(self):
+        for command in (
+            "lfg",
+            "refresh",
+            "serve",
+            "check-stale",
+            "collect-issue-bundle",
+            "snapshot",
+            "codebase-accountability",
+            "learning",
+        ):
+            with self.subTest(command=command):
+                result = subprocess.run(
+                    [sys.executable, str(DZCTO), command],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("invalid choice", result.stderr)
+
+    def test_status_remains_available_as_a_self_serve_command(self):
+        project = self.root / "status-project"
+        project.mkdir()
+        result = subprocess.run(
+            [sys.executable, str(DZCTO), "status", str(project), "--json"],
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(json.loads(result.stdout)["ok"])
+
+        configured = subprocess.run(
+            [sys.executable, str(DZCTO), "status", str(self.artifacts), "--json"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(configured.returncode, 0)
+        self.assertTrue(json.loads(configured.stdout)["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()
