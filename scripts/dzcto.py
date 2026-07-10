@@ -2333,6 +2333,7 @@ def main(argv: list[str]) -> int:
     artifact.add_argument("--date")
     artifact.add_argument("--data-file")
     artifact.add_argument("--body-file")
+    artifact.add_argument("--open", action="store_true", help="Open the rendered report and print a share recipe")
 
     learning = sub.add_parser("learning", help=argparse.SUPPRESS)
     learning.add_argument("--project", required=True, help="Project folder")
@@ -2520,6 +2521,8 @@ def main(argv: list[str]) -> int:
             artifact_args.extend(["--data-file", args.data_file])
         if args.body_file:
             artifact_args.extend(["--body-file", args.body_file])
+        if args.open:
+            artifact_args.append("--open")
         return run_script("dzcto_artifact.py", artifact_args)
 
     if args.command == "learning":

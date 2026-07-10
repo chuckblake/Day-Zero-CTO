@@ -1,12 +1,15 @@
 """Tests for the CEO report schema v1 + week-over-week machinery (DAYZEROCTO-1)."""
 
 import datetime as dt
+import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
@@ -814,6 +817,19 @@ class TestSkillBadNewsInstructions(unittest.TestCase):
                 self.assertIn("slipped or descoped work", text)
 
 
+class TestSkillOpenAndShareInstructions(unittest.TestCase):
+    SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
+
+    def test_report_skills_finish_with_open_and_share(self):
+        for skill in self.SKILLS:
+            with self.subTest(skill=skill):
+                text = (REPO / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("--open", text)
+                self.assertIn("Save as PDF", text)
+                self.assertIn("printed share recipe", text)
+                self.assertNotIn("End with the generated report path and a brief summary.", text)
+
+
 class TestSkillEvidencePrimary(unittest.TestCase):
     SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
 
@@ -882,6 +898,61 @@ class TestArtifactWritePath(unittest.TestCase):
 
     def reports_dir(self) -> Path:
         return self.workspace / "reports" / "ceo-updates"
+
+    def test_open_flag_preserves_stdout_path_and_prints_share_recipe(self):
+        with mock.patch.dict(os.environ, {"DZCTO_NO_OPEN": "1"}):
+            result = self.generate(v1_report(), "CEO Report open and share", "--open")
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        self.assertTrue(Path(stdout_lines[0]).exists())
+        self.assertIn("Save as PDF", result.stderr)
+        self.assertIn("report ready to share", result.stderr)
+
+    def test_without_open_flag_prints_no_share_recipe(self):
+        result = self.generate(v1_report(), "CEO Report path only")
+
+        self.assertEqual(len(result.stdout.splitlines()), 1)
+        self.assertNotIn("Save as PDF", result.stderr)
+        self.assertNotIn("report ready to share", result.stderr)
+
+    def test_wrapper_forwards_open_flag(self):
+        data_file = self.workspace.parent / "wrapper-open.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        with mock.patch.dict(os.environ, {"DZCTO_NO_OPEN": "1"}):
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO / "scripts" / "dzcto.py"),
+                    "artifact",
+                    "--artifacts-dir", str(self.workspace),
+                    "--kind", "ceo-updates",
+                    "--title", "CEO Report wrapper open",
+                    "--data-file", str(data_file),
+                    "--open",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+        self.assertEqual(len(result.stdout.splitlines()), 1)
+        self.assertIn("Save as PDF", result.stderr)
+
+    def test_open_failure_is_advisory_and_uri_handles_spaces(self):
+        report_path = self.workspace / "report with spaces.html"
+        report_path.write_text("<p>Report</p>", encoding="utf-8")
+        stderr = io.StringIO()
+        with (
+            mock.patch.dict(os.environ, {"DZCTO_NO_OPEN": ""}),
+            mock.patch.object(artifact.webbrowser, "open", side_effect=RuntimeError("no browser")) as browser_open,
+            mock.patch.object(artifact.sys, "stderr", stderr),
+        ):
+            artifact.emit_open_and_share(report_path)
+
+        browser_open.assert_called_once_with(report_path.as_uri())
+        self.assertIn("could not open", stderr.getvalue())
+        self.assertIn("Save as PDF", stderr.getvalue())
 
     def test_first_report_derives_date_and_renders_placeholder(self):
         self.generate(v1_report(), "CEO Report 2026-06-19 to 2026-06-25")

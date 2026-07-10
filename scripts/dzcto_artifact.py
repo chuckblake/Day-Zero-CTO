@@ -8,11 +8,13 @@ import datetime as dt
 import html
 import json
 import math
+import os
 import re
 import shlex
 import sys
 import urllib.error
 import urllib.request
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -6234,6 +6236,23 @@ def sanitize_prior_report_data(data: dict[str, Any] | None) -> dict[str, Any] | 
     return sanitized
 
 
+def emit_open_and_share(report_path: Path) -> None:
+    """Print sharing guidance and best-effort open a rendered report."""
+    print(f"dzcto: report ready to share: {report_path}", file=sys.stderr)
+    print('dzcto: share as PDF: in the browser, press Cmd/Ctrl+P and choose "Save as PDF".', file=sys.stderr)
+    if os.environ.get("DZCTO_NO_OPEN"):
+        return
+    try:
+        # The default macOS backend is non-blocking; custom BROWSER commands may not be.
+        opened = webbrowser.open(report_path.as_uri())
+        if opened:
+            print("dzcto: opened the report in the default browser", file=sys.stderr)
+        else:
+            print("dzcto: the default browser did not accept the report; open the path above manually", file=sys.stderr)
+    except Exception as exc:  # pragma: no cover - backend failures are environment-specific
+        print(f"dzcto: could not open the report in the default browser: {exc}", file=sys.stderr)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Generate Day Zero CTO artifacts")
     parser.add_argument("--project", help="Project folder; creates/uses PATH/knowledge/wiki")
@@ -6245,6 +6264,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--date", help="Report date (YYYY-MM-DD); derived from the report JSON's window.end when omitted")
     parser.add_argument("--body-file", help="Legacy: raw HTML body file")
     parser.add_argument("--data-file", help="Structured JSON report data file")
+    parser.add_argument("--open", action="store_true", help="Open the rendered report and print a share recipe")
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--company-name", help="Company name to store in wiki metadata")
     parser.add_argument("--company-description", help="Short company description to store in wiki metadata")
@@ -6447,6 +6467,8 @@ def main(argv: list[str]) -> int:
 
     render_index(wiki_root, project_folder)
     print(written_report or wiki_root / "index.html")
+    if written_report and args.open:
+        emit_open_and_share(written_report)
     return 0
 
 
