@@ -408,27 +408,5 @@ def redact_text(value: str) -> tuple[str, list[SecretFinding]]:
     return redacted, findings
 
 
-def redact(value: Any) -> Any:
-    if isinstance(value, dict):
-        redacted: dict[str, Any] = {}
-        for key, item in value.items():
-            if str(key) in LOCAL_PATH_KEYS:
-                redacted[key] = redaction_placeholder("local_path")
-            elif is_secret_key(str(key)):
-                redacted[key] = redaction_placeholder("secret_key")
-            else:
-                redacted[key] = redact(item)
-        return redacted
-    if isinstance(value, list):
-        return [redact(item) for item in value]
-    if isinstance(value, str):
-        return redact_text(value)[0]
-    return value
-
-
-def redacted_json_text(payload: Any) -> str:
-    return json.dumps(redact(payload), indent=2, sort_keys=True) + "\n"
-
-
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]

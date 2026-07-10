@@ -457,9 +457,6 @@ class TestReportChangesHtml(unittest.TestCase):
         self.assertIn("First report", html)
         self.assertIn("no prior baseline", html)
 
-    def test_no_prior_renders_nothing_for_other_kinds(self):
-        self.assertEqual(artifact.report_changes_html("snapshot", {}, None, ""), "")
-
     def test_all_groups_and_metric_delta_render_without_truncation(self):
         previous = v1_report(
             progress=[{"area": "Auth", "summary": "Login shipped"}],
@@ -619,13 +616,6 @@ class TestThinEvidenceRendering(unittest.TestCase):
         html = artifact.render_structured_report("ceo-updates", v1_report(), previous_data=None)
         self.assertNotIn('<aside class="report-thin-evidence"', html)
 
-    def test_non_ceo_structured_reports_get_the_same_banner(self):
-        html = artifact.render_structured_report(
-            "weekly-reviews",
-            {"headline": "Quiet review", "shipped_learned": [], "sources": []},
-        )
-        self.assertIn('<aside class="report-thin-evidence"', html)
-
 
 class TestCeoQuietWindowRendering(unittest.TestCase):
     def sparse_quiet_report(self):
@@ -688,29 +678,6 @@ class TestCeoQuietWindowRendering(unittest.TestCase):
     def test_populated_ceo_report_has_no_empty_placeholders(self):
         html = artifact.render_structured_report("ceo-updates", v1_report(), previous_data=None)
         self.assertNotIn("empty-item", html)
-
-    def test_other_report_kinds_still_omit_empty_list_sections_and_sources(self):
-        engineering = artifact.render_engineering_risk(
-            {
-                "top_risks": [{"risk": "Scaling", "evidence": "load test", "business_impact": "latency"}],
-                "mitigations": [],
-                "sources": [],
-            }
-        )
-        self.assertNotIn("<h2>Mitigations</h2>", engineering)
-        self.assertNotIn("<span>Sources</span>", engineering)
-        self.assertNotIn("this window", engineering)
-
-        tech_stack = artifact.render_tech_stack(
-            {
-                "stack_components": [{"layer": "Backend", "technology": "Python", "evidence": "repo"}],
-                "onboarding_notes": [],
-                "sources": [],
-            }
-        )
-        self.assertNotIn("<h2>Onboarding Notes</h2>", tech_stack)
-        self.assertNotIn("<span>Sources</span>", tech_stack)
-        self.assertNotIn("this window", tech_stack)
 
 
 class TestReportSectionSpine(unittest.TestCase):
@@ -953,6 +920,14 @@ class TestArtifactWritePath(unittest.TestCase):
         browser_open.assert_called_once_with(report_path.as_uri())
         self.assertIn("could not open", stderr.getvalue())
         self.assertIn("Save as PDF", stderr.getvalue())
+
+    def test_removed_report_kind_is_rejected(self):
+        result = self.run_cli(
+            "--artifacts-dir", str(self.workspace), "--kind", "snapshot", "--title", "Snapshot",
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid choice", result.stderr)
 
     def test_first_report_derives_date_and_renders_placeholder(self):
         self.generate(v1_report(), "CEO Report 2026-06-19 to 2026-06-25")
