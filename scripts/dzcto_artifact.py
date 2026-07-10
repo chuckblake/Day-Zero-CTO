@@ -1480,9 +1480,13 @@ def source_entry_html(source: Any, *, prefix: str = "../../") -> str:
 """
 
 
+def cited_evidence_sources(data: dict[str, Any]) -> list[Any]:
+    sources = array_value(value_at(data, "sources", "source_list", "evidence_sources"))
+    return [source for source in sources if source_entry_html(source)]
+
+
 def render_sources(data: dict[str, Any], empty_note: str | None = None) -> str:
-    rows = [source_entry_html(source) for source in array_value(value_at(data, "sources", "source_list", "evidence_sources"))]
-    rows = [row for row in rows if row]
+    rows = [source_entry_html(source) for source in cited_evidence_sources(data)]
     if not rows:
         if not empty_note:
             return ""
@@ -1501,6 +1505,15 @@ def render_sources(data: dict[str, Any], empty_note: str | None = None) -> str:
   </summary>
   {body}
 </details>
+"""
+
+
+def render_thin_evidence_banner() -> str:
+    return """
+<aside class="report-thin-evidence" aria-label="Thin evidence warning">
+  <strong>No cited evidence</strong>
+  <span>Claims in this report are not yet traceable to repo sources.</span>
+</aside>
 """
 
 
@@ -2025,7 +2038,9 @@ def render_structured_report(
     # A blank body is legitimate when the lead summary carries the report in the
     # masthead deck. Only surface a placeholder when nothing at all was captured.
     if not rendered.strip() and not report_lead_summary(data):
-        return '<p class="empty-item">No content yet.</p>'
+        rendered = '<p class="empty-item">No content yet.</p>'
+    if not cited_evidence_sources(data):
+        rendered = f"{render_thin_evidence_banner()}{rendered}"
     return rendered
 
 
@@ -4973,6 +4988,21 @@ h1.title { font-size: 38px; font-weight: 800; }
   font-size: 15px;
   line-height: 1.58;
 }
+.report-thin-evidence {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 18px;
+  border: 1px solid var(--med-line);
+  border-left: 4px solid var(--med);
+  border-radius: var(--r-sm);
+  background: var(--med-soft);
+  padding: 10px 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.report-thin-evidence strong { color: var(--med); font-size: 11px; font-weight: 850; text-transform: uppercase; white-space: nowrap; }
 .report-changes {
   margin: 16px 0 4px;
   border-top: 1px solid var(--line);
@@ -5169,6 +5199,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .setup-summary { align-items: flex-start; flex-direction: column; }
   .setup-primary { width: 100%; text-align: center; }
   .report-attention li { grid-template-columns: 1fr; gap: 2px; }
+  .report-thin-evidence { align-items: flex-start; flex-direction: column; gap: 3px; }
   .snapshot-tldr li, .snapshot-communication-grid { grid-template-columns: 1fr; }
   .help-guide { grid-template-columns: 1fr; }
   .help-guide-row { grid-template-columns: 1fr; gap: 6px; }
@@ -6354,6 +6385,12 @@ def main(argv: list[str]) -> int:
                 structured_data.setdefault("generated_at", utc_now())
                 structured_data.setdefault("company", company)
             structured_data = sanitize_current_report_data(structured_data)
+            if not cited_evidence_sources(structured_data):
+                print(
+                    "dzcto: no cited evidence sources; report ships with thin evidence "
+                    "(add sources[] to make claims traceable)",
+                    file=sys.stderr,
+                )
             if args.kind == "ceo-updates":
                 for warning in validate_ceo_report(structured_data):
                     print(f"dzcto: ceo-report schema warning: {warning}", file=sys.stderr)
