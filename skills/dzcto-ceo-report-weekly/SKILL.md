@@ -54,7 +54,8 @@ dzcto artifact \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
-  --data-file "<json report data file>"
+  --data-file "<json report data file>" \
+  --open
 ```
 
 If `dzcto` is not on `PATH`, use:
@@ -65,8 +66,11 @@ python3 scripts/dzcto.py artifact \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
-  --data-file "<json report data file>"
+  --data-file "<json report data file>" \
+  --open
 ```
+
+8. Relay the generated report path, that the helper opened it in the default browser, and the printed share recipe (`Cmd/Ctrl+P` → `Save as PDF`). Browser opening is best-effort; if it fails, still provide the path and recipe.
 
 ## Report JSON schema (v1)
 
@@ -99,4 +103,4 @@ Do not author `schema_version`, `generated_at`, or `prior_report` — the render
 - Use ISO `YYYY-MM-DD` dates in the title and `window`.
 - Do not write reports into a code repo unless the user explicitly chose that folder during init.
 - Do not run or offer non-CEO Day Zero CTO workflows.
-- End with the generated report path and a brief summary.
+- End by relaying the generated report path, browser-open result, and printed share recipe.
