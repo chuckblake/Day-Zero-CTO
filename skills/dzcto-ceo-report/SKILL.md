@@ -15,11 +15,37 @@ so this skill works even where `docs/` is not installed).
 2. Ask for the report date range when the user did not provide it. Use concrete `YYYY-MM-DD` start and end dates.
 3. Read `<artifact folder>/.dzcto/config.json` and use `ceoReportTone` when present. Fall back to the selected global profile. If no tone is configured, use direct, concise, business-facing language.
 4. Gather evidence for only the requested range:
+   - Run `dzcto evidence` for the exact requested range first. Treat its JSON as the primary grounding source, and carry its `sources` entries into the report `sources` array for every claim based on Git activity.
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
-   - Optional read-only code repos from `codeRepos`; use non-mutating Git commands only.
-5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
-6. Write a CEO-facing report focused on progress, business impact, risks or blockers, asks or decisions, and next focus. Save structured JSON per the schema below, with `report_type` set to `"ad_hoc"`.
+   - Low-activity signals: note when the requested window has few or no commits, PRs, or merges.
+   - Bad-news signals: check the available evidence within the requested range for reverts or reverted commits, failing or red CI, and slipped or descoped work.
+
+Collect the primary Git evidence with:
+
+```bash
+dzcto evidence \
+  --profile "<profile-name>" \
+  --artifacts-dir "<artifact/report folder>" \
+  --start "<start>" \
+  --end "<end>" \
+  --json
+```
+
+If `dzcto` is not on `PATH`, use:
+
+```bash
+python3 scripts/dzcto.py evidence \
+  --profile "<profile-name>" \
+  --artifacts-dir "<artifact/report folder>" \
+  --start "<start>" \
+  --end "<end>" \
+  --json
+```
+
+If the collector reports no configured repositories, continue with the secondary evidence sources instead of treating that as an error.
+5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true risks, asks, and next items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
+6. Write a CEO-facing report focused on progress, business impact, risks or blockers, asks or decisions, and next focus. If the requested window is quiet, state that plainly in `headline`; never pad by manufacturing progress, inflating minor work, or restating old wins as new. Keep `metrics` with explicit zero values such as `prs_merged: 0` instead of dropping the key, and leave genuinely empty sections empty because the renderer labels them. If the requested range contains bad news, state it plainly in `headline`, `progress.status`, or `risks_blockers`; do not soften reversals, red CI, slipped work, or descopes. Save structured JSON per the schema below, with `report_type` set to `"ad_hoc"`.
 7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`):
 
 ```bash
@@ -28,7 +54,8 @@ dzcto artifact \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
-  --data-file "<json report data file>"
+  --data-file "<json report data file>" \
+  --open
 ```
 
 If `dzcto` is not on `PATH`, use:
@@ -39,8 +66,11 @@ python3 scripts/dzcto.py artifact \
   --artifacts-dir "<artifact/report folder>" \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
-  --data-file "<json report data file>"
+  --data-file "<json report data file>" \
+  --open
 ```
+
+8. Relay the generated report path, that the helper opened it in the default browser, and the printed share recipe (`Cmd/Ctrl+P` → `Save as PDF`). Browser opening is best-effort; if it fails, still provide the path and recipe.
 
 ## Report JSON schema (v1)
 
@@ -68,6 +98,8 @@ Do not author `schema_version`, `generated_at`, or `prior_report` — the render
 - Keep technical detail subordinate to CEO judgment.
 - Preserve nuance when news is mixed.
 - Flag unsupported claims instead of smoothing them over.
+- Surface bad news plainly rather than softening it.
+- Prefer an honest quiet-window report over skipping the requested range.
 - Use ISO `YYYY-MM-DD` dates in the title and `window`.
 - Do not run or offer non-CEO Day Zero CTO workflows.
-- End with the generated report path and a brief summary.
+- End by relaying the generated report path, browser-open result, and printed share recipe.

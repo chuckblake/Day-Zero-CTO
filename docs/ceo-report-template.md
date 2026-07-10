@@ -11,12 +11,12 @@ the human-readable canon; if it and the renderer disagree, fix one of them in th
 | # | Section | Rendered by |
 | --- | --- | --- |
 | 1 | Masthead — eyebrow, `CEO Report <start> to <end>` title, date stamp | page chrome (`render_report_page` / `page_shell`) |
-| 2 | Lede — the `headline` field as the masthead deck | page chrome (`report_lead_summary`) |
+| 2 | Lede — the `headline` field as the masthead deck; when bad news is the most important truth, it lands here | page chrome (`report_lead_summary`) |
 | 3 | **Week over week** — deltas since the prior report (see below) | `render_structured_report` prepend (`report_changes_html`) |
-| 4 | Follow-up signals — asks/risks/next preview strip | `render_action_summary` |
-| 5 | Metrics — tile grid | `render_ceo_update` → `render_metrics` |
-| 6 | Progress | `render_ceo_update` |
-| 7 | Risks / Blockers | `render_ceo_update` |
+| 4 | Follow-up signals — conditional asks/risks/next preview strip | `render_action_summary` |
+| 5 | Metrics — optional tile grid | `render_ceo_update` → `render_metrics` |
+| 6 | Progress — `progress.status` names slipped or descoped work when that is the honest status | `render_ceo_update` |
+| 7 | Risks / Blockers — `risks_blockers` names active bad-news risks, blockers, reversals, or red-CI signals | `render_ceo_update` |
 | 8 | Asks / Decisions | `render_ceo_update` |
 | 9 | Next | `render_ceo_update` |
 | 10 | Sources — collapsible evidence list | `render_ceo_update` → `render_sources` |
@@ -25,6 +25,11 @@ the human-readable canon; if it and the renderer disagree, fix one of them in th
 The week-over-week section is **always present** on new reports: populated when a prior report
 exists, otherwise the labeled placeholder "First report — no prior baseline." A fixed section
 list is what makes conformance checkable.
+
+Required CEO report sections render even when their arrays are empty: Progress, Risks / Blockers,
+Asks / Decisions, Next, and Sources show a muted placeholder rather than disappearing. Metrics is
+optional, and Follow-up signals remains a derived preview that renders only when it has enough
+signal to avoid duplicating the body.
 
 ## Report JSON schema (v1)
 
@@ -48,6 +53,20 @@ Top-level keys (all required unless marked optional):
 
 Legacy reports with looser shapes (bare-string list items, missing metadata) still render —
 the renderer's alias tolerance is unchanged — but produce validation warnings on stderr.
+
+## Quiet windows
+
+A quiet window is a low-activity reporting period: little or no shipped work, few or no commits,
+PRs, or merges, and no meaningful new engineering movement to dress up. The agent states that
+plainly in `headline` and never pads the report by manufacturing progress, inflating minor work,
+or restating old wins as new.
+
+Quiet does not mean blank. Still-true risks, asks, and next items carry forward verbatim so the
+week-over-week diff reads as continuity instead of churn. Genuinely empty required sections stay
+empty in the JSON; the renderer labels them as "No ... this window" placeholders. Metrics may
+vanish when omitted because they are optional, but authors should keep explicit zero values when a
+zero is the honest comparison. A quiet-week report preserves the reporting ritual; it does not
+count toward the North Star streak.
 
 ## Date and naming discipline
 
@@ -85,21 +104,27 @@ authors it (mechanical diffs cannot hallucinate).
 1. Heading naming the actual prior report date ("… since the last report was run on
    `<date>`") — never a relative "last week" claim.
 2. Metric deltas, for keys numeric in both reports, with direction (`prs_merged 5 → 8`).
-3. Added / no-longer-listed items per group — Progress, Risks / Blockers, Asks / Decisions,
-   Next. "No longer listed" is deliberate phrasing: a mechanical diff cannot distinguish
-   *completed* from *dropped*. A group missing from the prior report renders "not comparable —
-   prior report lacked this section" rather than claiming everything is new.
+3. Added / no-longer-listed / no-items-this-window items per group — Progress, Risks / Blockers,
+   Asks / Decisions, Next. "No longer listed" is deliberate phrasing for partial removals: a
+   mechanical diff cannot distinguish *completed* from *dropped*. When a current group is empty
+   and the prior report listed items, the renderer says "No items this window" and names the prior
+   items, because calling them completed, dropped, or new would be a lie. A group missing from the
+   prior report renders "not comparable — prior report lacked this section" rather than claiming
+   everything is new.
 4. When nothing changed: "No material structured changes."
 
 ## Conformance tiers
 
 **Verifiable (enforced or warned by the renderer):** the section spine and order, required
-JSON keys and their v1 shapes, ISO date discipline, filename derivation, week-over-week
-selection rules. Violations warn on stderr; rendering never aborts.
+JSON keys and their v1 shapes, required-section empty labels, ISO date discipline, filename
+derivation, week-over-week selection rules, and the empty-report tripwire warning. Violations warn
+on stderr; rendering never aborts.
 
 **Aspirational (prompted in the skills, not machine-checked):** tone, keeping technical
-detail subordinate to CEO judgment, what counts as a risk vs. a blocker, editorial quality of
-delta narration. The skills also instruct the agent to carry still-true items forward
+detail subordinate to CEO judgment, what counts as a risk vs. a blocker, surfacing bad news
+plainly in `headline`, `progress.status`, or `risks_blockers` when the evidence shows reverts,
+red CI, or slipped or descoped work, stating quiet windows honestly without padding, and editorial
+quality of delta narration. The skills also instruct the agent to carry still-true items forward
 verbatim — stable wording is what keeps the mechanical diff readable.
 
 ## Appendix: drift catalogued before standardization (2026-07-03)

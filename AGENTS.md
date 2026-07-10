@@ -15,6 +15,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - `bin/` exposes helper wrappers for Claude Code plugin installs and local convenience. `bin/dzcto` is the canonical wrapper; `dzcto-artifact`, `dzcto-learning`, and `dzcto-doctor` are compatibility aliases.
 - `INSTALL_FOR_AGENTS.md` is the pasteable install handoff for Codex Desktop, Claude Code, Claude Desktop, and future agent sessions.
 - `docs/solutions/` holds documented learnings from past work — bug fixes, design patterns, conventions — organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant context when implementing or debugging in a documented area.
+- `CONCEPTS.md` holds the shared domain vocabulary (entities, named processes, status concepts) — relevant when orienting to the codebase or discussing domain concepts.
 
 ## Editing Rules
 
@@ -34,7 +35,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - Generated pages should keep a visible footer with the Day Zero CTO skills version so users can identify what regenerated the wiki.
 - Generated pages should include sticky top navigation with breadcrumbs back to the dashboard, page title, search, and theme toggle.
 - The artifact-local `.dzcto/config.json` stores one CEO report workspace. The global `~/.dzcto/config.json` stores `defaultProfile` and `profiles.<name>` objects so the same install supports multiple repos or CTO contexts by default.
-- The index should link CEO reports, show the weekly defaults and tone, and expose copyable prompts for `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report`.
+- The index should link CEO reports, show the weekly defaults, tone, and weekly streak, and expose copyable prompts for `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report`.
 - Generated report list sections such as Progress, Risks / Blockers, Asks / Decisions, Watchpoints, and Sources should render as simple bold-led lists, not bordered cards. Keep cards for action summaries, KPIs, repeated dashboard objects, and genuinely framed tools.
 - When adding or changing install behavior, update `README.md` and `INSTALL_FOR_AGENTS.md`.
 - When releasing plugin-facing changes, bump both `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`; if the Claude marketplace entry has a version, bump it too.
