@@ -3,7 +3,7 @@
 project:   { key: DAYZEROCTO }
 backlog:   { backend: markdown, dir: /Users/chuckblake/Documents/Code/chuck-vault/cb-dev/dzcto }     # linear | markdown | none
 worktree:  { tool: superset, base: main } # plain | rails | superset | none
-worklog:   { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/journal/worklog }
+worklog:   { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/worklogs }
 conventions: { enabled: false }
 ci:        { provider: none }                        # github | none
 hooks:     { branch_guard: true, worklog_stop: true }
