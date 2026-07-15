@@ -7,6 +7,7 @@ worklog:   { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/w
 conventions: { enabled: false }
 ci:        { provider: none }                        # github | none
 hooks:     { branch_guard: true, worklog_stop: true }
+timing:    { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/cb-dev/dzcto/logs }  # CBW-63 per-run stage timing
 
 # --- Multi-project Markdown backend (optional; e.g. a vault hosting several projects) ---
 # Replace the single-line `backlog:` above with a projects map. Each project gets its own
