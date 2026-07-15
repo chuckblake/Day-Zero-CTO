@@ -24,6 +24,8 @@ reports/ceo-updates/
 
 `dzcto init` also writes `~/.dzcto/config.json` with named profiles under `profiles.<name>` and a `defaultProfile`. Each profile stores the artifact folder, weekly schedule, CEO report tone, and optional evidence repos. That global preference file is what lets the same skills work from any repo later without overwriting other CTO contexts.
 
+When run against an existing artifact folder, `dzcto init` refreshes `index.html` and re-renders structured CEO report HTML from sibling `.json` files so older reports adopt the current report format. It does not rewrite report JSON; body-only legacy HTML without JSON is left unchanged.
+
 ## Codex Desktop
 
 ```bash

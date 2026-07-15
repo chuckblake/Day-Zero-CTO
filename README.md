@@ -57,6 +57,10 @@ The helper creates an index at:
 <artifacts-dir>/index.html
 ```
 
+When run against an existing artifact folder, `dzcto init` refreshes the index and re-renders
+existing structured CEO report HTML from sibling `.json` files so reports pick up the current
+format. It does not rewrite the report JSON. Legacy body-only HTML without JSON is left as-is.
+
 It also saves preferences to:
 
 ```text
@@ -128,7 +132,9 @@ dzcto artifact \
   --data-file "./ceo-report.json"
 ```
 
-The index refreshes automatically after each report.
+The index refreshes automatically after each report. To apply a newer report page format to
+older structured reports, run `dzcto init --artifacts-dir "<artifacts-dir>" ...`; init re-renders
+existing report HTML from the saved JSON.
 
 Collect the configured repositories' read-only Git evidence for an exact report window with:
 

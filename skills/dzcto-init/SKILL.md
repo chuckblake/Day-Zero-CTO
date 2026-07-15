@@ -9,7 +9,7 @@ Set up the small Day Zero CTO surface for CEO reports only. Do not run or offer 
 
 ## Workflow
 
-1. Resolve the artifact/report location. If the user has not given one, ask where reports should live. Prefer a durable folder outside the code repo. The helper creates an `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json` in that location.
+1. Resolve the artifact/report location. If the user has not given one, ask where reports should live. Prefer a durable folder outside the code repo. The helper creates an `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json` in that location. On refresh, the helper also re-renders existing structured CEO report HTML from sibling JSON so older reports pick up the current report format without changing report data.
 2. Resolve the company, CTO, or project profile name. If the user does not provide one, derive a short slug from the company/project, such as `getmusic`. This profile is how one global install supports multiple repos or CTO contexts.
 3. Capture a one-sentence company context summary for the index page and report prompts. Ask for this during init; do not tell the user to add extra source files.
 4. Ask what weekly reporting window they want. Do not silently choose Monday-Sunday. Capture a concrete schedule such as `Fri-Thu`, `Mon-Sun`, `previous completed week ending Thursday`, or `rolling last 7 days`.
@@ -50,6 +50,8 @@ python3 scripts/dzcto.py init \
 Add repeatable `--repo "<path>"` flags when read-only code repos should be saved as evidence sources.
 
 The helper also saves these preferences to `~/.dzcto/config.json` under `profiles.<profile-name>`, including the artifact directory, company context, weekly defaults, tone, and optional repos. It also updates `defaultProfile` unless `--no-switch-default` is used, so `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report` can work from other repos later.
+
+When `dzcto init` runs against an existing artifact folder, it refreshes `index.html` and re-renders any existing structured reports under `reports/ceo-updates/` that have sibling `.json` files. Body-only legacy HTML without JSON is left unchanged.
 
 ## Result
 
