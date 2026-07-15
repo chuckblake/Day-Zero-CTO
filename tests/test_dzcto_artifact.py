@@ -941,6 +941,22 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertEqual(emitted["schema_version"], "ceo-report/1")
         self.assertTrue(emitted["generated_at"])
 
+    def test_init_refreshes_existing_structured_reports_without_rewriting_json(self):
+        self.generate(v1_report(), "CEO Report 2026-06-19 to 2026-06-25")
+        html = self.reports_dir() / "2026-06-25-ceo-report-2026-06-19-to-2026-06-25.html"
+        json_path = html.with_suffix(".json")
+        before_json = json_path.read_text(encoding="utf-8")
+        html.write_text("<!doctype html><title>Old</title><p>old report format</p>", encoding="utf-8")
+
+        result = self.run_cli("--init", "--artifacts-dir", str(self.workspace), "--company-name", "Acme", "--no-save-preferences")
+
+        refreshed = html.read_text(encoding="utf-8")
+        self.assertIn("refreshed 1 existing report", result.stderr)
+        self.assertIn("report-body", refreshed)
+        self.assertIn("Week over week", refreshed)
+        self.assertNotIn("old report format", refreshed)
+        self.assertEqual(before_json, json_path.read_text(encoding="utf-8"))
+
     def test_second_report_diffs_against_first(self):
         self.generate(v1_report(), "CEO Report 2026-06-19 to 2026-06-25")
         second = v1_report(

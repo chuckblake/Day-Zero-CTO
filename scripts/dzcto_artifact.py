@@ -755,7 +755,7 @@ def render_list_section(title: str, items: Any, empty_note: str | None = None) -
     list_items = []
     for item in rows:
         if isinstance(item, dict):
-            title_text = text_value(value_at(item, "title", "item", "name", "priority", "ask", "decision", "risk", "finding", "question", "prompt"))
+            title_text = text_value(value_at(item, "area", "title", "item", "name", "priority", "ask", "decision", "risk", "finding", "question", "prompt"))
             body = text_value(value_at(item, "body", "detail", "details", "summary", "context", "business_impact", "why", "impact", "rationale", "note", "notes"))
             status = text_value(value_at(item, "status"))
             owner = text_value(value_at(item, "owner", "owner_horizon", "needed_by", "done_when"))
@@ -1449,88 +1449,92 @@ def search_text_attr(*values: Any) -> str:
 def command_center_css() -> str:
     return """
 :root {
-  --bg: #f4f6f9;
-  --surface: #ffffff;
-  --surface-2: #f7f9fb;
-  --surface-3: #eef2f6;
-  --ink: #131b29;
-  --ink-2: #3c4858;
-  --muted: #687587;
-  --faint: #97a2b1;
-  --line: #e0e6ee;
-  --line-2: #d3dbe5;
-  --accent: #11657f;
-  --accent-2: #0c4d62;
-  --accent-soft: #e4f1f4;
-  --accent-ink: #0a3a4a;
-  --crit: #b3261e;
-  --crit-soft: #fbe6e4;
-  --crit-line: #f0c2bd;
-  --high: #b5560c;
-  --high-soft: #fbecdd;
-  --high-line: #f1cda6;
-  --med: #8a6500;
-  --med-soft: #f7f0d8;
-  --med-line: #e5d49b;
-  --low: #4a5a6e;
-  --low-soft: #eaeef3;
-  --low-line: #d2dae3;
-  --good: #176a44;
-  --good-soft: #e3f4ec;
-  --good-line: #b4ddc6;
+  --bg: #f5f7f3;
+  --surface: #fffffb;
+  --surface-2: #eef3ee;
+  --surface-3: #e1e9e2;
+  --ink: #17211f;
+  --ink-2: #40514e;
+  --muted: #687874;
+  --faint: #94a19d;
+  --line: #d7ded8;
+  --line-2: #c4cec7;
+  --accent: #23685b;
+  --accent-2: #164d44;
+  --accent-soft: #dceee7;
+  --accent-ink: #103a34;
+  --crit: #ad3b35;
+  --crit-soft: #f7e6e2;
+  --crit-line: #e5b8b0;
+  --high: #99651d;
+  --high-soft: #f4ead7;
+  --high-line: #dfc391;
+  --med: #6f6a2a;
+  --med-soft: #ecebd7;
+  --med-line: #d1cd91;
+  --low: #506270;
+  --low-soft: #e3eaee;
+  --low-line: #c5d0d7;
+  --good: #237048;
+  --good-soft: #dceee4;
+  --good-line: #abd4bd;
   --r-sm: 7px;
   --r-md: 10px;
   --r-lg: 14px;
   --r-pill: 999px;
   --gap: 14px;
-  --shadow-sm: 0 1px 2px rgba(19,27,41,.05), 0 1px 1px rgba(19,27,41,.04);
-  --shadow-md: 0 4px 16px rgba(19,27,41,.08), 0 1px 3px rgba(19,27,41,.05);
-  --ring: 0 0 0 3px rgba(17,101,127,.28);
-  --nav-bg: rgba(244,246,249,.92);
+  --shadow-sm: 0 1px 2px rgba(23,33,31,.05), 0 1px 1px rgba(23,33,31,.04);
+  --shadow-md: 0 12px 34px rgba(23,33,31,.1), 0 1px 4px rgba(23,33,31,.06);
+  --ring: 0 0 0 3px rgba(35,104,91,.28);
+  --nav-bg: rgba(245,247,243,.92);
+  --display: Georgia, "Times New Roman", serif;
   --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --maxw: 1220px;
+  --maxw: 1120px;
 }
 html[data-theme="dark"] {
-  --bg: #0c121b;
-  --surface: #131c28;
-  --surface-2: #18222f;
-  --surface-3: #1f2a39;
-  --ink: #eaf0f7;
-  --ink-2: #c2cdda;
-  --muted: #8c99a9;
-  --faint: #5f6e80;
-  --line: #243140;
-  --line-2: #2d3c4d;
-  --accent: #4db6d4;
-  --accent-2: #74cbe4;
-  --accent-soft: #16323d;
-  --accent-ink: #aee0ef;
-  --crit: #ff8e84;
-  --crit-soft: #3a1714;
-  --crit-line: #5e231d;
-  --high: #f0a85e;
-  --high-soft: #37220f;
-  --high-line: #5a3818;
-  --med: #e0c25a;
-  --med-soft: #322a10;
-  --med-line: #524417;
-  --low: #9fb0c2;
-  --low-soft: #1d2733;
-  --low-line: #2c3a4a;
-  --good: #5fd197;
-  --good-soft: #10291d;
-  --good-line: #1d4632;
+  --bg: #101713;
+  --surface: #17211d;
+  --surface-2: #1d2a25;
+  --surface-3: #263630;
+  --ink: #eef4ef;
+  --ink-2: #c8d4ce;
+  --muted: #97a69f;
+  --faint: #6f7e77;
+  --line: #2c3b35;
+  --line-2: #3a4b44;
+  --accent: #7bc8b8;
+  --accent-2: #a1d8cc;
+  --accent-soft: #18362f;
+  --accent-ink: #cbf2ea;
+  --crit: #ff9a91;
+  --crit-soft: #3a1b18;
+  --crit-line: #65302a;
+  --high: #e8b76f;
+  --high-soft: #352714;
+  --high-line: #5b421e;
+  --med: #d7d06f;
+  --med-soft: #303016;
+  --med-line: #535127;
+  --low: #acc0cc;
+  --low-soft: #202d33;
+  --low-line: #364850;
+  --good: #74d6a3;
+  --good-soft: #143323;
+  --good-line: #245a3c;
   --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
   --shadow-md: 0 8px 28px rgba(0,0,0,.5);
-  --ring: 0 0 0 3px rgba(77,182,212,.32);
-  --nav-bg: rgba(12,18,27,.92);
+  --ring: 0 0 0 3px rgba(123,200,184,.32);
+  --nav-bg: rgba(16,23,19,.92);
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 76px; }
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    linear-gradient(90deg, rgba(35,104,91,.08) 0, rgba(35,104,91,.08) 1px, transparent 1px) max(22px, calc((100vw - var(--maxw)) / 2)) 0 / 26px 100% no-repeat,
+    radial-gradient(circle at top right, rgba(153,101,29,.11), transparent 310px),
+    var(--bg);
   color: var(--ink);
   font-family: var(--ui);
   font-size: 15px;
@@ -1555,12 +1559,12 @@ button { cursor: pointer; }
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
-  min-height: 54px;
-  padding: 8px max(18px, calc((100vw - var(--maxw)) / 2 + 26px));
+  min-height: 58px;
+  padding: 9px max(18px, calc((100vw - var(--maxw)) / 2 + 26px));
   border-bottom: 1px solid var(--line);
   background: var(--nav-bg);
   backdrop-filter: blur(14px);
-  box-shadow: 0 1px 2px rgba(19,27,41,.04);
+  box-shadow: 0 1px 2px rgba(23,33,31,.04);
 }
 .sticky-main { min-width: 0; display: grid; gap: 2px; }
 .sticky-home { overflow: hidden; color: var(--muted); font-size: 12.5px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
@@ -1573,23 +1577,45 @@ button { cursor: pointer; }
 .sticky-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .sticky-actions .search { width: 240px; }
 .sticky-actions .theme-btn { min-height: 32px; }
-.app { max-width: var(--maxw); margin: 0 auto; padding: 38px 26px 90px; }
-.masthead { display: grid; grid-template-columns: 1fr auto; gap: 26px; align-items: start; margin-bottom: 26px; }
+.app { max-width: var(--maxw); margin: 0 auto; padding: 46px 26px 92px; }
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 26px;
+  align-items: start;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 28px;
+}
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   color: var(--accent);
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0;
   margin-bottom: 12px;
   text-transform: uppercase;
 }
-.eyebrow::before { content: ""; width: 18px; height: 2px; background: var(--accent); border-radius: 2px; }
-h1.title { font-size: 38px; font-weight: 800; }
+.eyebrow::before { content: ""; width: 22px; height: 2px; background: var(--high); border-radius: 2px; }
+h1.title {
+  max-width: 940px;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
 .title .light { color: var(--muted); font-weight: 500; }
-.lede { max-width: none; margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
+.lede {
+  max-width: 880px;
+  margin-top: 14px;
+  color: var(--ink-2);
+  font-size: 17px;
+  line-height: 1.58;
+}
 .masthead-stamp { margin-top: 8px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .masthead-side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; min-width: min(300px, 100%); }
 .masthead-mobile-tools { display: none; }
@@ -1599,7 +1625,7 @@ h1.title { font-size: 38px; font-weight: 800; }
   border: 1px solid var(--line-2);
   background: var(--surface);
   color: var(--ink-2);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   font-size: 12.5px;
   font-weight: 700;
   transition: .15s;
@@ -1614,7 +1640,7 @@ h1.title { font-size: 38px; font-weight: 800; }
 .search input {
   width: 100%;
   border: 1px solid var(--line-2);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--ink);
   font-size: 13.5px;
@@ -1656,23 +1682,23 @@ h1.title { font-size: 38px; font-weight: 800; }
 .search-result span, .search-result strong, .search-result p { display: block; }
 .search-result span { color: var(--muted); font-size: 11px; font-weight: 800; margin-bottom: 2px; text-transform: uppercase; }
 .search-result p { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-.kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap); margin: 6px 0 30px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 4px 0 34px; }
 .kpi {
   display: block;
   position: relative;
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 14px 15px;
+  border-radius: var(--r-sm);
+  padding: 16px 16px 15px;
   box-shadow: var(--shadow-sm);
   color: var(--ink);
   text-decoration: none;
   transition: .15s;
 }
 .kpi:hover { border-color: var(--accent); box-shadow: var(--shadow-md); text-decoration: none; transform: translateY(-1px); }
-.k-label { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
-.k-val { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; font-size: 26px; font-weight: 800; }
+.k-label { color: var(--muted); font-family: var(--mono); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.k-val { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; font-family: var(--display); font-size: 32px; font-weight: 700; line-height: 1; }
 .k-val .unit { color: var(--faint); font-size: 13px; font-weight: 700; }
 .k-sub { margin-top: 4px; color: var(--muted); font-size: 11.5px; }
 .kpi[data-tone]::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; }
@@ -1832,14 +1858,14 @@ h1.title { font-size: 38px; font-weight: 800; }
 .cad-mini { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .cm-when { color: var(--good); font-size: 11.5px; font-weight: 800; white-space: nowrap; }
 .section { border-top: 1px solid var(--line); }
-.section > summary { display: flex; align-items: center; gap: 14px; padding: 22px 2px 20px; cursor: pointer; list-style: none; }
+.section > summary { display: flex; align-items: center; gap: 14px; padding: 24px 0 20px; cursor: pointer; list-style: none; }
 .section > summary::-webkit-details-marker, .risk > summary::-webkit-details-marker { display: none; }
 .chev { width: 9px; height: 9px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(-45deg); transition: transform .18s ease; flex: 0 0 auto; }
 .section[open] > summary .chev { transform: rotate(45deg); }
-.sec-title { color: var(--ink); font-size: 21px; font-weight: 800; white-space: nowrap; }
-.sec-num { color: var(--faint); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.sec-title { color: var(--ink); font-family: var(--display); font-size: 25px; font-weight: 700; white-space: nowrap; }
+.sec-num { color: var(--high); font-family: var(--mono); font-size: 12px; font-weight: 800; }
 .sec-meta { display: flex; align-items: center; gap: 10px; margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; }
-.sec-body { padding: 4px 0 30px; }
+.sec-body { padding: 2px 0 34px; }
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .tb-label { color: var(--muted); font-size: 12px; font-weight: 700; }
 .chipset { display: inline-flex; gap: 6px; flex-wrap: wrap; }
@@ -1886,19 +1912,19 @@ h1.title { font-size: 38px; font-weight: 800; }
 .b-med, .medium { color: var(--med); background: var(--med-soft); }
 .b-low, .ready, .low { color: var(--low); background: var(--low-soft); }
 .report-stack { display: grid; gap: 14px; }
-.reports, .reports-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+.reports, .reports-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .report, .report-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 11px;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
-  padding: 16px 17px;
+  padding: 16px 17px 15px;
   color: var(--ink);
 }
-.report:hover, .report-card:hover { border-color: var(--accent); text-decoration: none; }
+.report:hover, .report-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); text-decoration: none; transform: translateY(-1px); }
 .report.empty, .report-card.empty { background: var(--surface-2); border-style: dashed; box-shadow: none; }
 .report-primary {
   border-color: var(--accent);
@@ -1918,13 +1944,13 @@ h1.title { font-size: 38px; font-weight: 800; }
 .report-subhead span { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .rp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .rp-head { display: grid; gap: 3px; min-width: 0; }
-.rp-role { color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
-.rp-name, .report-title { color: var(--ink); font-size: 15px; font-weight: 800; }
-.rp-count, .report-count, .rp-open-top { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
+.rp-role { color: var(--muted); font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.rp-name, .report-title { color: var(--ink); font-size: 15.5px; font-weight: 800; }
+.rp-count, .report-count, .rp-open-top { color: var(--muted); background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-family: var(--mono); font-size: 10px; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
 .rp-open-top { border: 1px solid var(--line-2); color: var(--accent); background: var(--surface); }
 .rp-open-top:hover { border-color: var(--accent); color: var(--accent-ink); text-decoration: none; }
 .rp-purpose { color: var(--muted); font-size: 12px; line-height: 1.45; }
-.rp-prev { color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+.rp-prev { color: var(--ink-2); font-size: 13px; line-height: 1.55; }
 .report-command {
   display: block;
   width: fit-content;
@@ -1975,10 +2001,10 @@ h1.title { font-size: 38px; font-weight: 800; }
 .learn-panel:hover, .learning-card:hover { border-color: var(--accent); text-decoration: none; }
 .lp-h, .learning-title { color: var(--ink); font-size: 14px; font-weight: 800; }
 .lp-sub, .learning-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
-.learn-stats, .summary, .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
-.learn-stats .ls, .metric { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 10px; text-align: center; }
-.learn-stats b, .metric .value, .metric strong { display: block; color: var(--ink); font-size: 20px; font-weight: 800; }
-.learn-stats span, .metric .label, .metric span { color: var(--muted); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.learn-stats, .summary, .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 16px 0 24px; }
+.learn-stats .ls, .metric { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--r-sm); padding: 12px 12px 11px; text-align: left; box-shadow: var(--shadow-sm); }
+.learn-stats b, .metric .value, .metric strong { display: block; color: var(--ink); font-family: var(--display); font-size: 27px; font-weight: 700; line-height: 1; }
+.learn-stats span, .metric .label, .metric span { color: var(--muted); font-family: var(--mono); font-size: 10.5px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .metric .detail { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; text-transform: none; }
 .mastery { margin-top: 6px; }
 .m-bar { height: 7px; overflow: hidden; background: var(--surface-3); border-radius: var(--r-pill); }
@@ -2095,12 +2121,40 @@ h1.title { font-size: 38px; font-weight: 800; }
 }
 .current-read h2 { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .current-read p { margin-top: 5px; max-width: 980px; color: var(--ink-2); font-size: 14px; line-height: 1.55; }
-.artifact-section { margin-top: 30px; border-top: 1px solid var(--line); padding-top: 22px; }
+.report-body {
+  position: relative;
+  max-width: 920px;
+  margin: 0 auto;
+}
+.report-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -34px;
+  width: 2px;
+  background: linear-gradient(var(--accent), var(--line) 42%, transparent);
+}
+.artifact-section { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 24px; }
 .artifact-section:first-of-type { margin-top: 0; border-top: 0; padding-top: 0; }
+.artifact-section h2 {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+}
 .artifact-note { margin: 8px 0 14px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
-.artifact-list { display: grid; gap: 11px; margin: 16px 0 24px; padding-left: 22px; list-style: disc; }
-.artifact-list li { padding: 0 0 0 2px; color: var(--ink-2); font-size: 14px; line-height: 1.55; }
-.artifact-list li::marker { color: var(--accent); }
+.artifact-list { display: grid; gap: 0; margin: 16px 0 26px; padding: 0; list-style: none; }
+.artifact-list li {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.artifact-list li:first-child { border-top: 0; padding-top: 0; }
 .artifact-list strong { color: var(--ink); font-weight: 800; }
 .artifact-list span, .artifact-list em, .artifact-list small { display: block; margin-top: 3px; color: var(--muted); }
 .artifact-list em, .artifact-list small { font-size: 13px; font-style: normal; }
@@ -2143,8 +2197,8 @@ h1.title { font-size: 38px; font-weight: 800; }
   list-style: none;
 }
 .source-section > summary::-webkit-details-marker, .appendix-section > summary::-webkit-details-marker { display: none; }
-.source-section > summary span, .appendix-section > summary span { color: var(--ink); font-size: 22px; font-weight: 850; }
-.source-section > summary small, .appendix-section > summary small { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.source-section > summary span, .appendix-section > summary span { color: var(--ink); font-family: var(--display); font-size: 24px; font-weight: 700; }
+.source-section > summary small, .appendix-section > summary small { color: var(--muted); font-family: var(--mono); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .source-list, .appendix-body { margin-top: 16px; }
 .report-body > p:first-child {
   max-width: none;
@@ -2158,7 +2212,7 @@ h1.title { font-size: 38px; font-weight: 800; }
   gap: 10px;
   margin: 0 0 18px;
   border: 1px solid var(--med-line);
-  border-left: 4px solid var(--med);
+  border-left: 5px solid var(--med);
   border-radius: var(--r-sm);
   background: var(--med-soft);
   padding: 10px 12px;
@@ -2168,21 +2222,25 @@ h1.title { font-size: 38px; font-weight: 800; }
 }
 .report-thin-evidence strong { color: var(--med); font-size: 11px; font-weight: 850; text-transform: uppercase; white-space: nowrap; }
 .report-changes {
-  margin: 16px 0 4px;
-  border-top: 1px solid var(--line);
-  padding-top: 13px;
+  margin: 0 0 10px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 15px 16px 14px;
 }
-.report-changes h2 { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
-.report-changes ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
-.report-changes li { color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
-.report-changes li strong { color: var(--ink); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.report-changes h2 { color: var(--ink); font-size: 15px; font-weight: 850; letter-spacing: 0; }
+.report-changes ul { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.report-changes li { color: var(--ink-2); font-size: 13px; line-height: 1.45; }
+.report-changes li strong { color: var(--accent-ink); font-family: var(--mono); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .report-attention {
   max-width: none;
-  margin: 16px 0 4px;
+  margin: 18px 0 6px;
   border-top: 1px solid var(--line);
-  padding-top: 13px;
+  padding-top: 15px;
 }
-.attention-kicker { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
+.attention-kicker { color: var(--muted); font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }
 .report-attention ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
 .report-attention li { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
 .report-attention li strong { color: var(--ink); font-size: 11px; font-weight: 800; text-transform: uppercase; }
@@ -2341,7 +2399,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   font-weight: 800;
 }
 @media (max-width: 1040px) {
-  .kpis { grid-template-columns: repeat(3, 1fr); }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .setup-list { grid-template-columns: repeat(3, 1fr); }
   .setup-item { border-bottom: 1px solid var(--line); }
   .core { grid-template-columns: repeat(3, 1fr); }
@@ -2368,11 +2426,13 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .help-guide { grid-template-columns: 1fr; }
   .help-guide-row { grid-template-columns: 1fr; gap: 6px; }
   .item-field-grid { grid-template-columns: 1fr; }
-  h1.title { font-size: 30px; }
+  .report-body { max-width: none; }
+  .report-body::before { display: none; }
+  h1.title { font-size: 34px; }
 }
 @media (max-width: 560px) {
   .app { padding: 24px 16px 70px; }
-  .kpis, .core, .status-grid, .summary, .grid, .item-meta-grid { grid-template-columns: 1fr 1fr; }
+  .kpis, .core, .status-grid, .summary, .grid, .item-meta-grid { grid-template-columns: 1fr; }
   .report-subhead { align-items: flex-start; flex-direction: column; gap: 4px; }
   .setup-list { grid-template-columns: 1fr; }
   .setup-item { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -2387,6 +2447,7 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   .sec-title { white-space: normal; }
   .learn-items { columns: 1; }
   .reference-top { flex-direction: column; }
+  h1.title { font-size: 31px; }
 }
 @media print {
   .sticky-nav, .masthead-side, .toolbar { display: none !important; }
@@ -2741,6 +2802,72 @@ def render_report_page(title: str, date: str, kind: str, body: str, provenance: 
 """
 
 
+def report_title_from_data(data: dict[str, Any], fallback_path: Path) -> str:
+    window = data.get("window") if isinstance(data.get("window"), dict) else {}
+    start = text_value(window.get("start"))
+    end = text_value(window.get("end"))
+    if start and end:
+        return f"CEO Report {start} to {end}"
+    html_path = fallback_path.with_suffix(".html")
+    if html_path.exists():
+        return html_title(html_path)
+    return title_label(report_name(fallback_path))
+
+
+def refresh_existing_report_pages(wiki_root: Path, stable_title: str, *, report_folder: str = "ceo-updates") -> int:
+    reports_dir = wiki_root / "reports" / report_folder
+    if not reports_dir.exists():
+        return 0
+
+    refreshed = 0
+    for json_path in sorted(reports_dir.glob("*.json")):
+        if json_path.name == "data.json":
+            continue
+        report_path = json_path.with_suffix(".html")
+        if not report_path.exists():
+            continue
+        data = read_json_file(json_path, None)
+        if not isinstance(data, dict):
+            print(f"dzcto: skipping report format refresh for {json_path.name} (unreadable JSON)", file=sys.stderr)
+            continue
+
+        structured_data = sanitize_current_report_data(dict(data))
+        report_date = report_effective_date(json_path, structured_data) or report_run_date(report_path)
+        previous_data: dict[str, Any] | None = None
+        previous_date = ""
+        change_notes: list[str] = []
+        if report_folder == "ceo-updates":
+            prior_path, previous_data, previous_date, change_notes = locate_prior_report(json_path, structured_data)
+            previous_data = sanitize_prior_report_data(previous_data)
+            structured_data["prior_report"] = prior_path.relative_to(wiki_root).as_posix() if prior_path else None
+        body = render_structured_report(
+            report_folder,
+            structured_data,
+            previous_data=previous_data,
+            previous_date=previous_date,
+            change_notes=change_notes,
+        )
+        title = report_title_from_data(structured_data, json_path)
+        relative_path = report_path.relative_to(wiki_root).as_posix()
+        provenance = provenance_payload(
+            wiki_root,
+            artifact_id=f"{report_folder}:{report_path.stem}",
+            artifact_kind=report_folder,
+            relative_path=relative_path,
+            title=title,
+            generated_at=utc_now(),
+            source_hashes=collect_source_hashes([json_path]),
+            extra={"reportDate": report_date, "formatRefresh": True},
+        )
+        report_path.write_text(
+            render_report_page(title, report_date, report_folder, body, provenance, stable_title, lede=report_lead_summary(structured_data)),
+            encoding="utf-8",
+        )
+        update_manifest(wiki_root, provenance)
+        refreshed += 1
+    return refreshed
+
+
 def prune_manifest_report_artifacts(wiki_root: Path) -> None:
     manifest_path = sidecar_dir(wiki_root) / "manifest.json"
     manifest = read_json(manifest_path, {})
@@ -2846,13 +2973,14 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
 
     if report_links:
         report_items = []
-        for path in report_links[:12]:
+        for index, path in enumerate(report_links[:12]):
             href = path.relative_to(wiki_root).as_posix()
             title = html_title(path)
             date = report_run_date(path)
             summary = report_summary_for_path(path, 180) or title
+            card_class = "report report-primary" if index == 0 else "report"
             report_items.append(
-                f"""<a class="report" href="{esc(href)}" data-search-text="{search_text_attr(title, date, summary)}">
+                f"""<a class="{card_class}" href="{esc(href)}" data-search-text="{search_text_attr(title, date, summary)}">
   <div class="rp-top">
     <div class="rp-head"><span class="rp-role">CEO report</span><span class="rp-name">{esc(title)}</span><span class="rp-date">{esc(date)}</span></div>
     <span class="rp-open-top">Open</span>
@@ -2886,7 +3014,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
       <div class="k-val">{esc(report_count)}</div>
       <div class="k-sub">{esc(latest_date)}</div>
     </a>
-    <div class="kpi">
+    <div class="kpi" data-tone="{esc('good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'warn' if weekly_streak_count == 0 else 'info')}">
       <div class="k-label">Weekly streak</div>
       <div class="k-val">{esc(weekly_streak_count)}</div>
       <div class="k-sub">{esc(weekly_streak_sub)}</div>
@@ -3190,6 +3318,11 @@ def main(argv: list[str]) -> int:
         args.profile = saved_profile
     company = company_name(core_dir / "STRATEGY.md", project_folder, project_config(wiki_root))
     stable_title = dashboard_title(company)
+
+    if args.init:
+        refreshed = refresh_existing_report_pages(wiki_root, stable_title, report_folder=report_folder)
+        if refreshed:
+            print(f"dzcto: refreshed {pluralize(refreshed, 'existing report')} with the current report format", file=sys.stderr)
 
     written_report: Path | None = None
     if not args.init:
