@@ -5,7 +5,7 @@ backlog:   { backend: markdown, dir: /Users/chuckblake/Documents/Code/chuck-vaul
 worktree:  { tool: superset, base: main } # plain | rails | superset | none
 worklog:   { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/worklogs }
 conventions: { enabled: false }
-ci:        { provider: none }                        # github | none
+ci:        { provider: github }                      # github | none
 hooks:     { branch_guard: true, worklog_stop: true }
 timing:    { enabled: true, dest: /Users/chuckblake/Documents/Code/chuck-vault/cb-dev/dzcto/logs }  # CBW-63 per-run stage timing
 
