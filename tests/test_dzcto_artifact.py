@@ -4,6 +4,7 @@ import datetime as dt
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -262,6 +263,11 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         self.reports_dir = self.workspace / "reports" / "ceo-updates"
         self.reports_dir.mkdir(parents=True)
         self.addCleanup(self._tmp.cleanup)
+        # render_index reads the global config for defaultProfile (DAYZEROCTO-14); pin it so
+        # these tests never depend on the developer's real ~/.dzcto/config.json.
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def render(self, today: str) -> str:
         artifact.render_index(self.workspace, self.workspace, today=dt.date.fromisoformat(today))
@@ -320,6 +326,11 @@ class TestRenderIndexWeeklyDefaultTile(unittest.TestCase):
         self.sidecar.mkdir(parents=True)
         (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
         self.addCleanup(self._tmp.cleanup)
+        # render_index reads the global config for defaultProfile (DAYZEROCTO-14); pin it so
+        # these tests never depend on the developer's real ~/.dzcto/config.json.
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def render(self, **weekly_defaults) -> str:
         config = {"weeklyReportDefaults": weekly_defaults} if weekly_defaults else {}
@@ -1356,6 +1367,366 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertIn("report-changes", html)
         self.assertNotIn(GITHUB_TOKEN, html)
         self.assertIn("[REDACTED:github_pat]", html)
+
+
+class TestRenderIndexConfigPanel(unittest.TestCase):
+    """DAYZEROCTO-14 U2: the Defaults panel and its settings link."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.sidecar = self.workspace / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+        # render_index now reads the GLOBAL config for defaultProfile. Without this patch
+        # every index test would depend on the developer's real ~/.dzcto/config.json.
+        self.global_config = {"defaultProfile": "test-default"}
+        patcher = mock.patch.object(artifact, "read_global_config", lambda: dict(self.global_config))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def render(self, config=None) -> str:
+        (self.sidecar / "config.json").write_text(json.dumps(config or {}), encoding="utf-8")
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 7, 23))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def settings_section(self, html: str) -> str:
+        start = html.index('id="sec-settings"')
+        return html[start : html.index("</details>", start)]
+
+    def test_panel_renders_every_configured_value(self):
+        section = self.settings_section(
+            self.render(
+                {
+                    "profile": "arwen",
+                    "weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"},
+                    "ceoReportTone": "direct and calm",
+                    "codeRepos": ["/Users/someone/Code/arwen-api", "/Users/someone/Code/arwen-web"],
+                }
+            )
+        )
+
+        self.assertIn("arwen", section)
+        self.assertIn("test-default", section)
+        self.assertIn("previous_completed_week", section)
+        self.assertIn("direct and calm", section)
+        self.assertIn("arwen-api", section)
+        self.assertIn(artifact.TOOL_VERSION, section)
+
+    def test_panel_links_to_the_settings_page(self):
+        self.assertIn('href="settings.html"', self.settings_section(self.render()))
+
+    def test_settings_section_is_collapsed_for_a_ceo_facing_share(self):
+        html = self.render()
+        start = html.index('id="sec-settings"')
+        # The <details> opening tag must not carry `open` — operator settings stay folded away.
+        self.assertNotIn("open", html[html.rindex("<details", 0, start) : html.index(">", start)])
+
+    def test_empty_config_still_renders_a_usable_panel_and_link(self):
+        section = self.settings_section(self.render())
+
+        self.assertIn('href="settings.html"', section)
+        self.assertIn(artifact.TOOL_VERSION, section)
+        self.assertNotIn(">None<", section)
+
+    def test_repo_paths_never_reach_the_shareable_index(self):
+        html = self.render({"codeRepos": ["/Users/chuckblake/Documents/Code/day-zero-cto"]})
+        section = self.settings_section(html)
+
+        self.assertIn("day-zero-cto", section)
+        self.assertNotIn("/Users/chuckblake/Documents/Code/day-zero-cto", section)
+
+    def test_displayed_tone_matches_the_tone_the_prompt_card_uses(self):
+        # One tone source. If the panel showed "Not set" while the copyable prompt carried
+        # the built-in default, the page would state a voice the reports do not use.
+        html = self.render()
+        default_tone = "direct, concise, business-facing, calm about risk, explicit about asks"
+
+        self.assertIn(default_tone, self.settings_section(html))
+        self.assertIn(default_tone, html)
+
+    def test_config_panel_does_not_migrate_into_the_kpi_window(self):
+        # Pins the absence-proxy trap in TestRenderIndexWeeklyDefaultTile: that helper slices
+        # 400 characters after the "Weekly default" KPI label and asserts no weekday detail.
+        html = self.render({"weeklyReportDefaults": {"range": "since_last_report", "startDay": "Friday", "endDay": "Thursday", "lookbackDays": 7}})
+        start = html.index('<div class="k-label">Weekly default</div>')
+        window = html[start : start + 400]
+
+        for forbidden in (" to ", "Friday", "Thursday", "7 days"):
+            self.assertNotIn(forbidden, window)
+
+    def test_regenerating_the_index_refreshes_the_displayed_config(self):
+        first = self.settings_section(self.render({"weeklyReportDefaults": {"range": "since_last_report"}}))
+        self.assertIn("since_last_report", first)
+
+        second = self.settings_section(
+            self.render({"weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Monday", "endDay": "Sunday"}})
+        )
+        self.assertIn("previous_completed_week", second)
+        self.assertNotIn("since_last_report", second)
+
+
+class TestSettingsFlagParity(unittest.TestCase):
+    """DAYZEROCTO-14 U4: the settings page cannot document a flag the CLI does not have.
+
+    scripts/dzcto.py builds its parser inline in main(), so there is no importable parser
+    object to introspect without refactoring main() -- explicitly out of scope in the plan.
+    Matching against the init subparser's source text catches the same regression (a renamed,
+    removed, or invented flag) at a fraction of the blast radius.
+    """
+
+    # Operator/plumbing flags a CTO-facing settings page deliberately does not document.
+    # Enumerated so the subset relationship is a decision, not an accident.
+    INTENTIONALLY_UNDOCUMENTED = {"--no-save-preferences", "--no-switch-default"}
+
+    def setUp(self):
+        self.cli_source = (REPO / "scripts" / "dzcto.py").read_text(encoding="utf-8")
+        start = self.cli_source.index('sub.add_parser(\n        "init"')
+        end = self.cli_source.index('sub.add_parser("install-command"', start)
+        self.init_block = self.cli_source[start:end]
+
+    def declared_init_flags(self) -> set:
+        return set(re.findall(r'init\.add_argument\("(--[a-z0-9-]+)"', self.init_block))
+
+    def test_every_documented_flag_exists_in_the_init_cli(self):
+        declared = self.declared_init_flags()
+        self.assertTrue(declared, "failed to parse any flags out of the init subparser")
+
+        for flag, _key, _description in artifact.INIT_REPORT_SETTING_FLAGS:
+            self.assertIn(flag, declared, f"{flag} is documented on the settings page but not declared by `dzcto init`")
+
+    def test_the_parity_check_actually_rejects_an_unknown_flag(self):
+        # Guards the guard: a matcher that accepted anything would pass the test above
+        # while catching no drift at all.
+        self.assertNotIn("--not-a-real-flag", self.declared_init_flags())
+
+    def test_undocumented_flags_are_an_enumerated_decision(self):
+        documented = {flag for flag, _key, _description in artifact.INIT_REPORT_SETTING_FLAGS}
+        missing = self.declared_init_flags() - documented
+
+        self.assertEqual(
+            missing,
+            self.INTENTIONALLY_UNDOCUMENTED,
+            "a `dzcto init` flag is neither documented on the settings page nor listed as "
+            "intentionally undocumented -- decide which it is",
+        )
+
+    def test_skill_doc_points_at_the_generated_page_instead_of_copying_it(self):
+        skill = (REPO / "skills" / "dzcto-init" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("settings.html", skill)
+        # SKILL.md's example invocation legitimately names most flags, so flag mentions are
+        # not the drift signal. Reproducing the table's per-flag DESCRIPTIONS would be -- that
+        # is the mapping the generated page owns as the single source of truth.
+        copied = [
+            description
+            for _flag, _key, description in artifact.INIT_REPORT_SETTING_FLAGS
+            if description in skill
+        ]
+        self.assertEqual(copied, [], f"SKILL.md re-copied settings-table descriptions: {copied}")
+
+
+class TestRenderSettingsPage(unittest.TestCase):
+    """DAYZEROCTO-14 U3: the generated, browser-viewable settings page."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.sidecar = self.workspace / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.object(artifact, "read_global_config", lambda: {"defaultProfile": "test-default"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def render(self, config=None) -> str:
+        (self.sidecar / "config.json").write_text(json.dumps(config or {}), encoding="utf-8")
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 7, 23))
+        return (self.workspace / "settings.html").read_text(encoding="utf-8")
+
+    def test_rendering_the_index_also_writes_the_settings_page(self):
+        self.render()
+        self.assertTrue((self.workspace / "settings.html").exists())
+
+    def test_page_documents_the_merge_over_semantics(self):
+        page = self.render()
+        self.assertIn("merges over", page)
+        self.assertIn("preserved", page)
+
+    def test_page_documents_the_default_profile_switch_and_its_opt_out(self):
+        page = self.render()
+        self.assertIn("defaultProfile", page)
+        self.assertIn("--no-switch-default", page)
+
+    def test_every_documented_flag_appears_on_the_page(self):
+        page = self.render()
+        for flag, _key, _description in artifact.INIT_REPORT_SETTING_FLAGS:
+            self.assertIn(flag, page, f"{flag} missing from the settings page")
+
+    def test_page_shows_the_readers_current_values(self):
+        page = self.render(
+            {
+                "profile": "arwen",
+                "weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"},
+                "ceoReportTone": "direct and calm",
+            }
+        )
+        self.assertIn("arwen", page)
+        self.assertIn("previous_completed_week", page)
+        self.assertIn("direct and calm", page)
+        self.assertIn("test-default", page)
+
+    def test_manifest_records_the_settings_page(self):
+        self.render()
+        manifest = json.loads((self.sidecar / "manifest.json").read_text(encoding="utf-8"))
+        paths = [item.get("relativePath") for item in manifest["artifacts"]]
+        self.assertIn("settings.html", paths)
+
+    def test_report_pruning_never_drops_the_settings_entry(self):
+        # prune_manifest_report_artifacts only removes entries under reports/; a root-level
+        # page must survive a second render.
+        self.render()
+        artifact.prune_manifest_report_artifacts(self.workspace)
+        self.render()
+        manifest = json.loads((self.sidecar / "manifest.json").read_text(encoding="utf-8"))
+        paths = [item.get("relativePath") for item in manifest["artifacts"]]
+        self.assertIn("settings.html", paths)
+        self.assertEqual(paths.count("settings.html"), 1)
+
+    def test_regenerating_refreshes_the_settings_page_values(self):
+        first = self.render({"weeklyReportDefaults": {"range": "since_last_report"}})
+        self.assertIn("since_last_report", first)
+
+        second = self.render({"weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Monday", "endDay": "Sunday"}})
+        self.assertIn("previous_completed_week", second)
+        self.assertNotIn("since_last_report", second)
+
+    def test_missing_sidecar_config_still_produces_a_usable_page(self):
+        page = self.render()
+        self.assertIn("dzcto init", page)
+        self.assertIn("--weekly-range", page)
+
+    def test_credential_shaped_config_is_never_echoed_verbatim(self):
+        page = self.render({"ceoReportTone": f"be terse; token {GITHUB_TOKEN}"})
+        self.assertNotIn(GITHUB_TOKEN, page)
+
+    def test_local_paths_never_reach_the_settings_page(self):
+        page = self.render({"codeRepos": ["/Users/chuckblake/Documents/Code/day-zero-cto"]})
+        self.assertIn("day-zero-cto", page)
+        self.assertNotIn("/Users/chuckblake/Documents/Code/day-zero-cto", page)
+
+    def test_settings_page_links_back_to_the_index(self):
+        page = self.render()
+        self.assertIn('href="index.html"', page)
+
+
+class TestProfileConfigView(unittest.TestCase):
+    """DAYZEROCTO-14 U1: the config view the index panel and settings page both read."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.workspace.mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def view(self, config=None, global_config=None):
+        return artifact.profile_config_view(config or {}, self.workspace, global_config or {})
+
+    def test_populated_config_returns_every_displayed_value(self):
+        view = self.view(
+            {
+                "profile": "arwen",
+                "weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"},
+                "ceoReportTone": "direct and calm",
+                "codeRepos": ["/Users/someone/Code/arwen-api"],
+            },
+            {"defaultProfile": "arwen"},
+        )
+
+        self.assertEqual(view["profileName"], "arwen")
+        self.assertEqual(view["defaultProfile"], "arwen")
+        self.assertIn("previous_completed_week", view["weeklyRangeLabel"])
+        self.assertEqual(view["tone"], "direct and calm")
+        self.assertEqual(view["evidenceRepos"], ["arwen-api"])
+        self.assertEqual(view["evidenceRepoCount"], 1)
+        self.assertEqual(view["toolVersion"], artifact.TOOL_VERSION)
+
+    def test_empty_config_still_returns_a_complete_view(self):
+        view = self.view()
+
+        for key in ("profileName", "defaultProfile", "weeklyRangeLabel", "tone", "artifactDirectory", "toolVersion"):
+            self.assertIn(key, view)
+            self.assertTrue(str(view[key]).strip(), f"{key} rendered empty")
+            self.assertNotEqual(str(view[key]), "None", f"{key} rendered the literal string None")
+        self.assertEqual(view["evidenceRepos"], [])
+        self.assertEqual(view["evidenceRepoCount"], 0)
+
+    def test_empty_repo_list_renders_a_zero_count(self):
+        view = self.view({"codeRepos": []})
+
+        self.assertEqual(view["evidenceRepos"], [])
+        self.assertEqual(view["evidenceRepoCount"], 0)
+
+    def test_non_string_and_blank_repo_entries_are_skipped(self):
+        view = self.view({"codeRepos": ["/tmp/real-repo", "   ", None, 7, {"path": "/tmp/nope"}]})
+
+        self.assertEqual(view["evidenceRepos"], ["real-repo"])
+        self.assertEqual(view["evidenceRepoCount"], 1)
+
+    def test_absolute_repo_paths_never_leak_beyond_their_basename(self):
+        # The index is a shareable artifact and therefore an egress point: a repo path
+        # would leak the operator's username and directory layout to every reader.
+        view = self.view({"codeRepos": ["/Users/chuckblake/Documents/Code/day-zero-cto"]})
+
+        self.assertEqual(view["evidenceRepos"], ["day-zero-cto"])
+        for repo in view["evidenceRepos"]:
+            self.assertNotIn("/", repo)
+            self.assertNotIn("Users", repo)
+
+    def test_tool_version_is_sourced_not_hardcoded(self):
+        self.assertEqual(self.view()["toolVersion"], artifact.TOOL_VERSION)
+
+    def test_default_profile_reads_the_global_config_through_the_injection_seam(self):
+        # Without this seam every render_index test would read the developer's real
+        # ~/.dzcto/config.json and stop being hermetic.
+        global_path = Path(self._tmp.name) / "global.json"
+        global_path.write_text(json.dumps({"defaultProfile": "injected-profile"}), encoding="utf-8")
+
+        with mock.patch.object(artifact, "read_global_config", lambda: json.loads(global_path.read_text())):
+            view = artifact.profile_config_view({}, self.workspace)
+
+        self.assertEqual(view["defaultProfile"], "injected-profile")
+
+    def test_missing_global_config_does_not_crash_the_view(self):
+        with mock.patch.object(artifact, "read_global_config", dict):
+            view = artifact.profile_config_view({}, self.workspace)
+
+        self.assertTrue(str(view["defaultProfile"]).strip())
+
+
+class TestWeeklyRangeLabel(unittest.TestCase):
+    """DAYZEROCTO-14 U1: one formatter, so the panel and prompt card cannot drift apart."""
+
+    def test_cursor_mode_suppresses_weekday_and_lookback_detail(self):
+        label = artifact.weekly_range_label(
+            {"weeklyReportDefaults": {"range": "since_last_report", "startDay": "Friday", "endDay": "Thursday", "lookbackDays": 7}}
+        )
+
+        self.assertEqual(label, "since_last_report")
+        self.assertNotIn("Friday", label)
+        self.assertNotIn(" to ", label)
+        self.assertNotIn("7 days", label)
+
+    def test_day_based_range_keeps_its_weekday_detail(self):
+        label = artifact.weekly_range_label(
+            {"weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"}}
+        )
+
+        self.assertEqual(label, "previous_completed_week; Friday to Thursday")
+
+    def test_unconfigured_range_reports_not_configured(self):
+        self.assertIn("not_configured", artifact.weekly_range_label({}))
 
 
 if __name__ == "__main__":

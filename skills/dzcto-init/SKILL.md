@@ -52,6 +52,8 @@ Add repeatable `--repo "<path>"` flags when read-only code repos should be saved
 
 The helper also saves these preferences to `~/.dzcto/config.json` under `profiles.<profile-name>`, including the artifact directory, company context, weekly defaults, tone, and optional repos. It also updates `defaultProfile` unless `--no-switch-default` is used, so `/dzcto-ceo-report-weekly` and `/dzcto-ceo-report` can work from other repos later.
 
+For per-flag detail, open `settings.html` in the artifact folder; it shows each report-shaping `dzcto init` flag alongside the profile's current value.
+
 When `dzcto init` runs against an existing artifact folder, it refreshes `index.html` and re-renders any existing structured reports under `reports/ceo-updates/` that have sibling `.json` files. Body-only legacy HTML without JSON is left unchanged.
 
 ## Result

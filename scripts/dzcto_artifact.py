@@ -56,6 +56,21 @@ ACTIVE_REPORT_FOLDERS = {
 
 UNKNOWN_VALUES = {"", "unknown", "tbd", "to be determined", "n/a", "none"}
 
+INIT_REPORT_SETTING_FLAGS = (
+    ("--artifacts-dir", "artifactDirectory", "Sets the folder that stores the generated CEO report workspace."),
+    ("--profile", "profileName", "Selects the named profile that receives these settings."),
+    ("--company-name", "companyName", "Sets the company name used throughout generated CEO reports."),
+    ("--company-description", "companyDescription", "Sets the one-sentence company context used to frame reports."),
+    ("--company-url", "companyUrl", "Sets the company URL used to help resolve company context during init."),
+    ("--report-prompt-context", "reportPromptContext", "Adds context to the generated CEO report prompts."),
+    ("--weekly-range", "weeklyReportDefaults.range", "Sets how the default weekly reporting window is selected."),
+    ("--weekly-start-day", "weeklyReportDefaults.startDay", "Sets the first day of a completed-week reporting window."),
+    ("--weekly-end-day", "weeklyReportDefaults.endDay", "Sets the last day of a completed-week reporting window."),
+    ("--weekly-lookback-days", "weeklyReportDefaults.lookbackDays", "Sets the rolling day count for lookback-based weekly reports."),
+    ("--ceo-report-tone", "ceoReportTone", "Sets the tone guidance used for CEO reports."),
+    ("--repo", "codeRepos", "Adds a read-only evidence repository; repeat the flag to add more than one."),
+)
+
 
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value), quote=True)
@@ -308,6 +323,71 @@ def profile_name_for_config(config: dict[str, Any], wiki_root: Path, explicit_pr
         if value:
             return profile_slug(value)
     return profile_slug(wiki_root.name)
+
+
+def weekly_range_label(config: dict[str, Any] | None) -> str:
+    config = config if isinstance(config, dict) else {}
+    weekly_defaults = config.get("weeklyReportDefaults")
+    weekly_defaults = weekly_defaults if isinstance(weekly_defaults, dict) else {}
+    weekly_range = text_value(weekly_defaults.get("range")) or "not_configured"
+    if weekly_range == "since_last_report":
+        return weekly_range
+
+    weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
+    weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
+    label = f"{weekly_range}; {weekly_start} to {weekly_end}"
+    lookback = text_value(weekly_defaults.get("lookbackDays"))
+    return f"{label}; {lookback} days" if lookback else label
+
+
+def profile_config_view(
+    config: dict[str, Any] | None,
+    wiki_root: Path,
+    global_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    workspace_config = config if isinstance(config, dict) else {}
+    resolved_global_config = read_global_config() if global_config is None else global_config
+    if not isinstance(resolved_global_config, dict):
+        resolved_global_config = {}
+
+    profile_name = profile_name_for_config(workspace_config, wiki_root)
+    if not has_real_value(profile_name):
+        profile_name = "Not set"
+
+    default_profile = text_value(resolved_global_config.get("defaultProfile"))
+    if not has_real_value(default_profile):
+        default_profile = "Not set"
+
+    tone = text_value(workspace_config.get("ceoReportTone"))
+    if not has_real_value(tone):
+        tone = "Not set"
+
+    raw_repos = workspace_config.get("codeRepos")
+    repo_basenames: list[str] = []
+    if isinstance(raw_repos, list):
+        for repo in raw_repos:
+            if not isinstance(repo, str) or not repo.strip():
+                continue
+            basename = repo.strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+            if basename:
+                repo_basenames.append(basename)
+
+    artifact_directory_present = any(
+        isinstance(workspace_config.get(key), str)
+        and has_real_value(workspace_config[key])
+        for key in ("artifactsDir", "artifactDirectory", "defaultArtifactsDir", "wikiRoot")
+    )
+
+    return {
+        "profileName": profile_name,
+        "defaultProfile": default_profile,
+        "weeklyRangeLabel": weekly_range_label(workspace_config),
+        "tone": tone,
+        "evidenceRepos": repo_basenames,
+        "evidenceRepoCount": len(repo_basenames),
+        "artifactDirectory": "Configured" if artifact_directory_present else "Not set",
+        "toolVersion": TOOL_VERSION,
+    }
 
 
 def legacy_global_profile(config: dict[str, Any]) -> dict[str, Any]:
@@ -2795,6 +2875,118 @@ def write_html_page(path: Path, title: str, body: str, provenance: dict[str, Any
     )
 
 
+def settings_current_value(config_key: str, config_view: dict[str, Any]) -> str:
+    view_key = {
+        "artifactDirectory": "artifactDirectory",
+        "profileName": "profileName",
+        "weeklyReportDefaults.range": "weeklyRangeLabel",
+        "weeklyReportDefaults.startDay": "weeklyRangeLabel",
+        "weeklyReportDefaults.endDay": "weeklyRangeLabel",
+        "weeklyReportDefaults.lookbackDays": "weeklyRangeLabel",
+        "ceoReportTone": "tone",
+    }.get(config_key)
+    if view_key:
+        value = text_value(config_view.get(view_key)) or "Not set"
+    elif config_key == "codeRepos":
+        repos = config_view.get("evidenceRepos")
+        value = ", ".join(text_value(repo) for repo in repos) if isinstance(repos, list) else ""
+        value = value or "None configured"
+    else:
+        return "Not shown on this shareable page"
+    return redact_text(value)[0]
+
+
+def render_settings_page(
+    wiki_root: Path,
+    config_view: dict[str, Any],
+    *,
+    generated_at: str | None = None,
+) -> None:
+    generated_at = generated_at or utc_now()
+    rows = []
+    for flag, config_key, description in INIT_REPORT_SETTING_FLAGS:
+        rows.append(
+            f"""<tr>
+  <th scope="row"><code>{esc(flag)}</code></th>
+  <td><code>{esc(config_key)}</code></td>
+  <td>{esc(settings_current_value(config_key, config_view))}</td>
+  <td>{esc(description)}</td>
+</tr>"""
+        )
+
+    current_profile = settings_current_value("profileName", config_view)
+    default_profile = redact_text(text_value(config_view.get("defaultProfile")) or "Not set")[0]
+    tool_version = redact_text(text_value(config_view.get("toolVersion")) or "Not set")[0]
+    content = f"""
+  <div class="report-body">
+    <section class="artifact-section" aria-labelledby="settings-update-behavior">
+      <h2 id="settings-update-behavior">How updates work</h2>
+      <p class="artifact-note">Re-running <code>dzcto init</code> with only some flags merges over the existing named profile. Every value you do not pass is preserved; omitted flags do not reset the profile.</p>
+      <p class="artifact-note">Saving preferences also switches the global <code>defaultProfile</code> to the named profile unless <code>--no-switch-default</code> is passed.</p>
+    </section>
+
+    <section class="artifact-section" aria-labelledby="settings-current-profile">
+      <h2 id="settings-current-profile">Current profile</h2>
+      <div class="reports reports-supporting">
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Profile</span><span class="rp-name">{esc(current_profile)}</span></div></div>
+          <p class="rp-prev">The profile whose report settings are shown below.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Global defaultProfile</span><span class="rp-name">{esc(default_profile)}</span></div></div>
+          <p class="rp-prev">The profile used when a Day Zero CTO command does not name one.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Tool version</span><span class="rp-name">{esc(tool_version)}</span></div></div>
+          <p class="rp-prev">The Day Zero CTO version that generated this page.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="artifact-section" aria-labelledby="settings-init-flags">
+      <h2 id="settings-init-flags">Change settings with dzcto init</h2>
+      <p class="artifact-note">Current values are limited to the share-safe profile view. Local paths, credentials, and fields outside that view are never echoed here.</p>
+      <div class="markdown-table">
+        <table>
+          <caption>Report settings and the dzcto init flags that update them</caption>
+          <thead>
+            <tr>
+              <th scope="col">Flag</th>
+              <th scope="col">Config key</th>
+              <th scope="col">Current value</th>
+              <th scope="col">What it sets</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(rows)}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+"""
+    provenance = provenance_payload(
+        wiki_root,
+        artifact_id="wiki-settings",
+        artifact_kind="settings-page",
+        relative_path="settings.html",
+        title="Day Zero CTO Report Settings",
+        generated_at=generated_at,
+    )
+    body = page_shell(
+        content,
+        prefix="",
+        eyebrow="CEO Reports - Day Zero CTO",
+        title="Report Settings",
+        subtitle="Review the current report defaults and the dzcto init flags that change them.",
+        stamp=f"Last updated {display_timestamp(generated_at)}",
+        crumbs=[("Settings", None)],
+        sticky_title="Report Settings",
+    )
+    write_html_page(wiki_root / "settings.html", "Day Zero CTO Report Settings", body, provenance)
+    update_manifest(wiki_root, provenance)
+
+
 def render_report_page(title: str, date: str, kind: str, body: str, provenance: dict[str, Any], sticky_title: str, lede: str = "") -> str:
     safe_title = esc(title)
     # When the report carries a lead summary, it becomes the masthead deck and the
@@ -2922,6 +3114,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     today = today or dt.date.today()
 
     config = project_config(wiki_root)
+    config_view = profile_config_view(config, wiki_root)
     strategy_path = core_dir / "STRATEGY.md"
     company = company_name(strategy_path, project_folder, config)
     description = company_description(strategy_path, config)
@@ -2947,14 +3140,10 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     weekly_range = text_value(weekly_defaults.get("range")) or "not_configured"
     weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
     weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
-    lookback = text_value(weekly_defaults.get("lookbackDays"))
+    weekly_label = weekly_range_label(config)
     if weekly_range == "since_last_report":
-        weekly_label = weekly_range
         weekly_kpi_value = "Since last"
     else:
-        weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
-        if lookback:
-            weekly_label = f"{weekly_label}; {lookback} days"
         weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
     tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
     artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
@@ -3069,7 +3258,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     </div>
   </details>
 
-  <details class="section" id="sec-settings" open>
+  <details class="section" id="sec-settings">
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">02</span>
@@ -3079,13 +3268,36 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     <div class="sec-body">
       <div class="reports reports-supporting">
         <article class="report">
-          <div class="rp-top"><div class="rp-head"><span class="rp-role">Weekly range</span><span class="rp-name">{esc(weekly_label)}</span></div></div>
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Weekly range</span><span class="rp-name">{esc(config_view["weeklyRangeLabel"])}</span></div></div>
           <p class="rp-prev">Used by /dzcto-ceo-report-weekly.</p>
         </article>
         <article class="report">
           <div class="rp-top"><div class="rp-head"><span class="rp-role">Tone</span><span class="rp-name">CEO report voice</span></div></div>
           <p class="rp-prev">{esc(tone)}</p>
         </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Profile name</span><span class="rp-name">{esc(config_view["profileName"])}</span></div></div>
+          <p class="rp-prev">Active workspace profile.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">defaultProfile</span><span class="rp-name">{esc(config_view["defaultProfile"])}</span></div></div>
+          <p class="rp-prev">Default profile for Day Zero CTO commands.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Evidence repos</span><span class="rp-name">{esc(config_view["evidenceRepoCount"])}</span></div></div>
+          <p class="rp-prev">{esc(", ".join(config_view["evidenceRepos"]) or "None configured")}</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Tool version</span><span class="rp-name">{esc(config_view["toolVersion"])}</span></div></div>
+          <p class="rp-prev">Version used to generate this index.</p>
+        </article>
+        <a class="report" href="settings.html">
+          <div class="rp-top">
+            <div class="rp-head"><span class="rp-role">Settings guide</span><span class="rp-name">Change report defaults</span></div>
+            <span class="rp-open-top">Open</span>
+          </div>
+          <p class="rp-prev">See how to update these values with dzcto init.</p>
+        </a>
       </div>
     </div>
   </details>
@@ -3112,6 +3324,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     )
     write_html_page(wiki_root / "index.html", dashboard_title(company), body, provenance)
     update_manifest(wiki_root, provenance)
+    render_settings_page(wiki_root, config_view, generated_at=generated_at)
 
 
 LocatedSecretFinding = tuple[str, SecretFinding]
