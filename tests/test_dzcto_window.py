@@ -183,6 +183,169 @@ class TestWarnNeverFailReads(WindowResolutionTestCase):
         self.assertEqual(result["days"], 0)
 
 
+class TestWindowCommand(unittest.TestCase):
+    """End-to-end `dzcto window` CLI behavior, mirroring tests/test_dzcto_evidence.py."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.home = self.root / "home"
+        self.home.mkdir()
+        self.artifacts = self.root / "artifacts"
+        self.sidecar = self.artifacts / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        self.reports = self.artifacts / "reports" / "ceo-updates"
+        self.reports.mkdir(parents=True)
+
+    def write_local_config(self, **weekly_defaults) -> None:
+        config = {"weeklyReportDefaults": weekly_defaults} if weekly_defaults else {}
+        (self.sidecar / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    def write_global_profile(self, name: str, **profile) -> None:
+        config_dir = self.home / ".dzcto"
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / "config.json").write_text(
+            json.dumps({"defaultProfile": name, "profiles": {name: profile}}), encoding="utf-8"
+        )
+
+    def write_weekly(self, end: str, start: str) -> Path:
+        path = self.reports / f"{end}-ceo-report-{start}-to-{end}.json"
+        path.write_text(json.dumps(weekly_report(start, end)), encoding="utf-8")
+        return path
+
+    def run_cli(self, *args: str, check: bool = True):
+        import os
+        import subprocess
+
+        env = os.environ.copy()
+        env["HOME"] = str(self.home)
+        return subprocess.run(
+            [sys.executable, str(REPO / "scripts" / "dzcto.py"), "window", *args],
+            capture_output=True,
+            text=True,
+            check=check,
+            env=env,
+        )
+
+    def test_since_last_report_range_resolves_the_cursor_window(self):
+        self.write_local_config(range="since_last_report")
+        self.write_weekly("2026-07-07", "2026-07-01")
+        self.write_weekly("2026-07-14", "2026-07-08")
+
+        result = self.run_cli("--artifacts-dir", str(self.artifacts), "--as-of", "2026-07-23")
+        data = json.loads(result.stdout)
+
+        self.assertEqual(data["mode"], "since_last_report")
+        self.assertEqual(data["range"], "since_last_report")
+        self.assertEqual(data["start"], "2026-07-15")
+        self.assertEqual(data["end"], "2026-07-23")
+        self.assertEqual(data["days"], 9)
+        self.assertFalse(data["empty"])
+        self.assertIsNone(data["fallback_reason"])
+        self.assertEqual(data["cursor"]["window_end"], "2026-07-14")
+
+    def test_day_based_range_defers_instead_of_resolving(self):
+        self.write_local_config(range="previous_completed_week", startDay="Friday", endDay="Thursday")
+        self.write_weekly("2026-07-14", "2026-07-08")
+
+        result = self.run_cli("--artifacts-dir", str(self.artifacts), "--as-of", "2026-07-23")
+        data = json.loads(result.stdout)
+
+        # The resolver owns since_last_report only; every other range is an explicit deferral
+        # so the skill's day-based path is a declared branch rather than an accident.
+        self.assertEqual(data["mode"], "day_based")
+        self.assertEqual(data["range"], "previous_completed_week")
+        self.assertIsNone(data["start"])
+        self.assertEqual(data["end"], "2026-07-23")
+        self.assertIsNone(data["cursor"])
+        self.assertEqual(result.returncode, 0)
+
+    def test_absent_weekly_defaults_do_not_crash(self):
+        self.write_local_config()
+
+        data = json.loads(self.run_cli("--artifacts-dir", str(self.artifacts), "--as-of", "2026-07-23").stdout)
+
+        self.assertEqual(data["mode"], "day_based")
+        self.assertIsNone(data["range"])
+
+    def test_cursor_mode_without_any_prior_weekly_report_falls_back(self):
+        self.write_local_config(range="since_last_report")
+
+        data = json.loads(self.run_cli("--artifacts-dir", str(self.artifacts), "--as-of", "2026-07-23").stdout)
+
+        self.assertEqual(data["mode"], "fallback")
+        self.assertEqual(data["fallback_reason"], "no_prior_weekly_report")
+        self.assertEqual(data["end"], "2026-07-23")
+        self.assertIsNone(data["start"])
+
+    def test_profile_alone_resolves_the_same_window(self):
+        # The config-model trap: binding to the wrong .dzcto/config.json returns a
+        # valid-but-empty result with no error, so assert a real window, not just exit 0.
+        self.write_global_profile(
+            "acme",
+            artifactsDir=str(self.artifacts),
+            weeklyReportDefaults={"range": "since_last_report"},
+        )
+        self.write_weekly("2026-07-14", "2026-07-08")
+
+        data = json.loads(self.run_cli("--profile", "acme", "--as-of", "2026-07-23").stdout)
+
+        self.assertEqual(data["mode"], "since_last_report")
+        self.assertEqual(data["start"], "2026-07-15")
+        self.assertEqual(data["days"], 9)
+
+    def test_unresolvable_artifact_folder_exits_2_with_guidance(self):
+        result = self.run_cli("--as-of", "2026-07-23", check=False)
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("No artifact/report folder could be resolved", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_non_iso_as_of_fails_clearly_without_a_traceback(self):
+        self.write_local_config(range="since_last_report")
+
+        result = self.run_cli("--artifacts-dir", str(self.artifacts), "--as-of", "23-07-2026", check=False)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--as-of must use YYYY-MM-DD format", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_stdout_stays_parseable_json_while_stderr_carries_notes(self):
+        self.write_local_config(range="since_last_report")
+        self.write_weekly("2026-07-07", "2026-07-01")
+        (self.reports / "2026-07-14-ceo-report-broken.json").write_text("{not json", encoding="utf-8")
+
+        result = self.run_cli("--artifacts-dir", str(self.artifacts), "--as-of", "2026-07-23")
+
+        self.assertIn("unreadable JSON", result.stderr)
+        self.assertEqual(json.loads(result.stdout)["cursor"]["window_end"], "2026-07-07")
+
+    def test_window_command_is_hidden_from_top_level_help(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(REPO / "scripts" / "dzcto.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        self.assertNotIn("window", result.stdout)
+
+    def test_window_command_still_has_its_own_help(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, str(REPO / "scripts" / "dzcto.py"), "window", "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        self.assertIn("--as-of", result.stdout)
+
+
 class TestWindowDerivation(unittest.TestCase):
     """The pure derivation, isolated from any filesystem read."""
 

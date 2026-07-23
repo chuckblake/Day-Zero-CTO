@@ -39,6 +39,10 @@ SKILLS_DIR = REPO_ROOT / "skills"
 DEFAULT_COMMAND_DEST = Path.home() / ".local" / "bin" / "dzcto"
 COMMAND_SHIM_MARKER = "Day Zero CTO stable command shim"
 UNKNOWN_VALUES = {"", "unknown", "tbd", "to be determined", "n/a", "none"}
+ARTIFACT_FOLDER_GUIDANCE = (
+    "No artifact/report folder could be resolved. Pass --artifacts-dir or configure "
+    "a profile with artifactsDir in ~/.dzcto/config.json.\n"
+)
 
 
 def script_path(name: str) -> Path:
@@ -96,7 +100,7 @@ def parse_commit_rows(output: str) -> list[dict[str, str]]:
     return rows
 
 
-def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
+def artifact_folder_and_profile(args: argparse.Namespace) -> tuple[Path | None, dict[str, Any]]:
     profile = profile_from_global(args.profile)
     if args.artifacts_dir:
         wiki_root = Path(args.artifacts_dir).expanduser().resolve()
@@ -105,6 +109,11 @@ def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, li
     else:
         wiki_root = default_artifacts_dir_from_global()
 
+    return wiki_root, profile
+
+
+def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
+    wiki_root, profile = artifact_folder_and_profile(args)
     if wiki_root is None:
         return None, []
 
@@ -336,10 +345,7 @@ def snapshot_window(args: argparse.Namespace) -> tuple[dt.date, dt.date]:
 def run_evidence(args: argparse.Namespace) -> int:
     wiki_root, repos = evidence_folder_and_repos(args)
     if wiki_root is None:
-        sys.stderr.write(
-            "No artifact/report folder could be resolved. Pass --artifacts-dir or configure "
-            "a profile with artifactsDir in ~/.dzcto/config.json.\n"
-        )
+        sys.stderr.write(ARTIFACT_FOLDER_GUIDANCE)
         return 2
 
     start, end = snapshot_window(args)
@@ -358,6 +364,55 @@ def run_evidence(args: argparse.Namespace) -> int:
         print(json.dumps(data, indent=2, sort_keys=True))
     else:
         print(data_path)
+    return 0
+
+
+def run_window(args: argparse.Namespace) -> int:
+    wiki_root, profile = artifact_folder_and_profile(args)
+    if wiki_root is None:
+        sys.stderr.write(ARTIFACT_FOLDER_GUIDANCE)
+        return 2
+
+    end = parse_snapshot_date(args.as_of, "--as-of") if args.as_of else dt.date.today()
+    config_path = sidecar_dir(wiki_root) / "config.json"
+    try:
+        config = read_json(config_path, {})
+    except (OSError, UnicodeError) as error:
+        print(f"dzcto: weekly-report config is unreadable: {config_path} ({error})", file=sys.stderr)
+        config = {}
+    local_defaults = config.get("weeklyReportDefaults") if isinstance(config, dict) else None
+    profile_defaults = profile.get("weeklyReportDefaults") if isinstance(profile, dict) else None
+    local_defaults = local_defaults if isinstance(local_defaults, dict) else {}
+    profile_defaults = profile_defaults if isinstance(profile_defaults, dict) else {}
+    range_value = (
+        local_defaults["range"]
+        if "range" in local_defaults
+        else profile_defaults.get("range")
+    )
+
+    if range_value == "since_last_report":
+        data = resolve_since_last_report_window(wiki_root, end)
+        has_cursor = data["cursor"] is not None
+        data.update(
+            {
+                "mode": "since_last_report" if has_cursor else "fallback",
+                "range": range_value,
+                "fallback_reason": None if has_cursor else "no_prior_weekly_report",
+            }
+        )
+    else:
+        data = {
+            "mode": "day_based",
+            "range": range_value,
+            "start": None,
+            "end": end.isoformat(),
+            "days": 0,
+            "empty": False,
+            "cursor": None,
+            "fallback_reason": None,
+        }
+
+    print(json.dumps(data, indent=2, sort_keys=True))
     return 0
 
 
@@ -892,6 +947,11 @@ def main(argv: list[str]) -> int:
     evidence.add_argument("--output-json", help="Write evidence JSON to this path")
     evidence.add_argument("--json", action="store_true", help="Print evidence JSON")
 
+    window = sub.add_parser("window", help=argparse.SUPPRESS)
+    window.add_argument("--artifacts-dir", help="Folder that directly stores reports and .dzcto/config.json")
+    window.add_argument("--profile", help="Named global profile to use when --artifacts-dir is omitted")
+    window.add_argument("--as-of", help="Run date, YYYY-MM-DD. Defaults to today")
+
     artifact = sub.add_parser("artifact", help="Generate a structured report artifact")
     artifact.add_argument("--project")
     artifact.add_argument("--artifacts-dir", help="Folder that directly stores index.html, reports/, and .dzcto/")
@@ -1021,6 +1081,9 @@ def main(argv: list[str]) -> int:
 
     if args.command == "evidence":
         return run_evidence(args)
+
+    if args.command == "window":
+        return run_window(args)
 
     if args.command == "artifact":
         artifact_args = ["--kind", args.kind, "--title", args.title]
