@@ -15,7 +15,15 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from dzcto_artifact import default_artifacts_dir_for_profile, default_artifacts_dir_from_global, profile_from_global
+from dzcto_artifact import (
+    date_value,
+    default_artifacts_dir_for_profile,
+    default_artifacts_dir_from_global,
+    normalize_report_folder,
+    profile_from_global,
+    read_json_file,
+    report_effective_date,
+)
 from dzcto_common import (
     TOOL_VERSION,
     read_json,
@@ -113,6 +121,85 @@ def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, li
             seen.add(key)
             repos.append(path)
     return wiki_root, repos
+
+
+def latest_weekly_report_cursor(wiki_root: Path) -> tuple[Path, dt.date] | None:
+    reports_dir = wiki_root / "reports" / normalize_report_folder("ceo-updates")
+    if not reports_dir.is_dir():
+        print(f"dzcto: weekly-report cursor directory not found: {reports_dir}", file=sys.stderr)
+        return None
+
+    try:
+        report_paths = sorted(reports_dir.glob("*.json"))
+    except OSError:
+        print(f"dzcto: weekly-report cursor directory is unreadable: {reports_dir}", file=sys.stderr)
+        return None
+
+    candidates: list[tuple[dt.date, str, Path]] = []
+    for path in report_paths:
+        if path.name == "data.json":
+            continue
+        try:
+            data = read_json_file(path, None)
+        except (OSError, UnicodeError):
+            data = None
+        if not isinstance(data, dict):
+            print(f"dzcto: skipping weekly-report cursor candidate {path.name} (unreadable JSON)", file=sys.stderr)
+            continue
+
+        # Coverage cursors are weekly-only. Prior-report diff selection may fall back to
+        # another report type because comparison and coverage are deliberately different jobs.
+        if data.get("report_type") != "weekly":
+            continue
+        effective_date = date_value(report_effective_date(path, data))
+        if effective_date is None:
+            print(f"dzcto: skipping weekly-report cursor candidate {path.name} (no resolvable date)", file=sys.stderr)
+            continue
+        candidates.append((effective_date, path.name, path))
+
+    if not candidates:
+        return None
+    effective_date, _, path = max(candidates)
+    return path, effective_date
+
+
+def derive_since_last_report_window(cursor_end: dt.date, as_of: dt.date) -> tuple[dt.date, dt.date, int, bool]:
+    start = cursor_end + dt.timedelta(days=1)
+    empty = start > as_of
+    return start, as_of, max((as_of - start).days + 1, 0), empty
+
+
+def resolve_since_last_report_window(wiki_root: Path, as_of: dt.date | None = None) -> dict[str, Any]:
+    end = as_of or dt.date.today()
+    cursor = latest_weekly_report_cursor(wiki_root)
+    if cursor is None:
+        return {
+            "start": None,
+            "end": end.isoformat(),
+            "days": 0,
+            "empty": False,
+            "cursor": None,
+        }
+
+    report_path, cursor_end = cursor
+    start, end, days, empty = derive_since_last_report_window(cursor_end, end)
+    if empty:
+        relation = "is after" if cursor_end > end else "already covers"
+        print(
+            f"dzcto: weekly-report cursor {cursor_end.isoformat()} {relation} "
+            f"run date {end.isoformat()}; window is empty",
+            file=sys.stderr,
+        )
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "days": days,
+        "empty": empty,
+        "cursor": {
+            "report": report_path.relative_to(wiki_root).as_posix(),
+            "window_end": cursor_end.isoformat(),
+        },
+    }
 
 
 def evidence_log_args(start: dt.date, end: dt.date, *, merges_only: bool = False) -> list[str]:
