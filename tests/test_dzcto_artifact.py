@@ -643,6 +643,97 @@ class TestReportChangesHtml(unittest.TestCase):
         self.assertEqual(artifact.metric_delta_items(current, previous), [])
 
 
+class TestWeekOverWeekWindowLength(unittest.TestCase):
+    """Varying-length windows must be visible wherever their metrics are compared."""
+
+    NINE_DAYS = {"start": "2026-07-15", "end": "2026-07-23"}
+    SEVEN_DAYS = {"start": "2026-06-19", "end": "2026-06-25"}
+
+    def render(self, current, previous, previous_date="2026-06-25"):
+        return artifact.report_changes_html("ceo-updates", current, previous, previous_date)
+
+    def test_window_line_names_both_lengths_and_precedes_the_metric_deltas(self):
+        current = v1_report(window=self.NINE_DAYS, metrics={"prs_merged": 8})
+        html = self.render(current, v1_report(metrics={"prs_merged": 5}))
+
+        self.assertIn("Window:", html)
+        self.assertIn("9 days", html)
+        self.assertIn("(2026-07-15 to 2026-07-23)", html)
+        self.assertIn("prior 7 days", html)
+        self.assertLess(
+            html.index("Window:"), html.index("prs_merged"),
+            "the reader needs the denominator before the numbers",
+        )
+
+    def test_window_line_never_uses_an_arrow(self):
+        # test_disjoint_metrics_render_no_delta asserts no "→" anywhere in the output,
+        # so the window line must read "start to end" rather than "start → end".
+        html = self.render(v1_report(window=self.NINE_DAYS), v1_report())
+
+        self.assertIn("Window:", html)
+        self.assertNotIn("2026-07-15 → 2026-07-23", html)
+
+    def test_equal_length_windows_still_disclose(self):
+        html = self.render(v1_report(), v1_report())
+
+        # Disclosure, not anomaly flagging — it renders even when nothing varies.
+        self.assertIn("Window:", html)
+        self.assertIn("7 days", html)
+        self.assertIn("prior 7 days", html)
+
+    def test_window_line_renders_without_any_numeric_metric_delta(self):
+        current = v1_report(window=self.NINE_DAYS, metrics={"note": "qualitative"})
+        html = self.render(current, v1_report(metrics={"note": "qualitative"}))
+
+        self.assertIn("Window:", html)
+        self.assertIn("9 days", html)
+
+    def test_window_line_does_not_suppress_the_no_material_changes_fallback(self):
+        html = self.render(v1_report(), v1_report())
+
+        self.assertIn("Window:", html)
+        self.assertIn("No material structured changes", html)
+
+    def test_single_day_window_renders_as_one_day(self):
+        current = v1_report(window={"start": "2026-07-23", "end": "2026-07-23"})
+        html = self.render(current, v1_report())
+
+        self.assertIn("1 day", html)
+        self.assertNotIn("1 days", html)
+
+    def test_prior_window_missing_start_omits_the_line(self):
+        previous = v1_report(window={"end": "2026-06-25"})
+        html = self.render(v1_report(window=self.NINE_DAYS), previous)
+
+        self.assertNotIn("Window:", html)
+
+    def test_reversed_window_omits_the_line_rather_than_rendering_a_negative_length(self):
+        current = v1_report(window={"start": "2026-07-23", "end": "2026-07-15"})
+        html = self.render(current, v1_report())
+
+        self.assertNotIn("Window:", html)
+
+    def test_non_iso_window_values_omit_the_line_without_aborting(self):
+        current = v1_report(window={"start": "last Monday", "end": "today"})
+        html = self.render(current, v1_report())
+
+        self.assertNotIn("Window:", html)
+        self.assertIn("Week over week", artifact.report_changes_html("ceo-updates", current, None, ""))
+
+    def test_first_report_placeholder_is_unchanged(self):
+        html = artifact.report_changes_html("ceo-updates", v1_report(), None, "")
+
+        self.assertIn("First report", html)
+        self.assertNotIn("Window:", html)
+
+    def test_window_values_are_html_escaped_like_their_neighbours(self):
+        current = v1_report(window=self.NINE_DAYS)
+        html = self.render(current, v1_report())
+
+        self.assertIn("<li><strong>Window:</strong>", html)
+        self.assertNotIn("<script", html)
+
+
 class TestCitedEvidenceSources(unittest.TestCase):
     def test_empty_missing_and_blank_only_sources_are_not_cited(self):
         for data in ({}, {"sources": []}, {"sources": [{}, {"detail": "No title"}, "   "]}):

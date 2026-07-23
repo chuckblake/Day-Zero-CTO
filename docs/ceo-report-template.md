@@ -103,15 +103,19 @@ authors it (mechanical diffs cannot hallucinate).
 
 1. Heading naming the actual prior report date ("… since the last report was run on
    `<date>`") — never a relative "last week" claim.
-2. Metric deltas, for keys numeric in both reports, with direction (`prs_merged 5 → 8`).
-3. Added / no-longer-listed / no-items-this-window items per group — Progress, Risks / Blockers,
+2. Window lengths for the current and prior reports, including the current start and end dates
+   (`Window: 9 days (2026-07-15 to 2026-07-23); prior 7 days.`). This line renders whenever both
+   windows have resolvable, ordered start and end dates, even when no numeric metric delta renders;
+   otherwise it is omitted rather than guessed.
+3. Metric deltas, for keys numeric in both reports, with direction (`prs_merged 5 → 8`).
+4. Added / no-longer-listed / no-items-this-window items per group — Progress, Risks / Blockers,
    Asks / Decisions, Next. "No longer listed" is deliberate phrasing for partial removals: a
    mechanical diff cannot distinguish *completed* from *dropped*. When a current group is empty
    and the prior report listed items, the renderer says "No items this window" and names the prior
    items, because calling them completed, dropped, or new would be a lie. A group missing from the
    prior report renders "not comparable — prior report lacked this section" rather than claiming
    everything is new.
-4. When nothing changed: "No material structured changes."
+5. When nothing changed: "No material structured changes."
 
 ## Conformance tiers
 
