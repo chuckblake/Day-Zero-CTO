@@ -440,6 +440,8 @@ def print_quickstart(project: Path | None = None) -> None:
                  --weekly-end-day "Thursday" \\
                  --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
 
+               Weekly range values: previous_completed_week, last_7_days, since_last_report.
+
             3. Generate reports
                /dzcto-ceo-report-weekly
                /dzcto-ceo-report
@@ -472,6 +474,7 @@ def command_reference_text(project: Path | None = None) -> str:
                      [--weekly-lookback-days N] [--ceo-report-tone <text>] [--repo <path> ...]
               Create or refresh the artifact folder, .dzcto/config.json, reports/ceo-updates/, index.html,
               and a named profile in ~/.dzcto/config.json for cross-repo defaults.
+              Weekly range values: previous_completed_week, last_7_days, since_last_report.
           dzcto artifact --profile <name> --kind ceo-updates --title <title>
                          [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Render a CEO report and refresh the index. If --profile is omitted, use defaultProfile.

@@ -92,6 +92,15 @@ That global config stores named profiles so the same skill can be used from any 
 }
 ```
 
+`range` also accepts `since_last_report`, an alternative to the day-based windows above. It starts
+the weekly window the day after the previous weekly report's `window.end` and runs through the run
+date, so every calendar day lands in exactly one report and a skipped week self-heals into a longer
+one. It needs no `startDay` / `endDay`:
+
+```json
+"weeklyReportDefaults": { "range": "since_last_report" }
+```
+
 When no `--profile` is provided, report commands use `defaultProfile`. Use `--profile getmusic` to select a profile explicitly.
 
 ## CEO Reports
@@ -162,7 +171,7 @@ Useful keys:
 | `companyName` | `--company-name` | Company name shown on the report index. |
 | `companyDescription` | `--company-description` | Short company summary. |
 | `companyUrl` | `--company-url` | Company website URL kept as context. |
-| `weeklyReportDefaults` | `--weekly-range`, `--weekly-start-day`, `--weekly-end-day`, `--weekly-lookback-days` | Defaults for `/dzcto-ceo-report-weekly`. |
+| `weeklyReportDefaults` | `--weekly-range`, `--weekly-start-day`, `--weekly-end-day`, `--weekly-lookback-days` | Defaults for `/dzcto-ceo-report-weekly`. Range values include `previous_completed_week`, `last_7_days`, and `since_last_report`; the latter starts the day after the previous weekly report's `window.end` and runs through the run date so every calendar day lands in exactly one report. |
 | `ceoReportTone` | `--ceo-report-tone` | Tone guidance for CEO reports. |
 | `reportPromptContext` | `--report-prompt-context` | Extra prompt steering appended to generated prompt cards. |
 | `codeRepos` | `--repo` | Optional read-only evidence repos. |
