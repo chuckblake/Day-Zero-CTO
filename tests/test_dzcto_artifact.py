@@ -17,7 +17,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import dzcto_artifact as artifact  # noqa: E402
 
 GITHUB_TOKEN = "ghp_" + "AbCdEf1234567890AbCdEf1234567890AbCd"
-AWS_TOKEN = "AKIAABCDEFGHIJKLMNOP"
+AWS_TOKEN = "AKIA" + "ABCDEFGHIJKLMNOP"
 LOW_GENERIC_SECRET = "api_key = \"dGhpcy1pcy1hLXZlcnktc2VjcmV0LXRva2Vu\""
 LOW_GENERIC_VALUE = "dGhpcy1pcy1hLXZlcnktc2VjcmV0LXRva2Vu"
 GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
