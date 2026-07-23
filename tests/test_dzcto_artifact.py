@@ -262,6 +262,11 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         self.reports_dir = self.workspace / "reports" / "ceo-updates"
         self.reports_dir.mkdir(parents=True)
         self.addCleanup(self._tmp.cleanup)
+        # render_index reads the global config for defaultProfile (DAYZEROCTO-14); pin it so
+        # these tests never depend on the developer's real ~/.dzcto/config.json.
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def render(self, today: str) -> str:
         artifact.render_index(self.workspace, self.workspace, today=dt.date.fromisoformat(today))
@@ -320,6 +325,11 @@ class TestRenderIndexWeeklyDefaultTile(unittest.TestCase):
         self.sidecar.mkdir(parents=True)
         (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
         self.addCleanup(self._tmp.cleanup)
+        # render_index reads the global config for defaultProfile (DAYZEROCTO-14); pin it so
+        # these tests never depend on the developer's real ~/.dzcto/config.json.
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def render(self, **weekly_defaults) -> str:
         config = {"weeklyReportDefaults": weekly_defaults} if weekly_defaults else {}
@@ -1356,6 +1366,104 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertIn("report-changes", html)
         self.assertNotIn(GITHUB_TOKEN, html)
         self.assertIn("[REDACTED:github_pat]", html)
+
+
+class TestRenderIndexConfigPanel(unittest.TestCase):
+    """DAYZEROCTO-14 U2: the Defaults panel and its settings link."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.sidecar = self.workspace / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+        # render_index now reads the GLOBAL config for defaultProfile. Without this patch
+        # every index test would depend on the developer's real ~/.dzcto/config.json.
+        self.global_config = {"defaultProfile": "test-default"}
+        patcher = mock.patch.object(artifact, "read_global_config", lambda: dict(self.global_config))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def render(self, config=None) -> str:
+        (self.sidecar / "config.json").write_text(json.dumps(config or {}), encoding="utf-8")
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 7, 23))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def settings_section(self, html: str) -> str:
+        start = html.index('id="sec-settings"')
+        return html[start : html.index("</details>", start)]
+
+    def test_panel_renders_every_configured_value(self):
+        section = self.settings_section(
+            self.render(
+                {
+                    "profile": "arwen",
+                    "weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"},
+                    "ceoReportTone": "direct and calm",
+                    "codeRepos": ["/Users/someone/Code/arwen-api", "/Users/someone/Code/arwen-web"],
+                }
+            )
+        )
+
+        self.assertIn("arwen", section)
+        self.assertIn("test-default", section)
+        self.assertIn("previous_completed_week", section)
+        self.assertIn("direct and calm", section)
+        self.assertIn("arwen-api", section)
+        self.assertIn(artifact.TOOL_VERSION, section)
+
+    def test_panel_links_to_the_settings_page(self):
+        self.assertIn('href="settings.html"', self.settings_section(self.render()))
+
+    def test_settings_section_is_collapsed_for_a_ceo_facing_share(self):
+        html = self.render()
+        start = html.index('id="sec-settings"')
+        # The <details> opening tag must not carry `open` — operator settings stay folded away.
+        self.assertNotIn("open", html[html.rindex("<details", 0, start) : html.index(">", start)])
+
+    def test_empty_config_still_renders_a_usable_panel_and_link(self):
+        section = self.settings_section(self.render())
+
+        self.assertIn('href="settings.html"', section)
+        self.assertIn(artifact.TOOL_VERSION, section)
+        self.assertNotIn(">None<", section)
+
+    def test_repo_paths_never_reach_the_shareable_index(self):
+        html = self.render({"codeRepos": ["/Users/chuckblake/Documents/Code/day-zero-cto"]})
+        section = self.settings_section(html)
+
+        self.assertIn("day-zero-cto", section)
+        self.assertNotIn("/Users/chuckblake/Documents/Code/day-zero-cto", section)
+
+    def test_displayed_tone_matches_the_tone_the_prompt_card_uses(self):
+        # One tone source. If the panel showed "Not set" while the copyable prompt carried
+        # the built-in default, the page would state a voice the reports do not use.
+        html = self.render()
+        default_tone = "direct, concise, business-facing, calm about risk, explicit about asks"
+
+        self.assertIn(default_tone, self.settings_section(html))
+        self.assertIn(default_tone, html)
+
+    def test_config_panel_does_not_migrate_into_the_kpi_window(self):
+        # Pins the absence-proxy trap in TestRenderIndexWeeklyDefaultTile: that helper slices
+        # 400 characters after the "Weekly default" KPI label and asserts no weekday detail.
+        html = self.render({"weeklyReportDefaults": {"range": "since_last_report", "startDay": "Friday", "endDay": "Thursday", "lookbackDays": 7}})
+        start = html.index('<div class="k-label">Weekly default</div>')
+        window = html[start : start + 400]
+
+        for forbidden in (" to ", "Friday", "Thursday", "7 days"):
+            self.assertNotIn(forbidden, window)
+
+    def test_regenerating_the_index_refreshes_the_displayed_config(self):
+        first = self.settings_section(self.render({"weeklyReportDefaults": {"range": "since_last_report"}}))
+        self.assertIn("since_last_report", first)
+
+        second = self.settings_section(
+            self.render({"weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Monday", "endDay": "Sunday"}})
+        )
+        self.assertIn("previous_completed_week", second)
+        self.assertNotIn("since_last_report", second)
 
 
 class TestProfileConfigView(unittest.TestCase):

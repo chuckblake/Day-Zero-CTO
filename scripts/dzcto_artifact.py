@@ -2987,6 +2987,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     today = today or dt.date.today()
 
     config = project_config(wiki_root)
+    config_view = profile_config_view(config, wiki_root)
     strategy_path = core_dir / "STRATEGY.md"
     company = company_name(strategy_path, project_folder, config)
     description = company_description(strategy_path, config)
@@ -3130,7 +3131,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     </div>
   </details>
 
-  <details class="section" id="sec-settings" open>
+  <details class="section" id="sec-settings">
     <summary>
       <span class="chev" aria-hidden="true"></span>
       <span class="sec-num">02</span>
@@ -3140,13 +3141,36 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     <div class="sec-body">
       <div class="reports reports-supporting">
         <article class="report">
-          <div class="rp-top"><div class="rp-head"><span class="rp-role">Weekly range</span><span class="rp-name">{esc(weekly_label)}</span></div></div>
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Weekly range</span><span class="rp-name">{esc(config_view["weeklyRangeLabel"])}</span></div></div>
           <p class="rp-prev">Used by /dzcto-ceo-report-weekly.</p>
         </article>
         <article class="report">
           <div class="rp-top"><div class="rp-head"><span class="rp-role">Tone</span><span class="rp-name">CEO report voice</span></div></div>
           <p class="rp-prev">{esc(tone)}</p>
         </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Profile name</span><span class="rp-name">{esc(config_view["profileName"])}</span></div></div>
+          <p class="rp-prev">Active workspace profile.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">defaultProfile</span><span class="rp-name">{esc(config_view["defaultProfile"])}</span></div></div>
+          <p class="rp-prev">Default profile for Day Zero CTO commands.</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Evidence repos</span><span class="rp-name">{esc(config_view["evidenceRepoCount"])}</span></div></div>
+          <p class="rp-prev">{esc(", ".join(config_view["evidenceRepos"]) or "None configured")}</p>
+        </article>
+        <article class="report">
+          <div class="rp-top"><div class="rp-head"><span class="rp-role">Tool version</span><span class="rp-name">{esc(config_view["toolVersion"])}</span></div></div>
+          <p class="rp-prev">Version used to generate this index.</p>
+        </article>
+        <a class="report" href="settings.html">
+          <div class="rp-top">
+            <div class="rp-head"><span class="rp-role">Settings guide</span><span class="rp-name">Change report defaults</span></div>
+            <span class="rp-open-top">Open</span>
+          </div>
+          <p class="rp-prev">See how to update these values with dzcto init.</p>
+        </a>
       </div>
     </div>
   </details>
