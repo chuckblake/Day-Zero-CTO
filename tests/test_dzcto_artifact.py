@@ -4,6 +4,7 @@ import datetime as dt
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -1464,6 +1465,65 @@ class TestRenderIndexConfigPanel(unittest.TestCase):
         )
         self.assertIn("previous_completed_week", second)
         self.assertNotIn("since_last_report", second)
+
+
+class TestSettingsFlagParity(unittest.TestCase):
+    """DAYZEROCTO-14 U4: the settings page cannot document a flag the CLI does not have.
+
+    scripts/dzcto.py builds its parser inline in main(), so there is no importable parser
+    object to introspect without refactoring main() -- explicitly out of scope in the plan.
+    Matching against the init subparser's source text catches the same regression (a renamed,
+    removed, or invented flag) at a fraction of the blast radius.
+    """
+
+    # Operator/plumbing flags a CTO-facing settings page deliberately does not document.
+    # Enumerated so the subset relationship is a decision, not an accident.
+    INTENTIONALLY_UNDOCUMENTED = {"--no-save-preferences", "--no-switch-default"}
+
+    def setUp(self):
+        self.cli_source = (REPO / "scripts" / "dzcto.py").read_text(encoding="utf-8")
+        start = self.cli_source.index('sub.add_parser(\n        "init"')
+        end = self.cli_source.index('sub.add_parser("install-command"', start)
+        self.init_block = self.cli_source[start:end]
+
+    def declared_init_flags(self) -> set:
+        return set(re.findall(r'init\.add_argument\("(--[a-z0-9-]+)"', self.init_block))
+
+    def test_every_documented_flag_exists_in_the_init_cli(self):
+        declared = self.declared_init_flags()
+        self.assertTrue(declared, "failed to parse any flags out of the init subparser")
+
+        for flag, _key, _description in artifact.INIT_REPORT_SETTING_FLAGS:
+            self.assertIn(flag, declared, f"{flag} is documented on the settings page but not declared by `dzcto init`")
+
+    def test_the_parity_check_actually_rejects_an_unknown_flag(self):
+        # Guards the guard: a matcher that accepted anything would pass the test above
+        # while catching no drift at all.
+        self.assertNotIn("--not-a-real-flag", self.declared_init_flags())
+
+    def test_undocumented_flags_are_an_enumerated_decision(self):
+        documented = {flag for flag, _key, _description in artifact.INIT_REPORT_SETTING_FLAGS}
+        missing = self.declared_init_flags() - documented
+
+        self.assertEqual(
+            missing,
+            self.INTENTIONALLY_UNDOCUMENTED,
+            "a `dzcto init` flag is neither documented on the settings page nor listed as "
+            "intentionally undocumented -- decide which it is",
+        )
+
+    def test_skill_doc_points_at_the_generated_page_instead_of_copying_it(self):
+        skill = (REPO / "skills" / "dzcto-init" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("settings.html", skill)
+        # SKILL.md's example invocation legitimately names most flags, so flag mentions are
+        # not the drift signal. Reproducing the table's per-flag DESCRIPTIONS would be -- that
+        # is the mapping the generated page owns as the single source of truth.
+        copied = [
+            description
+            for _flag, _key, description in artifact.INIT_REPORT_SETTING_FLAGS
+            if description in skill
+        ]
+        self.assertEqual(copied, [], f"SKILL.md re-copied settings-table descriptions: {copied}")
 
 
 class TestRenderSettingsPage(unittest.TestCase):
