@@ -1466,6 +1466,101 @@ class TestRenderIndexConfigPanel(unittest.TestCase):
         self.assertNotIn("since_last_report", second)
 
 
+class TestRenderSettingsPage(unittest.TestCase):
+    """DAYZEROCTO-14 U3: the generated, browser-viewable settings page."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.sidecar = self.workspace / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.object(artifact, "read_global_config", lambda: {"defaultProfile": "test-default"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def render(self, config=None) -> str:
+        (self.sidecar / "config.json").write_text(json.dumps(config or {}), encoding="utf-8")
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 7, 23))
+        return (self.workspace / "settings.html").read_text(encoding="utf-8")
+
+    def test_rendering_the_index_also_writes_the_settings_page(self):
+        self.render()
+        self.assertTrue((self.workspace / "settings.html").exists())
+
+    def test_page_documents_the_merge_over_semantics(self):
+        page = self.render()
+        self.assertIn("merges over", page)
+        self.assertIn("preserved", page)
+
+    def test_page_documents_the_default_profile_switch_and_its_opt_out(self):
+        page = self.render()
+        self.assertIn("defaultProfile", page)
+        self.assertIn("--no-switch-default", page)
+
+    def test_every_documented_flag_appears_on_the_page(self):
+        page = self.render()
+        for flag, _key, _description in artifact.INIT_REPORT_SETTING_FLAGS:
+            self.assertIn(flag, page, f"{flag} missing from the settings page")
+
+    def test_page_shows_the_readers_current_values(self):
+        page = self.render(
+            {
+                "profile": "arwen",
+                "weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"},
+                "ceoReportTone": "direct and calm",
+            }
+        )
+        self.assertIn("arwen", page)
+        self.assertIn("previous_completed_week", page)
+        self.assertIn("direct and calm", page)
+        self.assertIn("test-default", page)
+
+    def test_manifest_records_the_settings_page(self):
+        self.render()
+        manifest = json.loads((self.sidecar / "manifest.json").read_text(encoding="utf-8"))
+        paths = [item.get("relativePath") for item in manifest["artifacts"]]
+        self.assertIn("settings.html", paths)
+
+    def test_report_pruning_never_drops_the_settings_entry(self):
+        # prune_manifest_report_artifacts only removes entries under reports/; a root-level
+        # page must survive a second render.
+        self.render()
+        artifact.prune_manifest_report_artifacts(self.workspace)
+        self.render()
+        manifest = json.loads((self.sidecar / "manifest.json").read_text(encoding="utf-8"))
+        paths = [item.get("relativePath") for item in manifest["artifacts"]]
+        self.assertIn("settings.html", paths)
+        self.assertEqual(paths.count("settings.html"), 1)
+
+    def test_regenerating_refreshes_the_settings_page_values(self):
+        first = self.render({"weeklyReportDefaults": {"range": "since_last_report"}})
+        self.assertIn("since_last_report", first)
+
+        second = self.render({"weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Monday", "endDay": "Sunday"}})
+        self.assertIn("previous_completed_week", second)
+        self.assertNotIn("since_last_report", second)
+
+    def test_missing_sidecar_config_still_produces_a_usable_page(self):
+        page = self.render()
+        self.assertIn("dzcto init", page)
+        self.assertIn("--weekly-range", page)
+
+    def test_credential_shaped_config_is_never_echoed_verbatim(self):
+        page = self.render({"ceoReportTone": f"be terse; token {GITHUB_TOKEN}"})
+        self.assertNotIn(GITHUB_TOKEN, page)
+
+    def test_local_paths_never_reach_the_settings_page(self):
+        page = self.render({"codeRepos": ["/Users/chuckblake/Documents/Code/day-zero-cto"]})
+        self.assertIn("day-zero-cto", page)
+        self.assertNotIn("/Users/chuckblake/Documents/Code/day-zero-cto", page)
+
+    def test_settings_page_links_back_to_the_index(self):
+        page = self.render()
+        self.assertIn('href="index.html"', page)
+
+
 class TestProfileConfigView(unittest.TestCase):
     """DAYZEROCTO-14 U1: the config view the index panel and settings page both read."""
 
