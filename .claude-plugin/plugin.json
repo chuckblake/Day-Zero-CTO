@@ -2,7 +2,7 @@
   "name": "day-zero-cto",
   "displayName": "Day Zero CTO",
   "description": "A simplified Day Zero CTO workflow for CEO reports and durable report artifacts.",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "author": {
     "name": "Chuck Blake"
   },
