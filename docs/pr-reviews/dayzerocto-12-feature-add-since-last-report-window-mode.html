@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR Dossier — DAYZEROCTO-12: since_last_report window mode</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --fg: #1d1c1a; --muted: #6b6862; --rule: #e3e0da;
+    --card: #ffffff; --accent: #2f5d50; --low: #4a7c59; --med: #b07d2b; --high: #b4472b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16171a; --fg:#e8e6e1; --muted:#9a968e; --rule:#2c2e33;
+            --card:#1d1f23; --accent:#7fb8a4; --low:#7fb08a; --med:#d9a94f; --high:#e07a5f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 1.55rem; line-height:1.25; margin:0 0 6px; letter-spacing:-.01em; }
+  h2 { font-size: 1.05rem; margin: 36px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--rule); }
+  h3 { font-size: .95rem; margin: 20px 0 8px; }
+  p { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  table { border-collapse: collapse; width: 100%; margin: 0 0 16px; font-size: .9rem; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; width: 30%; white-space: nowrap; }
+  .card { background: var(--card); border:1px solid var(--rule); border-radius:10px; padding:16px 18px; margin: 0 0 16px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin: 0 0 20px; }
+  .kpi { background:var(--card); border:1px solid var(--rule); border-radius:10px; padding:12px 14px; }
+  .kpi .k { color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; }
+  .kpi .v { font-size:1.15rem; font-weight:600; margin-top:3px; }
+  .banner { border-radius:10px; padding:12px 16px; margin:0 0 22px; font-weight:600; border:1px solid; }
+  .banner.medium { background:rgba(176,125,43,.10); border-color:var(--med); color:var(--med); }
+  ul { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  code { font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.86em;
+         background:rgba(127,127,127,.13); padding:1px 5px; border-radius:4px; }
+  pre { background:var(--card); border:1px solid var(--rule); border-radius:8px; padding:12px 14px;
+        overflow-x:auto; font-size:.84rem; line-height:1.5; }
+  pre code { background:none; padding:0; }
+  details { border:1px solid var(--rule); border-radius:8px; padding:10px 14px; margin:0 0 10px; background:var(--card); }
+  summary { cursor:pointer; font-weight:600; font-size:.93rem; }
+  details[open] summary { margin-bottom:10px; }
+  .flag { display:inline-block; padding:3px 9px; border-radius:20px; font-size:.76rem;
+          font-weight:600; margin:0 6px 6px 0; border:1px solid; }
+  .flag.low { color:var(--low); border-color:var(--low); background:rgba(74,124,89,.10); }
+  .flag.med { color:var(--med); border-color:var(--med); background:rgba(176,125,43,.10); }
+  .fill { color:var(--muted); font-style:italic; }
+  .look th { color: var(--high); }
+  footer { margin-top:48px; padding-top:14px; border-top:1px solid var(--rule);
+           color:var(--muted); font-size:.82rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>DAYZEROCTO-12 — Add <code>since_last_report</code> window mode so every day lands in exactly one weekly report</h1>
+<p class="sub">PR reference dossier · generated for reviewers</p>
+
+<table>
+  <tr><th>Repo</th><td>chuckblake/Day-Zero-CTO</td></tr>
+  <tr><th>Branch</th><td><code>dayzerocto-12-feature-add-since-last-report-window-mode</code> → <code>main</code></td></tr>
+  <tr><th>PR</th><td>#24</td></tr>
+  <tr><th>Author</th><td>Chuck Blake</td></tr>
+  <tr><th>Date</th><td>2026-07-23</td></tr>
+  <tr><th>Commit</th><td><code>62b353a</code></td></tr>
+  <tr><th>Reviewers</th><td class="fill">not yet assigned</td></tr>
+</table>
+
+<div class="banner medium">Medium risk — changes what date range every weekly CEO report covers. No auth, payments, secrets, or schema touched.</div>
+
+<h2>Summary</h2>
+<p>
+Weekly CEO report windows were resolved by an <em>agent</em> reading <code>weeklyReportDefaults</code> prose,
+so a day-based rule like <code>previous_completed_week</code> produced a different window depending on which
+day the report was run — two honest runs could overlap or leave a gap. This adds a deterministic
+<code>dzcto window</code> CLI resolver and a <code>since_last_report</code> range that anchors each window on the
+previous weekly report's <code>window.end</code>, so every calendar day lands in exactly one report.
+Reviewers should focus on the cursor-selection rule and the empty-window contract.
+</p>
+
+<div class="grid">
+  <div class="kpi"><div class="k">Files changed</div><div class="v">12</div></div>
+  <div class="kpi"><div class="k">Churn</div><div class="v">+1648 / −19</div></div>
+  <div class="kpi"><div class="k">Tests</div><div class="v">174 green</div></div>
+  <div class="kpi"><div class="k">Database</div><div class="v">none</div></div>
+  <div class="kpi"><div class="k">Packages</div><div class="v">none</div></div>
+</div>
+
+<h2>Risk flags</h2>
+<p>
+  <span class="flag med">API behavior changes</span>
+  <span class="flag low">Config or deploy setup</span>
+</p>
+<ul>
+  <li><strong>API behavior changes</strong> — adds a new hidden CLI subcommand (<code>dzcto window</code>) with a
+      machine-parsed JSON STDOUT contract that <code>skills/dzcto-ceo-report-weekly</code> now depends on.
+      It also changes the rendered week-over-week section of every future report artifact.</li>
+  <li><strong>Config or deploy setup</strong> — <code>weeklyReportDefaults.range</code> gains a new accepted value.
+      Deliberately <em>not</em> validated (see tradeoffs), and the README's canonical example is unchanged,
+      so existing installs are unaffected until an operator opts in.</li>
+</ul>
+<p>Not flagged: no personal data, payments, auth/permissions, secrets, migrations, background jobs,
+or dependency changes appear in the diff.</p>
+
+<h2>Review guide</h2>
+<table class="look">
+  <tr><th>Look closely</th><td>
+    <code>scripts/dzcto.py</code> — <code>latest_weekly_report_cursor</code>: confirm the weekly-only filter is
+    the behavior you want (an <code>ad_hoc</code> report must not advance the coverage cursor), and that the
+    skip-and-warn paths can never raise.
+  </td></tr>
+  <tr><th></th><td>
+    <code>scripts/dzcto.py</code> — <code>derive_since_last_report_window</code> / <code>run_window</code>: the
+    empty-window contract. When the cursor is at or after the run date, <code>start &gt; end</code> and
+    <code>empty: true</code>. Consumers <strong>must not</strong> pipe that into <code>dzcto evidence</code>, which
+    hard-fails on an inverted range.
+  </td></tr>
+  <tr><th></th><td>
+    <code>scripts/dzcto_artifact.py</code> — <code>report_changes_html</code>: the new window-length line renders
+    for every report with a resolvable prior, so it changes existing artifacts, not just cursor-mode ones.
+  </td></tr>
+  <tr><th>Okay to skim</th><td>
+    <code>tests/test_dzcto_window.py</code> (new, 371 lines) and the <code>tests/test_dzcto_artifact.py</code>
+    additions — mechanical coverage of the cases above.
+    <code>README.md</code>, <code>INSTALL_FOR_AGENTS.md</code>, <code>CONCEPTS.md</code>,
+    <code>docs/ceo-report-template.md</code>, and the plan/solutions docs are prose only.
+  </td></tr>
+</table>
+
+<h2>What changed</h2>
+<ul>
+  <li>New hidden <code>dzcto window</code> subcommand emits one JSON object describing the run's window
+      (<code>mode</code>, <code>start</code>, <code>end</code>, <code>days</code>, <code>empty</code>, <code>cursor</code>,
+      <code>fallback_reason</code>). All diagnostics go to STDERR so STDOUT stays machine-parseable.</li>
+  <li><code>weeklyReportDefaults.range</code> accepts <code>since_last_report</code>; the window becomes
+      (previous weekly report's <code>window.end</code> + 1 day) … run date.</li>
+  <li>Skipping a week self-heals — the next report simply covers the whole elapsed span. No cap.</li>
+  <li>The report index KPI no longer describes a cursor-mode profile as <code>"Fri to Thu"</code>; it reads
+      <code>"Since last"</code> and suppresses stale weekday keys.</li>
+  <li>The week-over-week section now states each window's length beside the metric deltas, so a
+      9-day window is never silently compared against a 7-day one.</li>
+  <li><code>skills/dzcto-ceo-report-weekly</code> now consumes the resolver instead of interpreting the config,
+      including an explicit branch for the already-covered case.</li>
+</ul>
+
+<h2>How to check it</h2>
+<pre><code># Full suite (AGENTS.md:48)
+python3 -m unittest discover -s tests
+
+# Just this feature
+python3 -m unittest tests.test_dzcto_window</code></pre>
+<p><strong>Manual check</strong> — resolve a window against a throwaway artifact folder:</p>
+<pre><code>tmp=$(mktemp -d); mkdir -p "$tmp/.dzcto" "$tmp/reports/ceo-updates"
+echo '{"weeklyReportDefaults":{"range":"since_last_report"}}' &gt; "$tmp/.dzcto/config.json"
+echo '{"report_type":"weekly","window":{"start":"2026-07-08","end":"2026-07-14"}}' \
+  &gt; "$tmp/reports/ceo-updates/2026-07-14-ceo-report.json"
+python3 scripts/dzcto.py window --artifacts-dir "$tmp" --as-of 2026-07-23
+# expect: mode since_last_report, start 2026-07-15, end 2026-07-23, days 9</code></pre>
+<p><strong>Rollback plan</strong> — no migration and no persisted state; the cursor is derived on every call.
+Reverting the branch restores the previous behavior, and any profile still on a day-based
+<code>range</code> is unaffected either way.</p>
+
+<h2>Details</h2>
+
+<details>
+<summary>Why this approach</summary>
+<p>
+The report JSON already stores <code>window.end</code>, so a cursor needs <strong>zero new state</strong> — the next
+window derives directly from the newest weekly report. Anchoring on PRs instead would require
+recording per-report PR coverage, and PRs are not the only evidence (direct commits, notes, and CI
+events all feed a report).
+</p>
+<p>
+Ending at the run date rather than the last merged PR deliberately keeps quiet tails in the record:
+a quiet stretch is signal, not noise, and gapless coverage protects the streak metric that a
+double-counted or missed window would corrupt.
+</p>
+</details>
+
+<details>
+<summary>Other options considered</summary>
+<ul>
+  <li><strong>A <code>--range</code> flag on <code>dzcto evidence</code></strong> instead of a new subcommand — rejected:
+      the window is needed even when zero repos are configured, and it feeds three consumers (the
+      evidence call, the report's <code>window</code> field, and the report title). Folding it in would let the
+      collector's "no configured repos" degradation also lose the window.</li>
+  <li><strong>Cursor = newest report of any type</strong> — rejected: an ad-hoc report would silently swallow
+      days out of the weekly ritual, which is the exact gap this change closes.</li>
+  <li><strong>Porting all day-based modes into the resolver</strong> — deferred: it would triple the diff.
+      The resolver instead returns an explicit <code>day_based</code> deferral so the skill's fallback is a
+      declared branch rather than an accident.</li>
+</ul>
+</details>
+
+<details>
+<summary>Tradeoffs</summary>
+<ul>
+  <li><strong>Deliberate asymmetry with <code>locate_prior_report</code>.</strong> The coverage cursor is weekly-scoped;
+      the week-over-week diff baseline still falls back to any report type. Same file, different rules,
+      because one is a coverage ledger and the other is a narrative comparison baseline.</li>
+  <li><strong>Varying window lengths make deltas less apples-to-apples.</strong> Accepted per the issue —
+      surfaced via the window-length line rather than normalized away.</li>
+  <li><strong><code>range</code> stays unvalidated free text.</strong> An allow-list would reject untyped values operators
+      already have on disk and turn a config typo into a hard init failure.</li>
+  <li><strong><code>snapshot_window</code> is deliberately not reused.</strong> It <code>SystemExit</code>s when
+      <code>start &gt; end</code>, which is a legitimate state here.</li>
+</ul>
+</details>
+
+<details>
+<summary>Questions and gaps</summary>
+<ul>
+  <li><strong>Deferred:</strong> <code>previous_completed_week</code> / <code>last_7_days</code> / <code>lookbackDays</code> are
+      still resolved by the skill, not the CLI. Worth a follow-up once cursor mode has real usage.</li>
+  <li><strong>Not covered by tests:</strong> the added help-text lines in <code>print_quickstart</code> and
+      <code>command_reference_text</code>. Purely additive prose; no consumer assumption depends on them.</li>
+  <li><strong>Ordering hazard worth knowing:</strong> a report written with a wrong <code>window.end</code> poisons the
+      <em>next</em> window too. The fix is to correct the report JSON, not just re-run.</li>
+  <li><strong>Scope gate did not evaluate this branch</strong> — the plan declares files per-unit rather than in a
+      top-level <code>## Files</code> section, which <code>scope-check</code> reads as an empty allowlist and fails open.</li>
+</ul>
+</details>
+
+<footer>
+Generated 2026-07-23 by <code>/cb:pr-dossier</code> from the branch diff, commits, and
+<code>plans/dayzerocto-12-feature-add-since-last-report-window-mode.md</code>.
+Self-contained — no external resources.
+</footer>
+
+</div>
+</body>
+</html>
