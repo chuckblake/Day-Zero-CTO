@@ -310,6 +310,65 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         self.assertIn('<div class="k-val">2</div>', self.streak_tile(html))
 
 
+class TestRenderIndexWeeklyDefaultTile(unittest.TestCase):
+    """The weekly-default KPI card must not describe cursor mode in weekday terms."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.sidecar = self.workspace / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def render(self, **weekly_defaults) -> str:
+        config = {"weeklyReportDefaults": weekly_defaults} if weekly_defaults else {}
+        (self.sidecar / "config.json").write_text(json.dumps(config), encoding="utf-8")
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 7, 23))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def weekly_tile(self, html: str) -> str:
+        start = html.index('<div class="k-label">Weekly default</div>')
+        return html[start : start + 400]
+
+    def test_cursor_mode_does_not_render_a_weekday_range(self):
+        tile = self.weekly_tile(self.render(range="since_last_report"))
+
+        self.assertIn("Since last", tile)
+        self.assertNotIn(" to ", tile)
+
+    def test_cursor_mode_suppresses_stale_start_and_end_days(self):
+        # A profile switched to cursor mode often still carries its old weekday keys;
+        # rendering them would state a confident, wrong window shape.
+        html = self.render(range="since_last_report", startDay="Friday", endDay="Thursday", lookbackDays=7)
+        tile = self.weekly_tile(html)
+
+        self.assertNotIn("Friday", tile)
+        self.assertNotIn("Thursday", tile)
+        self.assertNotIn("Fri to Thu", tile)
+        self.assertNotIn("7 days", tile)
+
+    def test_day_based_range_still_renders_its_weekday_abbreviations(self):
+        tile = self.weekly_tile(
+            self.render(range="previous_completed_week", startDay="Friday", endDay="Thursday")
+        )
+
+        self.assertIn("Fri to Thu", tile)
+
+    def test_unconfigured_range_still_renders_the_needed_call_to_action(self):
+        tile = self.weekly_tile(self.render())
+
+        self.assertIn("Needed", tile)
+
+    def test_copyable_weekly_prompt_inherits_the_corrected_label(self):
+        html = self.render(range="since_last_report", startDay="Friday", endDay="Thursday")
+
+        # The prompt card and the KPI tile share one label source; proving the prompt is
+        # clean proves they did not drift into two independent formatters.
+        self.assertIn("since_last_report", html)
+        self.assertNotIn("since_last_report; Friday to Thursday", html)
+
+
 class TestLocatePriorReport(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

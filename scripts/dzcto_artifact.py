@@ -2926,10 +2926,14 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
     weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
     lookback = text_value(weekly_defaults.get("lookbackDays"))
-    weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
-    if lookback:
-        weekly_label = f"{weekly_label}; {lookback} days"
-    weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
+    if weekly_range == "since_last_report":
+        weekly_label = weekly_range
+        weekly_kpi_value = "Since last"
+    else:
+        weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
+        if lookback:
+            weekly_label = f"{weekly_label}; {lookback} days"
+        weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
     tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
     artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
     profile_name = profile_name_for_config(config, wiki_root)
