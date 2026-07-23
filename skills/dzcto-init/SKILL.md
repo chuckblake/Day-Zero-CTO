@@ -12,11 +12,12 @@ Set up the small Day Zero CTO surface for CEO reports only. Do not run or offer 
 1. Resolve the artifact/report location. If the user has not given one, ask where reports should live. Prefer a durable folder outside the code repo. The helper creates an `index.html`, `reports/ceo-updates/`, and `.dzcto/config.json` in that location. On refresh, the helper also re-renders existing structured CEO report HTML from sibling JSON so older reports pick up the current report format without changing report data.
 2. Resolve the company, CTO, or project profile name. If the user does not provide one, derive a short slug from the company/project, such as `getmusic`. This profile is how one global install supports multiple repos or CTO contexts.
 3. Capture a one-sentence company context summary for the index page and report prompts. Ask for this during init; do not tell the user to add extra source files.
-4. Ask what weekly reporting window they want. Do not silently choose Monday-Sunday. Capture a concrete schedule such as `Fri-Thu`, `Mon-Sun`, `previous completed week ending Thursday`, or `rolling last 7 days`.
+4. Ask what weekly reporting window they want. Do not silently choose Monday-Sunday. Offer `since_last_report` alongside concrete schedules such as `Fri-Thu`, `Mon-Sun`, `previous completed week ending Thursday`, or `rolling last 7 days`. Describe `since_last_report` as gapless-by-construction: each report starts the day after the previous report's `window.end` and runs through the run date.
 5. Convert that answer into helper flags:
    - `Fri-Thu` means `--weekly-range "previous_completed_week" --weekly-start-day "Friday" --weekly-end-day "Thursday"`.
    - `Mon-Sun` means `--weekly-range "previous_completed_week" --weekly-start-day "Monday" --weekly-end-day "Sunday"`.
    - `rolling last 7 days` means `--weekly-range "last_7_days" --weekly-lookback-days 7`.
+   - `since_last_report` means `--weekly-range "since_last_report"`; it is gapless-by-construction because each report starts the day after the previous report's `window.end` and runs through the run date.
 6. Resolve the CEO report tone. Offer a short default such as `direct, concise, business-facing, calm about risk, explicit about asks`. Capture any user-specific language preference.
 7. Optionally capture read-only code repo paths if the user wants report evidence from Git history or code. Treat these as evidence sources only.
 8. Run the helper:

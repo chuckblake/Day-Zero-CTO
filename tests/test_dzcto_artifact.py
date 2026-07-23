@@ -919,6 +919,57 @@ class TestSkillSchemaLockstep(unittest.TestCase):
         )
 
 
+class TestWeeklySkillConsumesTheWindowResolver(unittest.TestCase):
+    """The weekly skill must consume resolved dates, not interpret weeklyReportDefaults itself."""
+
+    def weekly_text(self) -> str:
+        return (REPO / "skills" / "dzcto-ceo-report-weekly" / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_resolver_runs_before_the_evidence_collector(self):
+        text = self.weekly_text()
+
+        self.assertIn("dzcto window", text)
+        self.assertLess(
+            text.index("dzcto window"), text.index("dzcto evidence"),
+            "the window must be resolved before evidence is gathered for it",
+        )
+
+    def test_both_invocation_forms_are_documented(self):
+        text = self.weekly_text()
+
+        self.assertIn("dzcto window \\", text)
+        self.assertIn("python3 scripts/dzcto.py window \\", text)
+
+    def test_empty_window_branch_forbids_calling_the_evidence_collector(self):
+        # Omitting this is the one instruction whose absence produces a hard failure in a
+        # real run: an empty window has start > end, which dzcto evidence rejects.
+        text = self.weekly_text()
+
+        self.assertIn("empty", text)
+        self.assertIn("do not call `dzcto evidence`", text)
+
+    def test_day_based_fallback_path_is_preserved(self):
+        text = self.weekly_text()
+
+        self.assertIn("day_based", text)
+        self.assertIn("fallback", text)
+        self.assertIn("weeklyReportDefaults", text)
+
+    def test_ad_hoc_skill_does_not_mention_the_weekly_resolver(self):
+        # The ad-hoc skill is deliberately not cadence-scoped, so it must not grow a cursor.
+        text = (REPO / "skills" / "dzcto-ceo-report" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertNotIn("dzcto window", text)
+
+
+class TestInitSkillOffersCursorMode(unittest.TestCase):
+    def test_init_skill_offers_since_last_report(self):
+        text = (REPO / "skills" / "dzcto-init" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("since_last_report", text)
+        self.assertIn('--weekly-range "since_last_report"', text)
+
+
 class TestSkillBadNewsInstructions(unittest.TestCase):
     SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
 
