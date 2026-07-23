@@ -17,7 +17,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import dzcto_artifact as artifact  # noqa: E402
 
 GITHUB_TOKEN = "ghp_" + "AbCdEf1234567890AbCdEf1234567890AbCd"
-AWS_TOKEN = "AKIAABCDEFGHIJKLMNOP"
+AWS_TOKEN = "AKIA" + "ABCDEFGHIJKLMNOP"
 LOW_GENERIC_SECRET = "api_key = \"dGhpcy1pcy1hLXZlcnktc2VjcmV0LXRva2Vu\""
 LOW_GENERIC_VALUE = "dGhpcy1pcy1hLXZlcnktc2VjcmV0LXRva2Vu"
 GIT_SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -310,6 +310,65 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         self.assertIn('<div class="k-val">2</div>', self.streak_tile(html))
 
 
+class TestRenderIndexWeeklyDefaultTile(unittest.TestCase):
+    """The weekly-default KPI card must not describe cursor mode in weekday terms."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.sidecar = self.workspace / ".dzcto"
+        self.sidecar.mkdir(parents=True)
+        (self.workspace / "reports" / "ceo-updates").mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def render(self, **weekly_defaults) -> str:
+        config = {"weeklyReportDefaults": weekly_defaults} if weekly_defaults else {}
+        (self.sidecar / "config.json").write_text(json.dumps(config), encoding="utf-8")
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 7, 23))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def weekly_tile(self, html: str) -> str:
+        start = html.index('<div class="k-label">Weekly default</div>')
+        return html[start : start + 400]
+
+    def test_cursor_mode_does_not_render_a_weekday_range(self):
+        tile = self.weekly_tile(self.render(range="since_last_report"))
+
+        self.assertIn("Since last", tile)
+        self.assertNotIn(" to ", tile)
+
+    def test_cursor_mode_suppresses_stale_start_and_end_days(self):
+        # A profile switched to cursor mode often still carries its old weekday keys;
+        # rendering them would state a confident, wrong window shape.
+        html = self.render(range="since_last_report", startDay="Friday", endDay="Thursday", lookbackDays=7)
+        tile = self.weekly_tile(html)
+
+        self.assertNotIn("Friday", tile)
+        self.assertNotIn("Thursday", tile)
+        self.assertNotIn("Fri to Thu", tile)
+        self.assertNotIn("7 days", tile)
+
+    def test_day_based_range_still_renders_its_weekday_abbreviations(self):
+        tile = self.weekly_tile(
+            self.render(range="previous_completed_week", startDay="Friday", endDay="Thursday")
+        )
+
+        self.assertIn("Fri to Thu", tile)
+
+    def test_unconfigured_range_still_renders_the_needed_call_to_action(self):
+        tile = self.weekly_tile(self.render())
+
+        self.assertIn("Needed", tile)
+
+    def test_copyable_weekly_prompt_inherits_the_corrected_label(self):
+        html = self.render(range="since_last_report", startDay="Friday", endDay="Thursday")
+
+        # The prompt card and the KPI tile share one label source; proving the prompt is
+        # clean proves they did not drift into two independent formatters.
+        self.assertIn("since_last_report", html)
+        self.assertNotIn("since_last_report; Friday to Thursday", html)
+
+
 class TestLocatePriorReport(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -584,6 +643,97 @@ class TestReportChangesHtml(unittest.TestCase):
         self.assertEqual(artifact.metric_delta_items(current, previous), [])
 
 
+class TestWeekOverWeekWindowLength(unittest.TestCase):
+    """Varying-length windows must be visible wherever their metrics are compared."""
+
+    NINE_DAYS = {"start": "2026-07-15", "end": "2026-07-23"}
+    SEVEN_DAYS = {"start": "2026-06-19", "end": "2026-06-25"}
+
+    def render(self, current, previous, previous_date="2026-06-25"):
+        return artifact.report_changes_html("ceo-updates", current, previous, previous_date)
+
+    def test_window_line_names_both_lengths_and_precedes_the_metric_deltas(self):
+        current = v1_report(window=self.NINE_DAYS, metrics={"prs_merged": 8})
+        html = self.render(current, v1_report(metrics={"prs_merged": 5}))
+
+        self.assertIn("Window:", html)
+        self.assertIn("9 days", html)
+        self.assertIn("(2026-07-15 to 2026-07-23)", html)
+        self.assertIn("prior 7 days", html)
+        self.assertLess(
+            html.index("Window:"), html.index("prs_merged"),
+            "the reader needs the denominator before the numbers",
+        )
+
+    def test_window_line_never_uses_an_arrow(self):
+        # test_disjoint_metrics_render_no_delta asserts no "→" anywhere in the output,
+        # so the window line must read "start to end" rather than "start → end".
+        html = self.render(v1_report(window=self.NINE_DAYS), v1_report())
+
+        self.assertIn("Window:", html)
+        self.assertNotIn("2026-07-15 → 2026-07-23", html)
+
+    def test_equal_length_windows_still_disclose(self):
+        html = self.render(v1_report(), v1_report())
+
+        # Disclosure, not anomaly flagging — it renders even when nothing varies.
+        self.assertIn("Window:", html)
+        self.assertIn("7 days", html)
+        self.assertIn("prior 7 days", html)
+
+    def test_window_line_renders_without_any_numeric_metric_delta(self):
+        current = v1_report(window=self.NINE_DAYS, metrics={"note": "qualitative"})
+        html = self.render(current, v1_report(metrics={"note": "qualitative"}))
+
+        self.assertIn("Window:", html)
+        self.assertIn("9 days", html)
+
+    def test_window_line_does_not_suppress_the_no_material_changes_fallback(self):
+        html = self.render(v1_report(), v1_report())
+
+        self.assertIn("Window:", html)
+        self.assertIn("No material structured changes", html)
+
+    def test_single_day_window_renders_as_one_day(self):
+        current = v1_report(window={"start": "2026-07-23", "end": "2026-07-23"})
+        html = self.render(current, v1_report())
+
+        self.assertIn("1 day", html)
+        self.assertNotIn("1 days", html)
+
+    def test_prior_window_missing_start_omits_the_line(self):
+        previous = v1_report(window={"end": "2026-06-25"})
+        html = self.render(v1_report(window=self.NINE_DAYS), previous)
+
+        self.assertNotIn("Window:", html)
+
+    def test_reversed_window_omits_the_line_rather_than_rendering_a_negative_length(self):
+        current = v1_report(window={"start": "2026-07-23", "end": "2026-07-15"})
+        html = self.render(current, v1_report())
+
+        self.assertNotIn("Window:", html)
+
+    def test_non_iso_window_values_omit_the_line_without_aborting(self):
+        current = v1_report(window={"start": "last Monday", "end": "today"})
+        html = self.render(current, v1_report())
+
+        self.assertNotIn("Window:", html)
+        self.assertIn("Week over week", artifact.report_changes_html("ceo-updates", current, None, ""))
+
+    def test_first_report_placeholder_is_unchanged(self):
+        html = artifact.report_changes_html("ceo-updates", v1_report(), None, "")
+
+        self.assertIn("First report", html)
+        self.assertNotIn("Window:", html)
+
+    def test_window_values_are_html_escaped_like_their_neighbours(self):
+        current = v1_report(window=self.NINE_DAYS)
+        html = self.render(current, v1_report())
+
+        self.assertIn("<li><strong>Window:</strong>", html)
+        self.assertNotIn("<script", html)
+
+
 class TestCitedEvidenceSources(unittest.TestCase):
     def test_empty_missing_and_blank_only_sources_are_not_cited(self):
         for data in ({}, {"sources": []}, {"sources": [{}, {"detail": "No title"}, "   "]}):
@@ -767,6 +917,57 @@ class TestSkillSchemaLockstep(unittest.TestCase):
             self.schema_block("dzcto-ceo-report-weekly"),
             "Report JSON schema (v1) blocks in the two SKILL.md files must stay byte-identical",
         )
+
+
+class TestWeeklySkillConsumesTheWindowResolver(unittest.TestCase):
+    """The weekly skill must consume resolved dates, not interpret weeklyReportDefaults itself."""
+
+    def weekly_text(self) -> str:
+        return (REPO / "skills" / "dzcto-ceo-report-weekly" / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_resolver_runs_before_the_evidence_collector(self):
+        text = self.weekly_text()
+
+        self.assertIn("dzcto window", text)
+        self.assertLess(
+            text.index("dzcto window"), text.index("dzcto evidence"),
+            "the window must be resolved before evidence is gathered for it",
+        )
+
+    def test_both_invocation_forms_are_documented(self):
+        text = self.weekly_text()
+
+        self.assertIn("dzcto window \\", text)
+        self.assertIn("python3 scripts/dzcto.py window \\", text)
+
+    def test_empty_window_branch_forbids_calling_the_evidence_collector(self):
+        # Omitting this is the one instruction whose absence produces a hard failure in a
+        # real run: an empty window has start > end, which dzcto evidence rejects.
+        text = self.weekly_text()
+
+        self.assertIn("empty", text)
+        self.assertIn("do not call `dzcto evidence`", text)
+
+    def test_day_based_fallback_path_is_preserved(self):
+        text = self.weekly_text()
+
+        self.assertIn("day_based", text)
+        self.assertIn("fallback", text)
+        self.assertIn("weeklyReportDefaults", text)
+
+    def test_ad_hoc_skill_does_not_mention_the_weekly_resolver(self):
+        # The ad-hoc skill is deliberately not cadence-scoped, so it must not grow a cursor.
+        text = (REPO / "skills" / "dzcto-ceo-report" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertNotIn("dzcto window", text)
+
+
+class TestInitSkillOffersCursorMode(unittest.TestCase):
+    def test_init_skill_offers_since_last_report(self):
+        text = (REPO / "skills" / "dzcto-init" / "SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("since_last_report", text)
+        self.assertIn('--weekly-range "since_last_report"', text)
 
 
 class TestSkillBadNewsInstructions(unittest.TestCase):

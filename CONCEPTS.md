@@ -13,6 +13,9 @@ A report artifact addressed to a company's CEO, summarizing progress, risks, ask
 ### Prior report
 The previous report in the same cadence, selected as the comparison baseline so a new report can render an automatic week-over-week section. Its data is historical and outside the author's current control: it may predate current sanitization rules, so values carried forward from it are redacted if needed but are never allowed to block a new report.
 
+### Since-last-report window
+The weekly coverage span from the prior weekly report artifact's `window.end` (exclusive) through the run date (inclusive), so every calendar day lands in exactly one report. Its coverage cursor is weekly-scoped, while the prior-report diff baseline is not; these rules deliberately differ because the cursor is a coverage ledger and the diff baseline is a narrative comparison baseline.
+
 ### Weekly streak
 The count of consecutive configured weekly cadence periods, ending at today, that contain a `weekly` CEO report. It is a best-effort local signal derived from report JSON on the index, not the canonical North Star metric with exclusions such as test runs or unopened reports.
 

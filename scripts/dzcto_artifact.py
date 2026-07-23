@@ -1053,6 +1053,28 @@ def report_changes_html(
     changes: list[str] = []
     metric_items: list[str] = []
     if per_group:
+        current_window = data.get("window")
+        prior_window = previous_data.get("window")
+        if isinstance(current_window, dict) and isinstance(prior_window, dict):
+            current_start = date_value(current_window.get("start"))
+            current_end = date_value(current_window.get("end"))
+            prior_start = date_value(prior_window.get("start"))
+            prior_end = date_value(prior_window.get("end"))
+            if (
+                current_start is not None
+                and current_end is not None
+                and prior_start is not None
+                and prior_end is not None
+                and current_start <= current_end
+                and prior_start <= prior_end
+            ):
+                current_days = (current_end - current_start).days + 1
+                prior_days = (prior_end - prior_start).days + 1
+                changes.append(
+                    f"<li><strong>Window:</strong> {esc(pluralize(current_days, 'day'))} "
+                    f"({esc(current_start.isoformat())} to {esc(current_end.isoformat())}); "
+                    f"prior {esc(pluralize(prior_days, 'day'))}.</li>"
+                )
         for note in change_notes or []:
             text = CHANGE_NOTE_TEXT.get(note)
             if text:
@@ -2926,10 +2948,14 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
     weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
     lookback = text_value(weekly_defaults.get("lookbackDays"))
-    weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
-    if lookback:
-        weekly_label = f"{weekly_label}; {lookback} days"
-    weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
+    if weekly_range == "since_last_report":
+        weekly_label = weekly_range
+        weekly_kpi_value = "Since last"
+    else:
+        weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
+        if lookback:
+            weekly_label = f"{weekly_label}; {lookback} days"
+        weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
     tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
     artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
     profile_name = profile_name_for_config(config, wiki_root)

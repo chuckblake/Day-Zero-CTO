@@ -12,9 +12,28 @@ so this skill works even where `docs/` is not installed).
 ## Workflow
 
 1. Resolve the profile and artifact/report folder. First read `~/.dzcto/config.json`; if the user named a profile, use `profiles.<name>.artifactsDir`, otherwise use `defaultProfile`. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
-2. Read `<artifact folder>/.dzcto/config.json`. Use `weeklyReportDefaults` for the date window and `ceoReportTone` for the report voice. Fall back to matching values in the selected global profile.
-3. If weekly defaults are missing, ask for the start and end dates or run `/dzcto-init` first.
-4. Gather evidence for only the selected week:
+2. Resolve the reporting window before interpreting weekly defaults or collecting evidence. Run `dzcto window` first:
+
+```bash
+dzcto window \
+  --profile "<profile-name>" \
+  --artifacts-dir "<artifact/report folder>"
+```
+
+If `dzcto` is not on `PATH`, use:
+
+```bash
+python3 scripts/dzcto.py window \
+  --profile "<profile-name>" \
+  --artifacts-dir "<artifact/report folder>"
+```
+
+The command accepts an optional `--as-of "<YYYY-MM-DD>"` when the run date must be pinned and prints one JSON object.
+3. Read `<artifact folder>/.dzcto/config.json` for `ceoReportTone`, falling back to the selected global profile, then branch on the window JSON:
+   - For `mode: "since_last_report"` with `empty: false`, use its `start` and `end` verbatim. Do not reinterpret or recompute the dates.
+   - For `empty: true`, report honestly that the range is already covered through `cursor.window_end` and do not call `dzcto evidence`; its `start` is after its `end`, which the evidence command rejects.
+   - For `mode: "fallback"` or `mode: "day_based"`, use the existing day-based path unchanged: use `weeklyReportDefaults` for the date window, falling back to matching values in the selected global profile. If the required weekly defaults are missing, ask for the start and end dates or run `/dzcto-init` first.
+4. Gather evidence for only the selected, non-empty week:
    - Run `dzcto evidence` for the exact window first. Treat its JSON as the primary grounding source, and carry its `sources` entries into the report `sources` array for every claim based on Git activity.
    - User notes in the conversation.
    - Existing report JSON/HTML under the artifact folder.
@@ -42,6 +61,8 @@ python3 scripts/dzcto.py evidence \
   --end "<end>" \
   --json
 ```
+
+Pass the resolver's `start` and `end` verbatim for `mode: "since_last_report"` with `empty: false`. For `empty: true`, do not call `dzcto evidence`; tell the user the range is already covered through the cursor date instead.
 
 If the collector reports no configured repositories, continue with the secondary evidence sources instead of treating that as an error.
 5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true risks, asks, and next items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.

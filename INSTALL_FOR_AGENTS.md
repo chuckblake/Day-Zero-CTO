@@ -105,6 +105,9 @@ dzcto doctor
 dzcto version
 ```
 
+Weekly range values include `previous_completed_week`, `last_7_days`, and `since_last_report`.
+Keep `previous_completed_week` in the canonical setup example above.
+
 ## Verify
 
 Codex Desktop:

@@ -15,7 +15,15 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from dzcto_artifact import default_artifacts_dir_for_profile, default_artifacts_dir_from_global, profile_from_global
+from dzcto_artifact import (
+    date_value,
+    default_artifacts_dir_for_profile,
+    default_artifacts_dir_from_global,
+    normalize_report_folder,
+    profile_from_global,
+    read_json_file,
+    report_effective_date,
+)
 from dzcto_common import (
     TOOL_VERSION,
     read_json,
@@ -31,6 +39,10 @@ SKILLS_DIR = REPO_ROOT / "skills"
 DEFAULT_COMMAND_DEST = Path.home() / ".local" / "bin" / "dzcto"
 COMMAND_SHIM_MARKER = "Day Zero CTO stable command shim"
 UNKNOWN_VALUES = {"", "unknown", "tbd", "to be determined", "n/a", "none"}
+ARTIFACT_FOLDER_GUIDANCE = (
+    "No artifact/report folder could be resolved. Pass --artifacts-dir or configure "
+    "a profile with artifactsDir in ~/.dzcto/config.json.\n"
+)
 
 
 def script_path(name: str) -> Path:
@@ -88,7 +100,7 @@ def parse_commit_rows(output: str) -> list[dict[str, str]]:
     return rows
 
 
-def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
+def artifact_folder_and_profile(args: argparse.Namespace) -> tuple[Path | None, dict[str, Any]]:
     profile = profile_from_global(args.profile)
     if args.artifacts_dir:
         wiki_root = Path(args.artifacts_dir).expanduser().resolve()
@@ -97,6 +109,11 @@ def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, li
     else:
         wiki_root = default_artifacts_dir_from_global()
 
+    return wiki_root, profile
+
+
+def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
+    wiki_root, profile = artifact_folder_and_profile(args)
     if wiki_root is None:
         return None, []
 
@@ -113,6 +130,85 @@ def evidence_folder_and_repos(args: argparse.Namespace) -> tuple[Path | None, li
             seen.add(key)
             repos.append(path)
     return wiki_root, repos
+
+
+def latest_weekly_report_cursor(wiki_root: Path) -> tuple[Path, dt.date] | None:
+    reports_dir = wiki_root / "reports" / normalize_report_folder("ceo-updates")
+    if not reports_dir.is_dir():
+        print(f"dzcto: weekly-report cursor directory not found: {reports_dir}", file=sys.stderr)
+        return None
+
+    try:
+        report_paths = sorted(reports_dir.glob("*.json"))
+    except OSError:
+        print(f"dzcto: weekly-report cursor directory is unreadable: {reports_dir}", file=sys.stderr)
+        return None
+
+    candidates: list[tuple[dt.date, str, Path]] = []
+    for path in report_paths:
+        if path.name == "data.json":
+            continue
+        try:
+            data = read_json_file(path, None)
+        except (OSError, UnicodeError):
+            data = None
+        if not isinstance(data, dict):
+            print(f"dzcto: skipping weekly-report cursor candidate {path.name} (unreadable JSON)", file=sys.stderr)
+            continue
+
+        # Coverage cursors are weekly-only. Prior-report diff selection may fall back to
+        # another report type because comparison and coverage are deliberately different jobs.
+        if data.get("report_type") != "weekly":
+            continue
+        effective_date = date_value(report_effective_date(path, data))
+        if effective_date is None:
+            print(f"dzcto: skipping weekly-report cursor candidate {path.name} (no resolvable date)", file=sys.stderr)
+            continue
+        candidates.append((effective_date, path.name, path))
+
+    if not candidates:
+        return None
+    effective_date, _, path = max(candidates)
+    return path, effective_date
+
+
+def derive_since_last_report_window(cursor_end: dt.date, as_of: dt.date) -> tuple[dt.date, dt.date, int, bool]:
+    start = cursor_end + dt.timedelta(days=1)
+    empty = start > as_of
+    return start, as_of, max((as_of - start).days + 1, 0), empty
+
+
+def resolve_since_last_report_window(wiki_root: Path, as_of: dt.date | None = None) -> dict[str, Any]:
+    end = as_of or dt.date.today()
+    cursor = latest_weekly_report_cursor(wiki_root)
+    if cursor is None:
+        return {
+            "start": None,
+            "end": end.isoformat(),
+            "days": 0,
+            "empty": False,
+            "cursor": None,
+        }
+
+    report_path, cursor_end = cursor
+    start, end, days, empty = derive_since_last_report_window(cursor_end, end)
+    if empty:
+        relation = "is after" if cursor_end > end else "already covers"
+        print(
+            f"dzcto: weekly-report cursor {cursor_end.isoformat()} {relation} "
+            f"run date {end.isoformat()}; window is empty",
+            file=sys.stderr,
+        )
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "days": days,
+        "empty": empty,
+        "cursor": {
+            "report": report_path.relative_to(wiki_root).as_posix(),
+            "window_end": cursor_end.isoformat(),
+        },
+    }
 
 
 def evidence_log_args(start: dt.date, end: dt.date, *, merges_only: bool = False) -> list[str]:
@@ -249,10 +345,7 @@ def snapshot_window(args: argparse.Namespace) -> tuple[dt.date, dt.date]:
 def run_evidence(args: argparse.Namespace) -> int:
     wiki_root, repos = evidence_folder_and_repos(args)
     if wiki_root is None:
-        sys.stderr.write(
-            "No artifact/report folder could be resolved. Pass --artifacts-dir or configure "
-            "a profile with artifactsDir in ~/.dzcto/config.json.\n"
-        )
+        sys.stderr.write(ARTIFACT_FOLDER_GUIDANCE)
         return 2
 
     start, end = snapshot_window(args)
@@ -271,6 +364,55 @@ def run_evidence(args: argparse.Namespace) -> int:
         print(json.dumps(data, indent=2, sort_keys=True))
     else:
         print(data_path)
+    return 0
+
+
+def run_window(args: argparse.Namespace) -> int:
+    wiki_root, profile = artifact_folder_and_profile(args)
+    if wiki_root is None:
+        sys.stderr.write(ARTIFACT_FOLDER_GUIDANCE)
+        return 2
+
+    end = parse_snapshot_date(args.as_of, "--as-of") if args.as_of else dt.date.today()
+    config_path = sidecar_dir(wiki_root) / "config.json"
+    try:
+        config = read_json(config_path, {})
+    except (OSError, UnicodeError) as error:
+        print(f"dzcto: weekly-report config is unreadable: {config_path} ({error})", file=sys.stderr)
+        config = {}
+    local_defaults = config.get("weeklyReportDefaults") if isinstance(config, dict) else None
+    profile_defaults = profile.get("weeklyReportDefaults") if isinstance(profile, dict) else None
+    local_defaults = local_defaults if isinstance(local_defaults, dict) else {}
+    profile_defaults = profile_defaults if isinstance(profile_defaults, dict) else {}
+    range_value = (
+        local_defaults["range"]
+        if "range" in local_defaults
+        else profile_defaults.get("range")
+    )
+
+    if range_value == "since_last_report":
+        data = resolve_since_last_report_window(wiki_root, end)
+        has_cursor = data["cursor"] is not None
+        data.update(
+            {
+                "mode": "since_last_report" if has_cursor else "fallback",
+                "range": range_value,
+                "fallback_reason": None if has_cursor else "no_prior_weekly_report",
+            }
+        )
+    else:
+        data = {
+            "mode": "day_based",
+            "range": range_value,
+            "start": None,
+            "end": end.isoformat(),
+            "days": 0,
+            "empty": False,
+            "cursor": None,
+            "fallback_reason": None,
+        }
+
+    print(json.dumps(data, indent=2, sort_keys=True))
     return 0
 
 
@@ -297,6 +439,8 @@ def print_quickstart(project: Path | None = None) -> None:
                  --weekly-start-day "Friday" \\
                  --weekly-end-day "Thursday" \\
                  --ceo-report-tone "Direct, concise, business-facing, calm about risk, explicit about asks."
+
+               Weekly range values: previous_completed_week, last_7_days, since_last_report.
 
             3. Generate reports
                /dzcto-ceo-report-weekly
@@ -330,6 +474,7 @@ def command_reference_text(project: Path | None = None) -> str:
                      [--weekly-lookback-days N] [--ceo-report-tone <text>] [--repo <path> ...]
               Create or refresh the artifact folder, .dzcto/config.json, reports/ceo-updates/, index.html,
               and a named profile in ~/.dzcto/config.json for cross-repo defaults.
+              Weekly range values: previous_completed_week, last_7_days, since_last_report.
           dzcto artifact --profile <name> --kind ceo-updates --title <title>
                          [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
               Render a CEO report and refresh the index. If --profile is omitted, use defaultProfile.
@@ -805,6 +950,11 @@ def main(argv: list[str]) -> int:
     evidence.add_argument("--output-json", help="Write evidence JSON to this path")
     evidence.add_argument("--json", action="store_true", help="Print evidence JSON")
 
+    window = sub.add_parser("window", help=argparse.SUPPRESS)
+    window.add_argument("--artifacts-dir", help="Folder that directly stores reports and .dzcto/config.json")
+    window.add_argument("--profile", help="Named global profile to use when --artifacts-dir is omitted")
+    window.add_argument("--as-of", help="Run date, YYYY-MM-DD. Defaults to today")
+
     artifact = sub.add_parser("artifact", help="Generate a structured report artifact")
     artifact.add_argument("--project")
     artifact.add_argument("--artifacts-dir", help="Folder that directly stores index.html, reports/, and .dzcto/")
@@ -934,6 +1084,9 @@ def main(argv: list[str]) -> int:
 
     if args.command == "evidence":
         return run_evidence(args)
+
+    if args.command == "window":
+        return run_window(args)
 
     if args.command == "artifact":
         artifact_args = ["--kind", args.kind, "--title", args.title]
