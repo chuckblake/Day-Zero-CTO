@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAYZEROCTO-14 — Show profile config and update instructions on the report index page</title>
+<style>
+  :root{--bg:#0f1115;--panel:#161a21;--line:#262c37;--fg:#e6e9ef;--dim:#98a2b3;--accent:#6ea8fe;
+        --crit:#f87171;--high:#fb923c;--med:#fbbf24;--low:#4ade80;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:940px;margin:0 auto;padding:32px 20px 72px}
+  h1{font-size:23px;line-height:1.35;margin:0 0 6px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+     margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:14px;margin:18px 0 6px}
+  .meta{color:var(--dim);font-size:13px;margin-bottom:22px}
+  .meta code{color:var(--fg)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
+  .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+  .v{font-size:17px;margin-top:3px}
+  .banner{border-radius:9px;padding:11px 14px;margin:14px 0;font-weight:600;
+          background:rgba(74,222,128,.10);border:1px solid var(--low);color:var(--low)}
+  .flags{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+  .flag{font-size:12px;border-radius:999px;padding:4px 11px;border:1px solid var(--line);
+        background:var(--panel);color:var(--dim)}
+  .flag.on{color:var(--fg)}
+  .flag.med{border-color:var(--med);color:var(--med)}
+  .flag.low{border-color:var(--low);color:var(--low)}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+  code{background:#0b0d11;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:13px}
+  pre{background:#0b0d11;border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;font-size:13px}
+  pre code{background:none;border:none;padding:0}
+  ul{margin:8px 0;padding-left:20px} li{margin:5px 0}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 14px;margin:9px 0}
+  summary{cursor:pointer;font-weight:600}
+  .fill{color:var(--dim);font-style:italic}
+  footer{margin-top:44px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
+  .look{color:var(--high)} .skim{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>DAYZEROCTO-14 — Show profile config and update instructions on the report index page</h1>
+<div class="meta">
+  <code>chuckblake/Day-Zero-CTO</code> ·
+  branch <code>dayzerocto-14-feature-show-profile-config-and-update-instruct</code> ·
+  Chuck Blake · 2026-07-23 · <code>862c162</code> ·
+  PR <span class="fill">#26</span> · Reviewers <span class="fill">— unassigned —</span>
+</div>
+
+<h2>Summary</h2>
+<p>
+  The report index now shows the active profile's report-shaping configuration, and a new generated
+  <code>settings.html</code> beside it documents how to change each value with <code>dzcto init</code>.
+  This is read-only display plus one new generated artifact — no config resolution changed, and no
+  CLI flag was added. For review, the load-bearing questions are the <strong>egress surface</strong>
+  (the index is a shareable artifact) and <strong>test hermeticity</strong> (rendering now reads the
+  user's global config).
+</p>
+
+<div class="grid">
+  <div class="kpi"><div class="k">Files changed</div><div class="v">4</div></div>
+  <div class="kpi"><div class="k">Tests</div><div class="v">209 passing</div></div>
+  <div class="kpi"><div class="k">Database</div><div class="v">none</div></div>
+  <div class="kpi"><div class="k">Packages</div><div class="v">none</div></div>
+</div>
+
+<h2>Risk flags</h2>
+<div class="banner">Low — read-only rendering; no auth, payments, migrations, or dependency changes.</div>
+<div class="flags">
+  <span class="flag">Sensitive data</span>
+  <span class="flag">Payments or billing</span>
+  <span class="flag">Login or permissions</span>
+  <span class="flag on med">Secrets or tokens — new values reach a shareable artifact</span>
+  <span class="flag">API behavior changes</span>
+  <span class="flag">Database change</span>
+  <span class="flag">External service</span>
+  <span class="flag">Background work</span>
+  <span class="flag on low">Could affect speed — one extra config read per render</span>
+  <span class="flag">New or updated package</span>
+  <span class="flag">Config or deploy setup</span>
+</div>
+<p>
+  <strong>Secrets or tokens</strong> is flagged deliberately, not because a credential is rendered.
+  The index is an egress point: values that were previously invisible now appear on a page that gets
+  shared. The change routes every displayed value through <code>redact_text()</code> and renders
+  evidence repos as basenames only — so the flag marks <em>where to look</em>, not a known defect.
+</p>
+
+<h2>Review guide</h2>
+<table>
+  <tr><th>Look closely</th><th>What to check</th></tr>
+  <tr>
+    <td class="look"><code>scripts/dzcto_artifact.py</code> — <code>profile_config_view()</code></td>
+    <td>Repo paths reduce to basenames; placeholders never render <code>None</code>; the
+        <code>global_config</code> injection seam defaults to <code>read_global_config()</code>.</td>
+  </tr>
+  <tr>
+    <td class="look"><code>scripts/dzcto_artifact.py</code> — <code>settings_current_value()</code></td>
+    <td>Config keys outside the share-safe view fall to the constant
+        <em>"Not shown on this shareable page"</em>, and every returned value passes through
+        <code>redact_text()</code>.</td>
+  </tr>
+  <tr>
+    <td class="look"><code>scripts/dzcto_artifact.py</code> — <code>weekly_range_label()</code></td>
+    <td>Cursor mode (<code>since_last_report</code>) still suppresses weekday and lookback detail.
+        This is one shared formatter on purpose — two would drift, which is what
+        <code>test_copyable_weekly_prompt_inherits_the_corrected_label</code> exists to catch.</td>
+  </tr>
+  <tr>
+    <td class="skim"><code>tests/test_dzcto_artifact.py</code></td>
+    <td>Skim the 44 added tests; note the two <code>setUp</code> additions that pin
+        <code>read_global_config</code> in the <em>pre-existing</em> index suites.</td>
+  </tr>
+  <tr>
+    <td class="skim"><code>plans/…-instruct.md</code>, <code>skills/dzcto-init/SKILL.md</code></td>
+    <td>Plan + decision log, and a one-line pointer. No behavior.</td>
+  </tr>
+</table>
+
+<h2>What changed</h2>
+<ul>
+  <li>The index's <strong>Defaults</strong> section now lists profile name, <code>defaultProfile</code>,
+      evidence repos (basenames + count), and tool version alongside the existing weekly range and tone.</li>
+  <li>That section is now <strong>collapsed by default</strong>, so a CEO-facing share is not led with
+      operator settings.</li>
+  <li>A new <code>settings.html</code> is generated beside <code>index.html</code> on every
+      <code>dzcto init</code> / <code>dzcto artifact</code> run, listing each report-shaping flag, its
+      config key, the reader's current value, and what it sets.</li>
+  <li>That page states the two non-obvious semantics: <code>dzcto init</code> <em>merges over</em> the
+      existing profile, and saving switches <code>defaultProfile</code> unless
+      <code>--no-switch-default</code> is passed.</li>
+  <li>A parity test pins the documented flag table against the real <code>dzcto init</code> argparse
+      surface, so a renamed or invented flag fails the suite.</li>
+</ul>
+
+<h2>How to check it</h2>
+<pre><code>python3 -m unittest discover -s tests
+
+# End-to-end: generate a workspace and open both pages
+python3 scripts/dzcto_artifact.py --init --artifacts-dir /tmp/dzcto-check \
+  --company-name "Acme" --weekly-range previous_completed_week \
+  --weekly-start-day Monday --weekly-end-day Sunday \
+  --ceo-report-tone "direct and calm" --repo "$HOME/some/repo" --no-save-preferences
+open /tmp/dzcto-check/index.html      # Defaults section (collapsed) → "Settings guide" link
+open /tmp/dzcto-check/settings.html   # flag table with current values</code></pre>
+<p>
+  <strong>Manual check:</strong> open <code>index.html</code>, expand <strong>Defaults</strong>, confirm
+  the six values are present and the <em>Settings guide</em> link opens <code>settings.html</code>; then
+  confirm the settings page's sticky nav returns to the index.
+</p>
+<p>
+  <strong>Egress check</strong> — the one worth running by hand:
+</p>
+<pre><code>grep -c "$HOME" /tmp/dzcto-check/settings.html   # expect 0</code></pre>
+<p>
+  <strong>Rollback plan:</strong> revert the branch. The change adds one generated file and additive
+  markup; no config schema, migration, or CLI surface changed, so a revert needs no data cleanup. A
+  stale <code>settings.html</code> left in an existing artifact tree is inert and is overwritten on the
+  next render.
+</p>
+
+<h2>Details</h2>
+
+<details>
+<summary>Why this approach — a generated page, not a repo doc</summary>
+<p>
+  The acceptance criteria require the documentation be viewable in the browser <em>from the index</em>.
+  A shared artifact tree travels without a repo checkout, so a <code>docs/*.md</code> link would be dead
+  for exactly the reader this feature targets. The cost is a second
+  <code>write_html_page</code> + <code>update_manifest</code> pair — one function following an existing
+  precedent.
+</p>
+<p>
+  Content drift is prevented structurally rather than by discipline: a single module-level
+  <code>INIT_REPORT_SETTING_FLAGS</code> table is the source of truth, and a parity test pins it against
+  the real CLI. <code>skills/dzcto-init/SKILL.md</code> got a pointer, not a copy.
+</p>
+</details>
+
+<details>
+<summary>Other options considered</summary>
+<ul>
+  <li><strong>Linked repo doc</strong> — cheapest, but not viewable from a shared artifact tree.</li>
+  <li><strong>Static <code>settings.html</code> copied at init</strong> — cannot show the reader their
+      current values, and reintroduces the drift problem.</li>
+  <li><strong>Refactor <code>build_parser()</code> out of <code>main()</code></strong> so the parity test
+      could introspect argparse — rejected as scope creep; source-text matching catches the same
+      regression with a far smaller blast radius.</li>
+  <li><strong>Add the values as KPI tiles</strong> — rejected: clutters the CEO-facing top of the page,
+      and both existing KPI test helpers slice the page by tile label.</li>
+</ul>
+</details>
+
+<details>
+<summary>Tradeoff — a new coupling and a test-hermeticity hazard</summary>
+<p>
+  <code>defaultProfile</code> lives in the <em>global</em> <code>~/.dzcto/config.json</code>, not the
+  workspace sidecar <code>project_config()</code> reads. Rendering it means <code>render_index</code> now
+  transitively calls <code>read_global_config()</code>, whose path is a module-level constant with no env
+  seam. Before this branch, no index test touched the developer's home directory.
+</p>
+<p>
+  Mitigation: <code>profile_config_view()</code> takes an injectable <code>global_config</code>, and the
+  two <em>pre-existing</em> index suites now pin <code>read_global_config</code> in <code>setUp</code>.
+  They passed either way — but only because no assertion happened to read a global-derived value, which
+  is luck rather than design. The smoke test confirmed the hazard is real: it rendered
+  <code>Global defaultProfile: arwen</code> from the live machine config.
+</p>
+</details>
+
+<details>
+<summary>Questions and gaps</summary>
+<ul>
+  <li><strong>Known, out of scope:</strong> <code>index.html</code> still emits absolute repo paths twice,
+      via the pre-existing copyable prompt cards and the "Serve Index" command card. This predates the
+      branch and the acceptance criteria explicitly permit it ("config paths are fine"). The new panel and
+      settings page are deliberately stricter. Tightening the older surface is its own issue.</li>
+  <li><strong>Cosmetic:</strong> the three weekly day/lookback rows on the settings page all repeat the same
+      combined <code>weeklyRangeLabel</code>.</li>
+  <li><strong>Cosmetic:</strong> a fresh workspace renders <code>not_configured; Not set to Not set</code>.</li>
+  <li><strong>Deliberate asymmetry:</strong> tone reads <em>"Not set"</em> on the settings page (answering
+      "what have you configured?") while the index shows the effective default (answering "what voice do
+      reports use?"). Recorded in the plan's decision log.</li>
+  <li><strong>Deferred:</strong> no <code>build_parser()</code> refactor; revisit only if something else
+      needs the parser independently.</li>
+</ul>
+</details>
+
+<details>
+<summary>Design / flow change</summary>
+<pre><code>render_index(wiki_root, project_folder)
+  ├─ project_config(wiki_root)            # workspace sidecar .dzcto/config.json
+  ├─ profile_config_view(config, wiki_root)
+  │    └─ read_global_config()            # NEW coupling → ~/.dzcto/config.json (defaultProfile)
+  ├─ … existing KPI + reports rendering (unchanged) …
+  ├─ write_html_page(index.html) + update_manifest()
+  └─ render_settings_page(wiki_root, config_view)   # NEW
+       └─ write_html_page(settings.html) + update_manifest()</code></pre>
+<p>
+  <code>prune_manifest_report_artifacts()</code> only prunes entries under <code>reports/</code>, so the
+  root-level <code>settings.html</code> manifest entry survives re-renders (pinned by a test).
+</p>
+</details>
+
+<footer>
+  Generated by <code>/cb:pr-dossier</code> for
+  <code>dayzerocto-14-feature-show-profile-config-and-update-instruct</code> · 2026-07-23 ·
+  engine: native (Codex delegation timed out at the 120s default guard)
+</footer>
+
+</div>
+</body>
+</html>
