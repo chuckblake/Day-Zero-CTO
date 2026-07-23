@@ -1358,5 +1358,113 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertIn("[REDACTED:github_pat]", html)
 
 
+class TestProfileConfigView(unittest.TestCase):
+    """DAYZEROCTO-14 U1: the config view the index panel and settings page both read."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.workspace.mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def view(self, config=None, global_config=None):
+        return artifact.profile_config_view(config or {}, self.workspace, global_config or {})
+
+    def test_populated_config_returns_every_displayed_value(self):
+        view = self.view(
+            {
+                "profile": "arwen",
+                "weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"},
+                "ceoReportTone": "direct and calm",
+                "codeRepos": ["/Users/someone/Code/arwen-api"],
+            },
+            {"defaultProfile": "arwen"},
+        )
+
+        self.assertEqual(view["profileName"], "arwen")
+        self.assertEqual(view["defaultProfile"], "arwen")
+        self.assertIn("previous_completed_week", view["weeklyRangeLabel"])
+        self.assertEqual(view["tone"], "direct and calm")
+        self.assertEqual(view["evidenceRepos"], ["arwen-api"])
+        self.assertEqual(view["evidenceRepoCount"], 1)
+        self.assertEqual(view["toolVersion"], artifact.TOOL_VERSION)
+
+    def test_empty_config_still_returns_a_complete_view(self):
+        view = self.view()
+
+        for key in ("profileName", "defaultProfile", "weeklyRangeLabel", "tone", "artifactDirectory", "toolVersion"):
+            self.assertIn(key, view)
+            self.assertTrue(str(view[key]).strip(), f"{key} rendered empty")
+            self.assertNotEqual(str(view[key]), "None", f"{key} rendered the literal string None")
+        self.assertEqual(view["evidenceRepos"], [])
+        self.assertEqual(view["evidenceRepoCount"], 0)
+
+    def test_empty_repo_list_renders_a_zero_count(self):
+        view = self.view({"codeRepos": []})
+
+        self.assertEqual(view["evidenceRepos"], [])
+        self.assertEqual(view["evidenceRepoCount"], 0)
+
+    def test_non_string_and_blank_repo_entries_are_skipped(self):
+        view = self.view({"codeRepos": ["/tmp/real-repo", "   ", None, 7, {"path": "/tmp/nope"}]})
+
+        self.assertEqual(view["evidenceRepos"], ["real-repo"])
+        self.assertEqual(view["evidenceRepoCount"], 1)
+
+    def test_absolute_repo_paths_never_leak_beyond_their_basename(self):
+        # The index is a shareable artifact and therefore an egress point: a repo path
+        # would leak the operator's username and directory layout to every reader.
+        view = self.view({"codeRepos": ["/Users/chuckblake/Documents/Code/day-zero-cto"]})
+
+        self.assertEqual(view["evidenceRepos"], ["day-zero-cto"])
+        for repo in view["evidenceRepos"]:
+            self.assertNotIn("/", repo)
+            self.assertNotIn("Users", repo)
+
+    def test_tool_version_is_sourced_not_hardcoded(self):
+        self.assertEqual(self.view()["toolVersion"], artifact.TOOL_VERSION)
+
+    def test_default_profile_reads_the_global_config_through_the_injection_seam(self):
+        # Without this seam every render_index test would read the developer's real
+        # ~/.dzcto/config.json and stop being hermetic.
+        global_path = Path(self._tmp.name) / "global.json"
+        global_path.write_text(json.dumps({"defaultProfile": "injected-profile"}), encoding="utf-8")
+
+        with mock.patch.object(artifact, "read_global_config", lambda: json.loads(global_path.read_text())):
+            view = artifact.profile_config_view({}, self.workspace)
+
+        self.assertEqual(view["defaultProfile"], "injected-profile")
+
+    def test_missing_global_config_does_not_crash_the_view(self):
+        with mock.patch.object(artifact, "read_global_config", dict):
+            view = artifact.profile_config_view({}, self.workspace)
+
+        self.assertTrue(str(view["defaultProfile"]).strip())
+
+
+class TestWeeklyRangeLabel(unittest.TestCase):
+    """DAYZEROCTO-14 U1: one formatter, so the panel and prompt card cannot drift apart."""
+
+    def test_cursor_mode_suppresses_weekday_and_lookback_detail(self):
+        label = artifact.weekly_range_label(
+            {"weeklyReportDefaults": {"range": "since_last_report", "startDay": "Friday", "endDay": "Thursday", "lookbackDays": 7}}
+        )
+
+        self.assertEqual(label, "since_last_report")
+        self.assertNotIn("Friday", label)
+        self.assertNotIn(" to ", label)
+        self.assertNotIn("7 days", label)
+
+    def test_day_based_range_keeps_its_weekday_detail(self):
+        label = artifact.weekly_range_label(
+            {"weeklyReportDefaults": {"range": "previous_completed_week", "startDay": "Friday", "endDay": "Thursday"}}
+        )
+
+        self.assertEqual(label, "previous_completed_week; Friday to Thursday")
+
+    def test_unconfigured_range_reports_not_configured(self):
+        self.assertIn("not_configured", artifact.weekly_range_label({}))
+
+
 if __name__ == "__main__":
     unittest.main()

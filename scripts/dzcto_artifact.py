@@ -310,6 +310,71 @@ def profile_name_for_config(config: dict[str, Any], wiki_root: Path, explicit_pr
     return profile_slug(wiki_root.name)
 
 
+def weekly_range_label(config: dict[str, Any] | None) -> str:
+    config = config if isinstance(config, dict) else {}
+    weekly_defaults = config.get("weeklyReportDefaults")
+    weekly_defaults = weekly_defaults if isinstance(weekly_defaults, dict) else {}
+    weekly_range = text_value(weekly_defaults.get("range")) or "not_configured"
+    if weekly_range == "since_last_report":
+        return weekly_range
+
+    weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
+    weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
+    label = f"{weekly_range}; {weekly_start} to {weekly_end}"
+    lookback = text_value(weekly_defaults.get("lookbackDays"))
+    return f"{label}; {lookback} days" if lookback else label
+
+
+def profile_config_view(
+    config: dict[str, Any] | None,
+    wiki_root: Path,
+    global_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    workspace_config = config if isinstance(config, dict) else {}
+    resolved_global_config = read_global_config() if global_config is None else global_config
+    if not isinstance(resolved_global_config, dict):
+        resolved_global_config = {}
+
+    profile_name = profile_name_for_config(workspace_config, wiki_root)
+    if not has_real_value(profile_name):
+        profile_name = "Not set"
+
+    default_profile = text_value(resolved_global_config.get("defaultProfile"))
+    if not has_real_value(default_profile):
+        default_profile = "Not set"
+
+    tone = text_value(workspace_config.get("ceoReportTone"))
+    if not has_real_value(tone):
+        tone = "Not set"
+
+    raw_repos = workspace_config.get("codeRepos")
+    repo_basenames: list[str] = []
+    if isinstance(raw_repos, list):
+        for repo in raw_repos:
+            if not isinstance(repo, str) or not repo.strip():
+                continue
+            basename = repo.strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+            if basename:
+                repo_basenames.append(basename)
+
+    artifact_directory_present = any(
+        isinstance(workspace_config.get(key), str)
+        and has_real_value(workspace_config[key])
+        for key in ("artifactsDir", "artifactDirectory", "defaultArtifactsDir", "wikiRoot")
+    )
+
+    return {
+        "profileName": profile_name,
+        "defaultProfile": default_profile,
+        "weeklyRangeLabel": weekly_range_label(workspace_config),
+        "tone": tone,
+        "evidenceRepos": repo_basenames,
+        "evidenceRepoCount": len(repo_basenames),
+        "artifactDirectory": "Configured" if artifact_directory_present else "Not set",
+        "toolVersion": TOOL_VERSION,
+    }
+
+
 def legacy_global_profile(config: dict[str, Any]) -> dict[str, Any]:
     profile: dict[str, Any] = {}
     key_map = {
@@ -2947,14 +3012,10 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     weekly_range = text_value(weekly_defaults.get("range")) or "not_configured"
     weekly_start = text_value(weekly_defaults.get("startDay")) or "Not set"
     weekly_end = text_value(weekly_defaults.get("endDay")) or "Not set"
-    lookback = text_value(weekly_defaults.get("lookbackDays"))
+    weekly_label = weekly_range_label(config)
     if weekly_range == "since_last_report":
-        weekly_label = weekly_range
         weekly_kpi_value = "Since last"
     else:
-        weekly_label = f"{weekly_range}; {weekly_start} to {weekly_end}"
-        if lookback:
-            weekly_label = f"{weekly_label}; {lookback} days"
         weekly_kpi_value = "Needed" if weekly_range == "not_configured" else f"{weekly_start[:3]} to {weekly_end[:3]}"
     tone = text_value(config.get("ceoReportTone")) or "direct, concise, business-facing, calm about risk, explicit about asks"
     artifact_dir = text_value(config.get("artifactDirectory")) or str(wiki_root)
