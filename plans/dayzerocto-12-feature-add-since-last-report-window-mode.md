@@ -278,7 +278,7 @@ the derivation exists.
 - Happy path: two weekly reports on disk with `window.end` `2026-07-07` and `2026-07-14`; `--as-of
   2026-07-23` → `start 2026-07-15`, `end 2026-07-23`, `days 9`, cursor names the `07-14` report.
 - Happy path (self-heal, R5): newest weekly `window.end` `2026-07-02`, `--as-of 2026-07-23` →
-  `days 22`, no warning emitted, no clamp.
+  `days 21` (start `07-03` through `07-23`, both bounds inclusive), no warning emitted, no clamp.
 - Edge case: newest weekly `window.end` equals the run date → `days 0`, `empty true`, `start`
   strictly greater than `end`.
 - Edge case: newest weekly `window.end` is *after* the run date (hand-edited/clock skew) →
@@ -678,3 +678,33 @@ bullet is checkable by opening the named file.
       command, bad input, real fixture dirs, macOS `/private` path resolution). (U1, U2)
 - [ ] `tests/test_dzcto_artifact.py` — renderer, index KPI, spine, and skill-content coverage
       extended. (U3, U4, U5)
+
+---
+
+## Decisions
+
+### The week-over-week window line must not contain an arrow — 2026-07-23
+
+`tests/test_dzcto_artifact.py::test_disjoint_metrics_render_no_delta` asserts
+`assertNotIn("→", html)` over the whole `report_changes_html` output, as a proxy for "no metric
+delta rendered". The obvious phrasing for the new line — `2026-07-15 → 2026-07-23` — would have
+tripped it and looked like a regression in unrelated metric logic. Picked `(start to end)`;
+rejected the arrow form. The assertion is a reasonable proxy that a *new* arrow-bearing line
+silently invalidates, so the constraint is worth keeping in view for any future addition to this
+section.
+
+### The README's canonical profile example keeps `previous_completed_week` — 2026-07-23
+
+The first pass at U6 swapped the README's copy-paste profile block to `since_last_report`. That
+block is what every new install copies, so replacing it would have changed the recommended default
+for all new profiles. DAYZEROCTO-12 adds an option; it does not promote it. Kept the day-based
+example and documented cursor mode beside it as an alternative.
+
+### `plan-units status` cannot distinguish "not started" from "done" — 2026-07-23
+
+With zero units committed, `partial` is `false`, and an untracked plan file alone satisfies the
+"tree is dirty" half of the work postcondition. So `all in_progress` + `changes present` +
+`partial == false` passed *vacuously* before any implementation existed, and a resume in that
+window would have advanced to the ship stage on an empty branch. Only the durable marker's `stage`
+field distinguishes the two states. Not fixed here — recorded because the next multi-unit run has
+the same window between the issue transition and the first unit commit.
