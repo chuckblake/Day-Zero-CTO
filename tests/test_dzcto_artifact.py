@@ -1,5 +1,6 @@
 """Tests for the CEO report schema v1 + week-over-week machinery (DAYZEROCTO-1)."""
 
+import contextlib
 import datetime as dt
 import io
 import json
@@ -210,6 +211,71 @@ class TestWeeklyReportDates(unittest.TestCase):
     def test_empty_and_missing_directories_return_empty_lists(self):
         self.assertEqual(artifact.weekly_report_dates(self.folder), [])
         self.assertEqual(artifact.weekly_report_dates(self.folder / "missing"), [])
+
+    def test_reports_without_eligibility_facts_still_count(self):
+        """Upgrade safety (DAYZEROCTO-15 KTD3): every report already on disk predates the
+        eligibility fields. Excluding on absence would retroactively zero every user's streak."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+
+    def test_excludes_test_run_reports_and_names_the_reason(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(test_run=True))
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+        note = stderr.getvalue()
+        self.assertIn("excluding weekly-streak candidate", note)
+        self.assertIn("2026-06-25-ceo-report.json", note)
+        self.assertIn("test run", note)
+
+    def test_test_run_false_is_counted(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(test_run=False))
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+
+    def test_non_boolean_test_run_is_counted_and_does_not_raise(self):
+        """Only a real boolean True excludes. A truthy string is malformed input, and the
+        fail-safe direction for malformed eligibility facts is to count (KTD3)."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(test_run="yes"))
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(
+            test_run=None, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            [dt.date(2026, 6, 25), dt.date(2026, 6, 18)],
+        )
+
+    def test_unreadable_report_keeps_its_existing_skip_note(self):
+        """The new filter runs after the existing tolerant-collector skips, so a malformed
+        payload is still reported as 'skipping', never as an eligibility 'excluding'."""
+        (self.folder / "2026-06-25-ceo-report.json").write_text("{not json", encoding="utf-8")
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+        note = stderr.getvalue()
+        self.assertIn("skipping weekly-streak candidate", note)
+        self.assertNotIn("excluding weekly-streak candidate", note)
+
+    def test_excluded_report_breaks_the_streak_run(self):
+        """An excluded middle week is a real gap, not a silent collapse of the remaining weeks."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(
+            test_run=True, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        write_report(self.folder, "2026-06-11-ceo-report.json", v1_report(
+            window={"start": "2026-06-05", "end": "2026-06-11"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            dates = artifact.weekly_report_dates(self.folder)
+        self.assertEqual(dates, [dt.date(2026, 6, 25), dt.date(2026, 6, 11)])
+        self.assertEqual(artifact.weekly_streak(dates, dt.date(2026, 6, 26), 7), 1)
+
+
+class TestCountsTowardWeeklyStreak(unittest.TestCase):
+    def test_absent_facts_count_with_no_reason(self):
+        self.assertEqual(artifact.counts_toward_weekly_streak(v1_report()), (True, None))
+
+    def test_test_run_excludes_and_returns_a_human_readable_reason(self):
+        counts, reason = artifact.counts_toward_weekly_streak(v1_report(test_run=True))
+        self.assertFalse(counts)
+        self.assertIsInstance(reason, str)
+        self.assertIn("test run", reason)
 
 
 class TestResolveWeeklyCadenceDays(unittest.TestCase):
@@ -1117,6 +1183,58 @@ class TestArtifactWritePath(unittest.TestCase):
 
         self.assertEqual(len(result.stdout.splitlines()), 1)
         self.assertIn("Save as PDF", result.stderr)
+
+    def test_test_run_flag_stamps_metadata_and_keeps_stdout_to_the_path(self):
+        result = self.generate(v1_report(), "CEO Report marked test run", "--test-run")
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        report_path = Path(stdout_lines[0])
+        self.assertTrue(report_path.exists())
+        written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(written["test_run"], True)
+        self.assertIn("test_run", result.stderr)
+
+    def test_without_test_run_flag_no_marker_is_stamped(self):
+        result = self.generate(v1_report(), "CEO Report unmarked")
+
+        report_path = Path(result.stdout.splitlines()[0])
+        written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertNotIn("test_run", written)
+
+    def test_authored_test_run_is_overwritten_by_the_renderer(self):
+        """Streak eligibility is renderer-owned metadata: a report author cannot mark their own
+        report a test run, and cannot suppress the flag the operator passed."""
+        result = self.generate(v1_report(test_run=True), "CEO Report authored marker")
+        report_path = Path(result.stdout.splitlines()[0])
+        written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertNotIn("test_run", written)
+
+    def test_wrapper_forwards_test_run_flag(self):
+        """Three-site wiring regression: the dzcto.py wrapper whitelists flags rather than
+        forwarding argv, so an engine-only flag silently vanishes on the real user path."""
+        data_file = self.workspace.parent / "wrapper-test-run.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "scripts" / "dzcto.py"),
+                "artifact",
+                "--artifacts-dir", str(self.workspace),
+                "--kind", "ceo-updates",
+                "--title", "CEO Report wrapper test run",
+                "--data-file", str(data_file),
+                "--test-run",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        written = json.loads(Path(stdout_lines[0]).with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(written["test_run"], True)
 
     def test_open_failure_is_advisory_and_uri_handles_spaces(self):
         report_path = self.workspace / "report with spaces.html"

@@ -965,6 +965,7 @@ def main(argv: list[str]) -> int:
     artifact.add_argument("--data-file")
     artifact.add_argument("--body-file")
     artifact.add_argument("--open", action="store_true", help="Open the rendered report and print a share recipe")
+    artifact.add_argument("--test-run", action="store_true", help="Mark the report as a test run that does not count toward the weekly streak")
 
     sub._choices_actions = [action for action in sub._choices_actions if action.help != argparse.SUPPRESS]
 
@@ -1104,6 +1105,8 @@ def main(argv: list[str]) -> int:
             artifact_args.extend(["--body-file", args.body_file])
         if args.open:
             artifact_args.append("--open")
+        if args.test_run:
+            artifact_args.append("--test-run")
         return run_script("dzcto_artifact.py", artifact_args)
 
     return 0

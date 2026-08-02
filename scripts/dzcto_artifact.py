@@ -1402,6 +1402,15 @@ def report_effective_date(json_path: Path, data: Any) -> str | None:
     return None
 
 
+def counts_toward_weekly_streak(data: dict[str, Any]) -> tuple[bool, str | None]:
+    if data.get("test_run") is True:
+        return False, "marked as a test run"
+
+    # Eligibility facts were added after weekly reports already existed. Missing
+    # facts must count so an upgrade does not erase an existing user's streak.
+    return True, None
+
+
 def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
     dates: set[dt.date] = set()
     if not reports_dir.exists():
@@ -1418,6 +1427,13 @@ def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
         effective_date = date_value(report_effective_date(path, data))
         if effective_date is None:
             print(f"dzcto: skipping weekly-streak candidate {path.name} (no resolvable date)", file=sys.stderr)
+            continue
+        counts, exclusion_reason = counts_toward_weekly_streak(data)
+        if not counts:
+            print(
+                f"dzcto: excluding weekly-streak candidate {path.name} ({exclusion_reason})",
+                file=sys.stderr,
+            )
             continue
         dates.add(effective_date)
     return sorted(dates, reverse=True)
@@ -3459,6 +3475,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--body-file", help="Legacy: raw HTML body file")
     parser.add_argument("--data-file", help="Structured JSON report data file")
     parser.add_argument("--open", action="store_true", help="Open the rendered report and print a share recipe")
+    parser.add_argument("--test-run", action="store_true", help="Mark the report as a test run that does not count toward the weekly streak")
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--company-name", help="Company name to store in wiki metadata")
     parser.add_argument("--company-description", help="Short company description to store in wiki metadata")
@@ -3603,6 +3620,12 @@ def main(argv: list[str]) -> int:
                 structured_data.setdefault("schema_version", CEO_REPORT_SCHEMA_VERSION)
                 structured_data.setdefault("generated_at", utc_now())
                 structured_data.setdefault("company", company)
+                # Test-run intent is operator-controlled renderer metadata, not a
+                # field report authors can set in the input JSON.
+                structured_data.pop("test_run", None)
+                if args.test_run:
+                    structured_data["test_run"] = True
+                    print("dzcto: stamped test_run: true on report metadata", file=sys.stderr)
             structured_data = sanitize_current_report_data(structured_data)
             if not cited_evidence_sources(structured_data):
                 print(
