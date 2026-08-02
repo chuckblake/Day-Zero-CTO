@@ -147,6 +147,27 @@ The index refreshes automatically after each report. To apply a newer report pag
 older structured reports, run `dzcto init --artifacts-dir "<artifacts-dir>" ...`; init re-renders
 existing report HTML from the saved JSON.
 
+Every run reports your current weekly streak on stderr, so the number is visible where you finish
+rather than only on a page you have to open:
+
+```text
+dzcto: weekly streak: 2 of 3 weeks toward the North Star
+```
+
+When a reporting period has elapsed without a report, the run also warns that the streak is at risk
+— while it can still be saved, not after it resets. The same state appears on the index tile.
+
+Two flags shape whether a report counts toward that streak:
+
+| Flag | Effect |
+| --- | --- |
+| `--evidence-file <path>` | Records whether the window had real work, from a `dzcto evidence` snapshot for the same window. A quiet window does not extend the streak. |
+| `--test-run` | Marks the run as a test or debug render so it never counts. |
+
+Both write renderer-owned fields; reports rendered without them keep counting, so upgrading never
+resets an existing streak. Every generated page also carries a small "Generated with Day Zero CTO"
+credit in its footer.
+
 Collect the configured repositories' read-only Git evidence for an exact report window with:
 
 ```bash

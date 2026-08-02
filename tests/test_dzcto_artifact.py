@@ -1370,6 +1370,18 @@ class TestEligibilityFieldsAreDocumented(unittest.TestCase):
             "the stale disclaimer contradicts the shipped exclusions",
         )
 
+    def test_readme_documents_the_cli_streak_output_and_the_credit(self):
+        text = (REPO / "README.md").read_text(encoding="utf-8")
+        self.assertIn("weekly streak", text)
+        self.assertIn("at risk", text)
+        self.assertIn("Generated with Day Zero CTO", text)
+
+    def test_concepts_defines_the_at_risk_state(self):
+        text = (REPO / "CONCEPTS.md").read_text(encoding="utf-8")
+        self.assertIn("### Streak at risk", text)
+        entry = text.split("### Streak at risk", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("one configured cadence period", entry)
+
     def test_only_the_weekly_skill_passes_the_evidence_file(self):
         """Ad-hoc reports never enter the weekly pool, so wiring --evidence-file into that skill
         would imply an eligibility contract it does not participate in."""

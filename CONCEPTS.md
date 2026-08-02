@@ -19,5 +19,12 @@ The weekly coverage span from the prior weekly report artifact's `window.end` (e
 ### Weekly streak
 The count of consecutive configured weekly cadence periods, ending at today, that contain an eligible `weekly` CEO report. Eligibility excludes reports with `test_run: true` and reports whose renderer-stamped `work_evidence` shows `quiet: true`; reports without either fact still count so an upgrade does not erase an existing streak. It remains a best-effort local signal derived from report JSON on the index, not the full canonical North Star metric: two of the strategy's four exclusions are implemented, while automated runs nobody opens and the maintainer's own usage are not.
 
+### Streak at risk
+The state where a weekly streak is still alive but one configured cadence period has elapsed since
+the newest counted report — exactly one period, because a second elapsed period is what resets the
+streak to zero. It is deliberately a *pre-loss* status: the window in which a warning can still
+change the outcome. Distinct from a paused streak, where the count is already zero because every
+recent report was excluded; at risk presupposes a live streak worth losing.
+
 ### Provenance
 The embedded machine-readable record identifying which skill version generated an artifact and from what inputs, carried inside the artifact so a regenerated page is self-describing. Because it echoes user-supplied fields such as the report title, it is one of the inputs that must be sanitized before the artifact is written.
