@@ -174,6 +174,60 @@ class TestWeeklyStreak(unittest.TestCase):
         self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 0), 2)
 
 
+class TestWeeklyStreakAtRisk(unittest.TestCase):
+    """DAYZEROCTO-18. The warning has to fire BEFORE the streak resets, so the whole unit turns
+    on one boundary: weekly_streak() returns 0 once the period index reaches 2, which makes
+    index 1 the only window where a warning is still actionable."""
+
+    def d(self, value: str) -> dt.date:
+        return dt.date.fromisoformat(value)
+
+    def test_same_period_is_not_at_risk(self):
+        """Index 0 -- the current period already has a report, nothing is elapsing."""
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 7), 1)
+        self.assertFalse(artifact.weekly_streak_at_risk(dates, self.d("2026-06-26"), 7))
+
+    def test_one_elapsed_period_is_at_risk(self):
+        """Index 1 -- a period has passed, the streak is still alive. This is the only moment a
+        warning can help."""
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-05"), 7), 1)
+        self.assertTrue(artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 7))
+
+    def test_already_lapsed_is_not_at_risk(self):
+        """Index 2 -- the streak has already reset. Warning here would be after the loss, which
+        the acceptance criteria explicitly forbid."""
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-06"), 7), 0)
+        self.assertFalse(artifact.weekly_streak_at_risk(dates, self.d("2026-07-06"), 7))
+
+    def test_no_reports_is_not_at_risk(self):
+        """At risk presupposes a live streak worth losing."""
+        self.assertFalse(artifact.weekly_streak_at_risk([], self.d("2026-06-26"), 7))
+
+    def test_cadence_moves_the_boundary(self):
+        """A 14-day cadence must widen the safe window: the same 11-day gap that has already
+        lapsed a weekly cadence is merely at risk on a fortnightly one."""
+        dates = [self.d("2026-06-25")]
+        today = self.d("2026-07-06")
+        self.assertFalse(artifact.weekly_streak_at_risk(dates, today, 7))
+        self.assertTrue(artifact.weekly_streak_at_risk(dates, today, 14))
+
+    def test_zero_cadence_falls_back_to_weekly(self):
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(
+            artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 0),
+            artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 7),
+        )
+
+    def test_a_longer_live_streak_is_still_at_risk(self):
+        """The whole three weeks are at stake, not just the newest one."""
+        dates = [self.d("2026-06-25"), self.d("2026-06-18"), self.d("2026-06-11")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-05"), 7), 3)
+        self.assertTrue(artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 7))
+
+
 class TestWeeklyReportDates(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -500,6 +554,39 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         html = self.render("2026-06-26")
         self.assertIn("Start a weekly report", self.streak_tile(html))
         self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_at_risk_streak_warns_on_the_tile(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        html = self.render("2026-07-05")
+        tile = self.streak_tile(html)
+        self.assertIn('<div class="k-val">1</div>', tile)
+        self.assertIn("At risk", tile)
+        self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_a_met_north_star_still_warns_when_at_risk(self):
+        """Three weeks banked is exactly when a lapse costs the most, so at-risk must beat the
+        'North Star met' good tone rather than being masked by it."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
+        write_report(self.reports_dir, "2026-06-11-ceo-report.json", v1_report(window={"start": "2026-06-05", "end": "2026-06-11"}))
+        html = self.render("2026-07-05")
+        self.assertIn('<div class="k-val">3</div>', self.streak_tile(html))
+        self.assertIn("At risk", self.streak_tile(html))
+        self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_at_risk_and_paused_are_mutually_exclusive(self):
+        """Paused means the streak is 0; at risk means it is still live. One must never render
+        the other's copy."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report(test_run=True))
+        with contextlib.redirect_stderr(io.StringIO()):
+            tile = self.streak_tile(self.render("2026-07-05"))
+        self.assertIn("Paused", tile)
+        self.assertNotIn("At risk", tile)
+
+    def test_healthy_streak_shows_no_at_risk_copy(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertNotIn("At risk", tile)
 
     def test_excluded_report_alongside_counting_ones_keeps_the_normal_tile(self):
         write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())

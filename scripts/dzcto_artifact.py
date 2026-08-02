@@ -1567,6 +1567,19 @@ def weekly_streak(dates: list[dt.date], today: dt.date, cadence_days_value: int)
     return streak
 
 
+def weekly_streak_at_risk(dates: list[dt.date], today: dt.date, cadence_days_value: int) -> bool:
+    cadence = cadence_days_value if cadence_days_value > 0 else DEFAULT_WEEKLY_CADENCE_DAYS
+    ordered_dates = sorted(set(dates), reverse=True)
+    if not ordered_dates:
+        return False
+
+    if weekly_streak(ordered_dates, today, cadence) == 0:
+        return False
+
+    latest = ordered_dates[0]
+    return rounded_period_index((today - latest).days, cadence) == 1
+
+
 def resolve_weekly_cadence_days(core_dir: Path, report_folder: str) -> int:
     target_folder = normalize_report_folder(report_folder)
     for rule in parse_cadence_rules(core_dir / "OPERATING_CADENCE.md"):
@@ -3230,7 +3243,7 @@ def prune_manifest_report_artifacts(wiki_root: Path) -> None:
         write_json(manifest_path, manifest)
 
 
-def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> int:
+def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> tuple[int, bool]:
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
     ensure_sidecar(wiki_root, project_folder, "render-index")
@@ -3254,11 +3267,14 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     weekly_cadence = resolve_weekly_cadence_days(core_dir, report_folder)
     weekly_report_dates_counted, weekly_report_exclusions = classify_weekly_reports(reports_dir / report_folder)
     weekly_streak_count = weekly_streak(weekly_report_dates_counted, today, weekly_cadence)
+    weekly_streak_is_at_risk = weekly_streak_at_risk(weekly_report_dates_counted, today, weekly_cadence)
     weekly_streak_paused = weekly_streak_count == 0 and bool(weekly_report_exclusions)
     if weekly_streak_paused:
         weekly_streak_sub = "Paused - report logged, not counted"
     elif weekly_streak_count == 0:
         weekly_streak_sub = "Start a weekly report"
+    elif weekly_streak_is_at_risk:
+        weekly_streak_sub = "At risk - report now to preserve streak"
     elif weekly_streak_count >= NORTH_STAR_STREAK_WEEKS:
         weekly_streak_sub = "North Star met"
     else:
@@ -3356,7 +3372,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
       <div class="k-val">{esc(report_count)}</div>
       <div class="k-sub">{esc(latest_date)}</div>
     </a>
-    <div class="kpi" data-tone="{esc('good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'info' if weekly_streak_paused else 'warn' if weekly_streak_count == 0 else 'info')}">
+    <div class="kpi" data-tone="{esc('info' if weekly_streak_paused else 'warn' if weekly_streak_is_at_risk or weekly_streak_count == 0 else 'good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'info')}">
       <div class="k-label">Weekly streak</div>
       <div class="k-val">{esc(weekly_streak_count)}</div>
       <div class="k-sub">{esc(weekly_streak_sub)}</div>
@@ -3452,9 +3468,9 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     write_html_page(wiki_root / "index.html", dashboard_title(company), body, provenance)
     update_manifest(wiki_root, provenance)
     render_settings_page(wiki_root, config_view, generated_at=generated_at)
-    # Returned so the CLI tail can report the same number the tile shows without rebuilding the
-    # pool: a second classify_weekly_reports() call would re-emit every exclusion note.
-    return weekly_streak_count
+    # Returned so the CLI tail can report the same streak state the tile shows without rebuilding
+    # the pool: a second classify_weekly_reports() call would re-emit every exclusion note.
+    return weekly_streak_count, weekly_streak_is_at_risk
 
 
 LocatedSecretFinding = tuple[str, SecretFinding]
@@ -3817,7 +3833,7 @@ def main(argv: list[str]) -> int:
         update_manifest(wiki_root, provenance)
         written_report = report_path
 
-    count = render_index(wiki_root, project_folder)
+    count, streak_at_risk = render_index(wiki_root, project_folder)
     try:
         if count == 0:
             streak_message = (
@@ -3829,6 +3845,13 @@ def main(argv: list[str]) -> int:
         else:
             streak_message = f"{count} of {NORTH_STAR_STREAK_WEEKS} weeks toward the North Star"
         print(f"dzcto: weekly streak: {streak_message}", file=sys.stderr)
+        if streak_at_risk:
+            streak_unit = "week" if count == 1 else "weeks"
+            print(
+                f"dzcto: weekly streak at risk: {count} {streak_unit} at stake; "
+                "publish a counted weekly report now to preserve the streak",
+                file=sys.stderr,
+            )
     except Exception:
         pass
     print(written_report or wiki_root / "index.html")
