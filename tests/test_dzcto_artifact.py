@@ -1664,6 +1664,61 @@ class TestArtifactWritePath(unittest.TestCase):
         written = json.loads(Path(stdout_lines[0]).with_suffix(".json").read_text(encoding="utf-8"))
         self.assertIs(written["test_run"], True)
 
+    def streak_line(self, stderr: str) -> str:
+        matches = [line for line in stderr.splitlines() if "weekly streak:" in line]
+        self.assertEqual(len(matches), 1, f"expected exactly one streak line, got: {matches}")
+        return matches[0]
+
+    def test_report_run_prints_the_streak_to_stderr(self):
+        """Asserts the line's shape, not a positive count: this drives the CLI in a subprocess,
+        which reads the wall clock, so a past-dated fixture correctly reports a lapsed 0. Pinning
+        a positive streak requires the in-process date-injected render_index call instead."""
+        result = self.generate(v1_report(), "CEO Report streak line")
+        line = self.streak_line(result.stderr)
+        self.assertRegex(line, r"weekly streak: \d+")
+        self.assertIn(str(artifact.NORTH_STAR_STREAK_WEEKS), line)
+
+    def test_streak_line_prints_without_the_open_flag(self):
+        """emit_open_and_share only runs under --open, so the streak must not live there or every
+        non-interactive run would lose it."""
+        result = self.generate(v1_report(), "CEO Report streak no open")
+        self.assertIn("weekly streak:", result.stderr)
+        self.assertNotIn("Save as PDF", result.stderr)
+
+    def test_streak_line_does_not_touch_stdout(self):
+        result = self.generate(v1_report(), "CEO Report streak stdout")
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        self.assertTrue(Path(stdout_lines[0]).exists())
+        self.assertNotIn("weekly streak", result.stdout)
+
+    def test_cli_streak_matches_the_index_tile(self):
+        """DAYZEROCTO-16 AC3: 'matches, verifiable without relying on internal implementation
+        details'. Both numbers are read from rendered output, not from the helper."""
+        result = self.generate(v1_report(), "CEO Report streak parity")
+        line = self.streak_line(result.stderr)
+
+        index_html = (self.workspace / "index.html").read_text(encoding="utf-8")
+        label = index_html.index('<div class="k-label">Weekly streak</div>')
+        tile_value = re.search(r'<div class="k-val">(\d+)</div>', index_html[label:]).group(1)
+
+        self.assertIn(tile_value, line)
+
+    def test_excluded_report_is_named_once_not_twice(self):
+        """The CLI line reuses render_index's count. Recomputing the pool would re-emit every
+        exclusion note, so the operator would see each excluded report reported twice."""
+        self.generate(v1_report(), "CEO Report excluded once", "--test-run")
+        result = self.generate(v1_report(), "CEO Report second run")
+        self.assertEqual(result.stderr.count("excluding weekly-streak candidate"), 1)
+
+    def test_index_already_carries_the_streak_kpi(self):
+        """Characterization for DAYZEROCTO-16 AC2 -- already satisfied before this work, so it is
+        recorded rather than rebuilt (the issue's Background misreads the line reference as being
+        inside the report HTML; it is in render_index)."""
+        self.generate(v1_report(), "CEO Report index kpi")
+        index_html = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<div class="k-label">Weekly streak</div>', index_html)
+
     def test_open_failure_is_advisory_and_uri_handles_spaces(self):
         report_path = self.workspace / "report with spaces.html"
         report_path.write_text("<p>Report</p>", encoding="utf-8")

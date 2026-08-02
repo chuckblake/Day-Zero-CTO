@@ -3230,7 +3230,7 @@ def prune_manifest_report_artifacts(wiki_root: Path) -> None:
         write_json(manifest_path, manifest)
 
 
-def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> None:
+def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> int:
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
     ensure_sidecar(wiki_root, project_folder, "render-index")
@@ -3452,6 +3452,9 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     write_html_page(wiki_root / "index.html", dashboard_title(company), body, provenance)
     update_manifest(wiki_root, provenance)
     render_settings_page(wiki_root, config_view, generated_at=generated_at)
+    # Returned so the CLI tail can report the same number the tile shows without rebuilding the
+    # pool: a second classify_weekly_reports() call would re-emit every exclusion note.
+    return weekly_streak_count
 
 
 LocatedSecretFinding = tuple[str, SecretFinding]
@@ -3814,7 +3817,20 @@ def main(argv: list[str]) -> int:
         update_manifest(wiki_root, provenance)
         written_report = report_path
 
-    render_index(wiki_root, project_folder)
+    count = render_index(wiki_root, project_folder)
+    try:
+        if count == 0:
+            streak_message = (
+                f"0 of {NORTH_STAR_STREAK_WEEKS} weeks; "
+                "the next counted weekly report starts your North Star streak"
+            )
+        elif count >= NORTH_STAR_STREAK_WEEKS:
+            streak_message = f"{count} weeks; North Star target of {NORTH_STAR_STREAK_WEEKS} weeks met"
+        else:
+            streak_message = f"{count} of {NORTH_STAR_STREAK_WEEKS} weeks toward the North Star"
+        print(f"dzcto: weekly streak: {streak_message}", file=sys.stderr)
+    except Exception:
+        pass
     print(written_report or wiki_root / "index.html")
     if written_report and args.open:
         emit_open_and_share(written_report)
