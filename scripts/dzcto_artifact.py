@@ -700,6 +700,7 @@ def page_shell(
     {content}
   <footer class="app-footer">
     <span>Day Zero CTO skills v{esc(TOOL_VERSION)}</span>
+    <a href="{esc('https://github.com/chuckblake/Day-Zero-CTO')}" rel="noopener" target="_blank">{esc('Generated with Day Zero CTO')}</a>
   </footer>
 </main>
 """
@@ -2610,6 +2611,8 @@ th { background: var(--surface-3); color: var(--ink); }
 code { border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); padding: 1px 5px; }
 .app-footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   justify-content: flex-end;
   margin-top: 34px;
   padding-top: 18px;
@@ -2618,6 +2621,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   font-size: 12px;
   font-weight: 800;
 }
+.app-footer a { color: var(--muted); }
+.app-footer a:hover { color: var(--ink-2); }
 @media (max-width: 1040px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .setup-list { grid-template-columns: repeat(3, 1fr); }

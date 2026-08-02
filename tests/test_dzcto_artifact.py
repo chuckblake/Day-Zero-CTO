@@ -1002,6 +1002,73 @@ class TestCitedEvidenceSources(unittest.TestCase):
         self.assertEqual(html.count("<li>"), 1)
 
 
+class TestDayZeroCtoCredit(unittest.TestCase):
+    """DAYZEROCTO-17. The shared report is what actually reaches other people, so it is the
+    project's discovery surface -- but it is also a secret-egress boundary, so the credit must be
+    tool-identifying and never client-identifying."""
+
+    PROJECT_URL = "https://github.com/chuckblake/Day-Zero-CTO"
+    CREDIT_TEXT = "Generated with Day Zero CTO"
+
+    def footer(self, html: str) -> str:
+        start = html.index('<footer class="app-footer">')
+        return html[start:html.index("</footer>", start)]
+
+    def report_html(self, **overrides) -> str:
+        body = artifact.render_structured_report("ceo-updates", v1_report(**overrides), previous_data=None)
+        return artifact.render_report_page(
+            "CEO Report 2026-06-19 to 2026-06-25", "2026-06-25", "ceo-updates",
+            body, {}, "Acme Day Zero CTO CEO Reports",
+        )
+
+    def test_shared_report_carries_a_linked_credit(self):
+        footer = self.footer(self.report_html())
+        self.assertIn(self.CREDIT_TEXT, footer)
+        self.assertIn(f'href="{self.PROJECT_URL}"', footer)
+
+    def test_credit_link_is_safe_for_a_shared_file(self):
+        footer = self.footer(self.report_html())
+        self.assertIn('rel="noopener"', footer)
+        self.assertIn('target="_blank"', footer)
+
+    def test_credit_does_not_replace_the_skills_version(self):
+        """The version line is an existing affordance for identifying what regenerated a page."""
+        footer = self.footer(self.report_html())
+        self.assertIn("Day Zero CTO skills v", footer)
+
+    def test_credit_carries_no_client_identifying_data(self):
+        """Tool-identifying, not client-identifying -- the issue's own hard constraint."""
+        footer = self.footer(self.report_html(company="Contoso Financial Holdings"))
+        self.assertNotIn("Contoso", footer)
+        self.assertNotIn("CEO Report 2026-06-19", footer)
+        self.assertNotIn("2026-06-25", footer)
+
+    def test_credit_stays_out_of_the_report_body(self):
+        """Discreet means the footer, not the business content."""
+        html = self.report_html()
+        body = html[html.index('<div class="report-body">'):html.index('<footer class="app-footer">')]
+        self.assertNotIn(self.CREDIT_TEXT, body)
+
+    def test_credit_is_inline_and_needs_no_external_asset(self):
+        """The artifact is shared as a single self-contained file."""
+        footer = self.footer(self.report_html())
+        self.assertNotIn("<img", footer)
+        self.assertNotIn("<script", footer)
+
+    def test_index_carries_the_same_credit(self):
+        """The load-bearing proof of the single dispatch point: page_shell() is shared by the
+        index, report pages, and settings, so one edit had to cover all of them. If this passes
+        while the report test also passes, no second copy of the string can be drifting."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "ws"
+            (workspace / "reports" / "ceo-updates").mkdir(parents=True)
+            with mock.patch.object(artifact, "read_global_config", dict):
+                artifact.render_index(workspace, workspace, today=dt.date(2026, 6, 26))
+            footer = self.footer((workspace / "index.html").read_text(encoding="utf-8"))
+        self.assertIn(self.CREDIT_TEXT, footer)
+        self.assertIn(f'href="{self.PROJECT_URL}"', footer)
+
+
 class TestThinEvidenceRendering(unittest.TestCase):
     def test_empty_sources_prepend_banner_once(self):
         html = artifact.render_structured_report("ceo-updates", v1_report(sources=[]), previous_data=None)
