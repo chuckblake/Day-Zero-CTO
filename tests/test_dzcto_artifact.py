@@ -303,6 +303,69 @@ class TestCountsTowardWeeklyStreak(unittest.TestCase):
                 )
 
 
+class TestDiscardedArtifactIsAlreadyExcluded(unittest.TestCase):
+    """DAYZEROCTO-15 KTD6, characterization -- not new behavior.
+
+    Half of "test/debug runs whose artifact is discarded do not count" is satisfied by
+    construction: the pool is built by globbing what is on disk, so a deleted report cannot
+    enter it. This test records that as intentional so nobody later implements deletion
+    tracking for a case that cannot occur. The other half -- a test run still sitting on disk --
+    is what the test_run marker exists for.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_deleting_the_report_json_removes_it_from_the_streak_with_no_error(self):
+        kept = write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        discarded = write_report(
+            self.folder, "2026-06-18-ceo-report.json",
+            v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}),
+        )
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            [dt.date(2026, 6, 25), dt.date(2026, 6, 18)],
+        )
+
+        discarded.unlink()
+
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+        self.assertTrue(kept.exists())
+
+    def test_a_deleted_report_is_not_reported_as_an_exclusion(self):
+        """A file that is gone is absent, not excluded -- so it must not make the index tile
+        claim a paused streak."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report()).unlink()
+        self.assertEqual(artifact.classify_weekly_reports(self.folder), ([], []))
+
+
+class TestExcludedReportIsStillThePriorReport(unittest.TestCase):
+    """A quiet week is still the right narrative baseline for the next week's diff. The streak
+    exclusion must not leak into prior-report selection."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_quiet_excluded_report_is_selected_as_the_prior_report(self):
+        write_report(
+            self.folder, "2026-06-18-ceo-report.json",
+            v1_report(window={"start": "2026-06-12", "end": "2026-06-18"},
+                      work_evidence={"quiet": True, "commits": 0, "merges": 0}),
+        )
+        current = self.folder / "2026-06-25-ceo-report.json"
+        with contextlib.redirect_stderr(io.StringIO()):
+            prior_path, prior_data, prior_date, _notes = artifact.locate_prior_report(current, v1_report())
+
+        self.assertIsNotNone(prior_path)
+        self.assertEqual(prior_path.name, "2026-06-18-ceo-report.json")
+        self.assertEqual(prior_date, "2026-06-18")
+        self.assertIsNotNone(prior_data)
+
+
 class TestResolveWeeklyCadenceDays(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

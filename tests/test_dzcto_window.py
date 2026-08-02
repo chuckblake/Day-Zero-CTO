@@ -110,6 +110,62 @@ class TestCursorSelection(WindowResolutionTestCase):
         self.assertIsNone(result["cursor"])
 
 
+class TestStreakExclusionsDoNotMoveTheCursor(WindowResolutionTestCase):
+    """DAYZEROCTO-15 KTD5. The streak exclusion belongs to the streak pool ONLY.
+
+    The cursor is a coverage ledger: it decides which days the next report covers. If an
+    excluded report failed to advance it, the days that report already covered would be
+    re-reported in the next window and land in two reports -- a correctness bug strictly worse
+    than the inflated streak this feature exists to fix.
+
+    This is structurally safe today because latest_weekly_report_cursor() in scripts/dzcto.py is
+    a separate implementation from the artifact renderer's streak pool; they share an idiom, not
+    a function. These tests exist so a future 'let's share the predicate' refactor fails loudly
+    here instead of silently double-reporting days.
+    """
+
+    def test_quiet_excluded_report_still_advances_the_cursor(self):
+        quiet = self.write_report(
+            "2026-07-14-ceo-report-2026-07-08-to-2026-07-14.json",
+            weekly_report("2026-07-08", "2026-07-14",
+                          work_evidence={"quiet": True, "commits": 0, "merges": 0}),
+        )
+
+        result, _ = self.resolve("2026-07-23")
+
+        self.assertEqual(result["cursor"]["window_end"], "2026-07-14")
+        self.assertEqual(result["cursor"]["report"], f"reports/ceo-updates/{quiet.name}")
+        self.assertEqual(result["start"], "2026-07-15")
+        self.assertFalse(result["empty"])
+
+    def test_test_run_report_still_advances_the_cursor(self):
+        self.write_report(
+            "2026-07-14-ceo-report-2026-07-08-to-2026-07-14.json",
+            weekly_report("2026-07-08", "2026-07-14", test_run=True),
+        )
+
+        result, _ = self.resolve("2026-07-23")
+
+        self.assertEqual(result["cursor"]["window_end"], "2026-07-14")
+        self.assertEqual(result["start"], "2026-07-15")
+
+    def test_no_day_is_covered_twice_when_the_newest_report_is_excluded(self):
+        """The failure this guards against, stated as coverage rather than as a cursor value."""
+        self.write_weekly("2026-07-07", "2026-07-01")
+        self.write_report(
+            "2026-07-14-ceo-report-2026-07-08-to-2026-07-14.json",
+            weekly_report("2026-07-08", "2026-07-14",
+                          work_evidence={"quiet": True, "commits": 0, "merges": 0}),
+        )
+
+        result, _ = self.resolve("2026-07-23")
+
+        # Must start the day after the excluded report's window, not the day after the older
+        # counted one -- otherwise 07-08..07-14 gets reported a second time.
+        self.assertEqual(result["start"], "2026-07-15")
+        self.assertNotEqual(result["start"], "2026-07-08")
+
+
 class TestEmptyAndFutureWindows(WindowResolutionTestCase):
     def test_cursor_on_the_run_date_yields_an_empty_window(self):
         self.write_weekly("2026-07-23", "2026-07-17")
