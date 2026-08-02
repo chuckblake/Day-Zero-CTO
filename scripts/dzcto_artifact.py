@@ -702,6 +702,7 @@ def page_shell(
     {content}
   <footer class="app-footer">
     <span>Day Zero CTO skills v{esc(TOOL_VERSION)}</span>
+    <a href="{esc('https://github.com/chuckblake/Day-Zero-CTO')}" rel="noopener" target="_blank">{esc('Generated with Day Zero CTO')}</a>
   </footer>
 </main>
 """
@@ -1308,6 +1309,96 @@ def read_json_file(path: Path, default: Any) -> Any:
         return default
 
 
+def window_description(window: Any) -> str:
+    if not isinstance(window, dict):
+        return "<missing>"
+    return f"{window.get('start', '<missing>')} to {window.get('end', '<missing>')}"
+
+
+def is_nonnegative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def work_evidence_from_snapshot(path: Path, report_window: Any) -> dict[str, Any] | None:
+    try:
+        snapshot = read_json_file(path, None)
+    except (OSError, UnicodeError) as exc:
+        print(
+            f"dzcto: could not read evidence snapshot {path}: {exc}; work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    if not isinstance(snapshot, dict):
+        print(
+            f"dzcto: evidence snapshot {path} is missing, unreadable, or not a JSON object; "
+            "work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    snapshot_window = snapshot.get("window")
+    totals = snapshot.get("totals")
+    if not isinstance(snapshot_window, dict) or not isinstance(totals, dict):
+        print(
+            f"dzcto: evidence snapshot {path} is missing a valid window or totals object "
+            f"(evidence window {window_description(snapshot_window)}; "
+            f"report window {window_description(report_window)}); work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    evidence_start = snapshot_window.get("start")
+    evidence_end = snapshot_window.get("end")
+    if not isinstance(evidence_start, str) or not isinstance(evidence_end, str):
+        print(
+            f"dzcto: evidence snapshot {path} has a malformed window "
+            f"(evidence window {window_description(snapshot_window)}; "
+            f"report window {window_description(report_window)}); work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    report_start = report_window.get("start") if isinstance(report_window, dict) else None
+    report_end = report_window.get("end") if isinstance(report_window, dict) else None
+    if evidence_start != report_start or evidence_end != report_end:
+        print(
+            f"dzcto: evidence snapshot window {window_description(snapshot_window)} does not match "
+            f"report window {window_description(report_window)}; work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    repos = totals.get("repos")
+    if not is_nonnegative_int(repos):
+        print(
+            f"dzcto: evidence snapshot {path} has a malformed totals.repos value; "
+            "work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+    if repos == 0:
+        print(
+            f"dzcto: evidence snapshot {path} reports zero readable repositories for window "
+            f"{window_description(snapshot_window)}; work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    quiet = snapshot.get("quiet")
+    commits = totals.get("commits")
+    merges = totals.get("merges")
+    if not isinstance(quiet, bool) or not is_nonnegative_int(commits) or not is_nonnegative_int(merges):
+        print(
+            f"dzcto: evidence snapshot {path} has malformed quiet or commit/merge totals; "
+            "work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    return {"quiet": quiet, "commits": commits, "merges": merges}
+
+
 def date_value(value: Any) -> dt.date | None:
     try:
         return dt.date.fromisoformat(str(value))
@@ -1465,10 +1556,26 @@ def report_effective_date(json_path: Path, data: Any) -> str | None:
     return None
 
 
-def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
+def counts_toward_weekly_streak(data: dict[str, Any]) -> tuple[bool, str | None]:
+    if data.get("test_run") is True:
+        return False, "marked as a test run"
+
+    work_evidence = data.get("work_evidence")
+    if isinstance(work_evidence, dict) and work_evidence.get("quiet") is True:
+        commits = work_evidence.get("commits")
+        commit_count = commits if is_nonnegative_int(commits) else "unknown"
+        return False, f"quiet window {window_description(data.get('window'))}: {commit_count} commits"
+
+    # Eligibility facts were added after weekly reports already existed. Missing
+    # facts must count so an upgrade does not erase an existing user's streak.
+    return True, None
+
+
+def classify_weekly_reports(reports_dir: Path) -> tuple[list[dt.date], list[tuple[str, str]]]:
     dates: set[dt.date] = set()
+    exclusions: list[tuple[str, str]] = []
     if not reports_dir.exists():
-        return []
+        return [], []
     for path in sorted(reports_dir.glob("*.json")):
         if path.name == "data.json":
             continue
@@ -1485,8 +1592,20 @@ def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
         if effective_date is None:
             print(f"dzcto: skipping weekly-streak candidate {path.name} (no resolvable date)", file=sys.stderr)
             continue
+        counts, exclusion_reason = counts_toward_weekly_streak(data)
+        if not counts:
+            print(
+                f"dzcto: excluding weekly-streak candidate {path.name} ({exclusion_reason})",
+                file=sys.stderr,
+            )
+            exclusions.append((path.name, exclusion_reason))
+            continue
         dates.add(effective_date)
-    return sorted(dates, reverse=True)
+    return sorted(dates, reverse=True), exclusions
+
+
+def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
+    return classify_weekly_reports(reports_dir)[0]
 
 
 def rounded_period_index(delta_days: int, cadence_days_value: int) -> int:
@@ -1512,6 +1631,19 @@ def weekly_streak(dates: list[dt.date], today: dt.date, cadence_days_value: int)
     while streak in periods:
         streak += 1
     return streak
+
+
+def weekly_streak_at_risk(dates: list[dt.date], today: dt.date, cadence_days_value: int) -> bool:
+    cadence = cadence_days_value if cadence_days_value > 0 else DEFAULT_WEEKLY_CADENCE_DAYS
+    ordered_dates = sorted(set(dates), reverse=True)
+    if not ordered_dates:
+        return False
+
+    if weekly_streak(ordered_dates, today, cadence) == 0:
+        return False
+
+    latest = ordered_dates[0]
+    return rounded_period_index((today - latest).days, cadence) == 1
 
 
 def resolve_weekly_cadence_days(core_dir: Path, report_folder: str) -> int:
@@ -2588,6 +2720,8 @@ th { background: var(--surface-3); color: var(--ink); }
 code { border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); padding: 1px 5px; }
 .app-footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   justify-content: flex-end;
   margin-top: 34px;
   padding-top: 18px;
@@ -2596,6 +2730,8 @@ code { border: 1px solid var(--line); border-radius: 6px; background: var(--surf
   font-size: 12px;
   font-weight: 800;
 }
+.app-footer a { color: var(--muted); }
+.app-footer a:hover { color: var(--ink-2); }
 @media (max-width: 1040px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .setup-list { grid-template-columns: repeat(3, 1fr); }
@@ -3255,7 +3391,7 @@ def prune_manifest_report_artifacts(wiki_root: Path) -> None:
         write_json(manifest_path, manifest)
 
 
-def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> None:
+def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = None) -> tuple[int, bool]:
     core_dir = wiki_root / "core"
     reports_dir = wiki_root / "reports"
     ensure_sidecar(wiki_root, project_folder, "render-index")
@@ -3280,9 +3416,16 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     latest_href = report_links[0].relative_to(wiki_root).as_posix() if report_links else "#sec-reports"
     latest_date = report_run_date(report_links[0]) if report_links else "No reports yet"
     weekly_cadence = resolve_weekly_cadence_days(core_dir, report_folder)
-    weekly_streak_count = weekly_streak(weekly_report_dates(reports_dir / report_folder), today, weekly_cadence)
-    if weekly_streak_count == 0:
+    weekly_report_dates_counted, weekly_report_exclusions = classify_weekly_reports(reports_dir / report_folder)
+    weekly_streak_count = weekly_streak(weekly_report_dates_counted, today, weekly_cadence)
+    weekly_streak_is_at_risk = weekly_streak_at_risk(weekly_report_dates_counted, today, weekly_cadence)
+    weekly_streak_paused = weekly_streak_count == 0 and bool(weekly_report_exclusions)
+    if weekly_streak_paused:
+        weekly_streak_sub = "Paused - report logged, not counted"
+    elif weekly_streak_count == 0:
         weekly_streak_sub = "Start a weekly report"
+    elif weekly_streak_is_at_risk:
+        weekly_streak_sub = "At risk - report now to preserve streak"
     elif weekly_streak_count >= NORTH_STAR_STREAK_WEEKS:
         weekly_streak_sub = "North Star met"
     else:
@@ -3402,7 +3545,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
       <div class="k-val">{esc(report_count)}</div>
       <div class="k-sub">{esc(latest_date)}</div>
     </a>
-    <div class="kpi" data-tone="{esc('good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'warn' if weekly_streak_count == 0 else 'info')}">
+    <div class="kpi" data-tone="{esc('info' if weekly_streak_paused else 'warn' if weekly_streak_is_at_risk or weekly_streak_count == 0 else 'good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'info')}">
       <div class="k-label">Weekly streak</div>
       <div class="k-val">{esc(weekly_streak_count)}</div>
       <div class="k-sub">{esc(weekly_streak_sub)}</div>
@@ -3498,6 +3641,9 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     write_html_page(wiki_root / "index.html", dashboard_title(company), body, provenance)
     update_manifest(wiki_root, provenance)
     render_settings_page(wiki_root, config_view, generated_at=generated_at)
+    # Returned so the CLI tail can report the same streak state the tile shows without rebuilding
+    # the pool: a second classify_weekly_reports() call would re-emit every exclusion note.
+    return weekly_streak_count, weekly_streak_is_at_risk
 
 
 LocatedSecretFinding = tuple[str, SecretFinding]
@@ -3631,7 +3777,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--date", help="Report date (YYYY-MM-DD); derived from the report JSON's window.end when omitted")
     parser.add_argument("--body-file", help="Legacy: raw HTML body file")
     parser.add_argument("--data-file", help="Structured JSON report data file")
+    parser.add_argument("--evidence-file", help="Evidence snapshot used to stamp renderer-owned work facts")
     parser.add_argument("--open", action="store_true", help="Open the rendered report and print a share recipe")
+    parser.add_argument("--test-run", action="store_true", help="Mark the report as a test run that does not count toward the weekly streak")
     parser.add_argument("--init", action="store_true")
     parser.add_argument("--company-name", help="Company name to store in wiki metadata")
     parser.add_argument("--company-description", help="Short company description to store in wiki metadata")
@@ -3781,6 +3929,20 @@ def main(argv: list[str]) -> int:
                 structured_data.setdefault("schema_version", CEO_REPORT_SCHEMA_VERSION)
                 structured_data.setdefault("generated_at", utc_now())
                 structured_data.setdefault("company", company)
+                # Test-run intent is operator-controlled renderer metadata, not a
+                # field report authors can set in the input JSON.
+                structured_data.pop("test_run", None)
+                if args.test_run:
+                    structured_data["test_run"] = True
+                    print("dzcto: stamped test_run: true on report metadata", file=sys.stderr)
+                # Work evidence is machine-derived renderer metadata. Authored
+                # values are removed even when no usable snapshot was supplied.
+                structured_data.pop("work_evidence", None)
+                if args.evidence_file is not None:
+                    evidence_path = Path(args.evidence_file).expanduser()
+                    work_evidence = work_evidence_from_snapshot(evidence_path, structured_data.get("window"))
+                    if work_evidence is not None:
+                        structured_data["work_evidence"] = work_evidence
             structured_data = sanitize_current_report_data(structured_data)
             if not cited_evidence_sources(structured_data):
                 print(
@@ -3839,10 +4001,37 @@ def main(argv: list[str]) -> int:
         if structured_data is not None:
             write_json(report_path.with_suffix(".json"), structured_data)
             write_json(reports_dir / args.kind / "data.json", structured_data)
+            work_evidence = structured_data.get("work_evidence")
+            if isinstance(work_evidence, dict) and work_evidence.get("quiet") is True:
+                print(
+                    f"dzcto: wrote quiet report for window {window_description(structured_data.get('window'))} "
+                    f"({work_evidence.get('commits')} commits); it does not count toward the weekly streak",
+                    file=sys.stderr,
+                )
         update_manifest(wiki_root, provenance)
         written_report = report_path
 
-    render_index(wiki_root, project_folder)
+    count, streak_at_risk = render_index(wiki_root, project_folder)
+    try:
+        if count == 0:
+            streak_message = (
+                f"0 of {NORTH_STAR_STREAK_WEEKS} weeks; "
+                "the next counted weekly report starts your North Star streak"
+            )
+        elif count >= NORTH_STAR_STREAK_WEEKS:
+            streak_message = f"{count} weeks; North Star target of {NORTH_STAR_STREAK_WEEKS} weeks met"
+        else:
+            streak_message = f"{count} of {NORTH_STAR_STREAK_WEEKS} weeks toward the North Star"
+        print(f"dzcto: weekly streak: {streak_message}", file=sys.stderr)
+        if streak_at_risk:
+            streak_unit = "week" if count == 1 else "weeks"
+            print(
+                f"dzcto: weekly streak at risk: {count} {streak_unit} at stake; "
+                "publish a counted weekly report now to preserve the streak",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass
     print(written_report or wiki_root / "index.html")
     if written_report and args.open:
         emit_open_and_share(written_report)

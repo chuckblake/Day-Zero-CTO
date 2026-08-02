@@ -1,5 +1,6 @@
 """Tests for the CEO report schema v1 + week-over-week machinery (DAYZEROCTO-1)."""
 
+import contextlib
 import datetime as dt
 import io
 import json
@@ -174,6 +175,60 @@ class TestWeeklyStreak(unittest.TestCase):
         self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 0), 2)
 
 
+class TestWeeklyStreakAtRisk(unittest.TestCase):
+    """DAYZEROCTO-18. The warning has to fire BEFORE the streak resets, so the whole unit turns
+    on one boundary: weekly_streak() returns 0 once the period index reaches 2, which makes
+    index 1 the only window where a warning is still actionable."""
+
+    def d(self, value: str) -> dt.date:
+        return dt.date.fromisoformat(value)
+
+    def test_same_period_is_not_at_risk(self):
+        """Index 0 -- the current period already has a report, nothing is elapsing."""
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-06-26"), 7), 1)
+        self.assertFalse(artifact.weekly_streak_at_risk(dates, self.d("2026-06-26"), 7))
+
+    def test_one_elapsed_period_is_at_risk(self):
+        """Index 1 -- a period has passed, the streak is still alive. This is the only moment a
+        warning can help."""
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-05"), 7), 1)
+        self.assertTrue(artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 7))
+
+    def test_already_lapsed_is_not_at_risk(self):
+        """Index 2 -- the streak has already reset. Warning here would be after the loss, which
+        the acceptance criteria explicitly forbid."""
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-06"), 7), 0)
+        self.assertFalse(artifact.weekly_streak_at_risk(dates, self.d("2026-07-06"), 7))
+
+    def test_no_reports_is_not_at_risk(self):
+        """At risk presupposes a live streak worth losing."""
+        self.assertFalse(artifact.weekly_streak_at_risk([], self.d("2026-06-26"), 7))
+
+    def test_cadence_moves_the_boundary(self):
+        """A 14-day cadence must widen the safe window: the same 11-day gap that has already
+        lapsed a weekly cadence is merely at risk on a fortnightly one."""
+        dates = [self.d("2026-06-25")]
+        today = self.d("2026-07-06")
+        self.assertFalse(artifact.weekly_streak_at_risk(dates, today, 7))
+        self.assertTrue(artifact.weekly_streak_at_risk(dates, today, 14))
+
+    def test_zero_cadence_falls_back_to_weekly(self):
+        dates = [self.d("2026-06-25")]
+        self.assertEqual(
+            artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 0),
+            artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 7),
+        )
+
+    def test_a_longer_live_streak_is_still_at_risk(self):
+        """The whole three weeks are at stake, not just the newest one."""
+        dates = [self.d("2026-06-25"), self.d("2026-06-18"), self.d("2026-06-11")]
+        self.assertEqual(artifact.weekly_streak(dates, self.d("2026-07-05"), 7), 3)
+        self.assertTrue(artifact.weekly_streak_at_risk(dates, self.d("2026-07-05"), 7))
+
+
 class TestWeeklyReportDates(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -211,6 +266,159 @@ class TestWeeklyReportDates(unittest.TestCase):
     def test_empty_and_missing_directories_return_empty_lists(self):
         self.assertEqual(artifact.weekly_report_dates(self.folder), [])
         self.assertEqual(artifact.weekly_report_dates(self.folder / "missing"), [])
+
+    def test_reports_without_eligibility_facts_still_count(self):
+        """Upgrade safety (DAYZEROCTO-15 KTD3): every report already on disk predates the
+        eligibility fields. Excluding on absence would retroactively zero every user's streak."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+
+    def test_excludes_test_run_reports_and_names_the_reason(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(test_run=True))
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+        note = stderr.getvalue()
+        self.assertIn("excluding weekly-streak candidate", note)
+        self.assertIn("2026-06-25-ceo-report.json", note)
+        self.assertIn("test run", note)
+
+    def test_test_run_false_is_counted(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(test_run=False))
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+
+    def test_non_boolean_test_run_is_counted_and_does_not_raise(self):
+        """Only a real boolean True excludes. A truthy string is malformed input, and the
+        fail-safe direction for malformed eligibility facts is to count (KTD3)."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report(test_run="yes"))
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(
+            test_run=None, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            [dt.date(2026, 6, 25), dt.date(2026, 6, 18)],
+        )
+
+    def test_unreadable_report_keeps_its_existing_skip_note(self):
+        """The new filter runs after the existing tolerant-collector skips, so a malformed
+        payload is still reported as 'skipping', never as an eligibility 'excluding'."""
+        (self.folder / "2026-06-25-ceo-report.json").write_text("{not json", encoding="utf-8")
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            self.assertEqual(artifact.weekly_report_dates(self.folder), [])
+        note = stderr.getvalue()
+        self.assertIn("skipping weekly-streak candidate", note)
+        self.assertNotIn("excluding weekly-streak candidate", note)
+
+    def test_excluded_report_breaks_the_streak_run(self):
+        """An excluded middle week is a real gap, not a silent collapse of the remaining weeks."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(
+            test_run=True, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        write_report(self.folder, "2026-06-11-ceo-report.json", v1_report(
+            window={"start": "2026-06-05", "end": "2026-06-11"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            dates = artifact.weekly_report_dates(self.folder)
+        self.assertEqual(dates, [dt.date(2026, 6, 25), dt.date(2026, 6, 11)])
+        self.assertEqual(artifact.weekly_streak(dates, dt.date(2026, 6, 26), 7), 1)
+
+
+class TestCountsTowardWeeklyStreak(unittest.TestCase):
+    def test_absent_facts_count_with_no_reason(self):
+        self.assertEqual(artifact.counts_toward_weekly_streak(v1_report()), (True, None))
+
+    def test_test_run_excludes_and_returns_a_human_readable_reason(self):
+        counts, reason = artifact.counts_toward_weekly_streak(v1_report(test_run=True))
+        self.assertFalse(counts)
+        self.assertIsInstance(reason, str)
+        self.assertIn("test run", reason)
+
+    def test_quiet_work_evidence_excludes_and_names_the_commit_count(self):
+        counts, reason = artifact.counts_toward_weekly_streak(
+            v1_report(work_evidence={"quiet": True, "commits": 0, "merges": 0})
+        )
+        self.assertFalse(counts)
+        self.assertIn("quiet window", reason)
+        self.assertIn("0 commits", reason)
+
+    def test_non_quiet_work_evidence_counts(self):
+        self.assertEqual(
+            artifact.counts_toward_weekly_streak(
+                v1_report(work_evidence={"quiet": False, "commits": 12, "merges": 3})
+            ),
+            (True, None),
+        )
+
+    def test_malformed_work_evidence_counts_and_does_not_raise(self):
+        """Malformed eligibility facts fail safe toward counting (KTD3), never toward exclusion."""
+        for bad in ("quiet", None, [], {"quiet": "yes"}, {"commits": 0}):
+            with self.subTest(work_evidence=bad):
+                self.assertEqual(
+                    artifact.counts_toward_weekly_streak(v1_report(work_evidence=bad)),
+                    (True, None),
+                )
+
+
+class TestDiscardedArtifactIsAlreadyExcluded(unittest.TestCase):
+    """DAYZEROCTO-15 KTD6, characterization -- not new behavior.
+
+    Half of "test/debug runs whose artifact is discarded do not count" is satisfied by
+    construction: the pool is built by globbing what is on disk, so a deleted report cannot
+    enter it. This test records that as intentional so nobody later implements deletion
+    tracking for a case that cannot occur. The other half -- a test run still sitting on disk --
+    is what the test_run marker exists for.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_deleting_the_report_json_removes_it_from_the_streak_with_no_error(self):
+        kept = write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        discarded = write_report(
+            self.folder, "2026-06-18-ceo-report.json",
+            v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}),
+        )
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            [dt.date(2026, 6, 25), dt.date(2026, 6, 18)],
+        )
+
+        discarded.unlink()
+
+        self.assertEqual(artifact.weekly_report_dates(self.folder), [dt.date(2026, 6, 25)])
+        self.assertTrue(kept.exists())
+
+    def test_a_deleted_report_is_not_reported_as_an_exclusion(self):
+        """A file that is gone is absent, not excluded -- so it must not make the index tile
+        claim a paused streak."""
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report()).unlink()
+        self.assertEqual(artifact.classify_weekly_reports(self.folder), ([], []))
+
+
+class TestExcludedReportIsStillThePriorReport(unittest.TestCase):
+    """A quiet week is still the right narrative baseline for the next week's diff. The streak
+    exclusion must not leak into prior-report selection."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_quiet_excluded_report_is_selected_as_the_prior_report(self):
+        write_report(
+            self.folder, "2026-06-18-ceo-report.json",
+            v1_report(window={"start": "2026-06-12", "end": "2026-06-18"},
+                      work_evidence={"quiet": True, "commits": 0, "merges": 0}),
+        )
+        current = self.folder / "2026-06-25-ceo-report.json"
+        with contextlib.redirect_stderr(io.StringIO()):
+            prior_path, prior_data, prior_date, _notes = artifact.locate_prior_report(current, v1_report())
+
+        self.assertIsNotNone(prior_path)
+        self.assertEqual(prior_path.name, "2026-06-18-ceo-report.json")
+        self.assertEqual(prior_date, "2026-06-18")
+        self.assertIsNotNone(prior_data)
 
 
 class TestResolveWeeklyCadenceDays(unittest.TestCase):
@@ -279,6 +487,13 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         end = html.index('<div class="k-label">Weekly default</div>', start)
         return html[start:end]
 
+    def streak_tone(self, html: str) -> str:
+        """data-tone lives on the tile's opening tag, which sits before the label streak_tile()
+        slices from -- so read it from the enclosing element, not the sliced body."""
+        label = html.index('<div class="k-label">Weekly streak</div>')
+        opening = html.rindex('<div class="kpi"', 0, label)
+        return re.search(r'data-tone="([^"]*)"', html[opening:label]).group(1)
+
     def test_two_consecutive_weeklies_render_streak_tile(self):
         write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
         write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
@@ -315,6 +530,114 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         html = self.render("2026-06-26")
         self.assertTrue((self.workspace / "index.html").exists())
         self.assertIn('<div class="k-val">2</div>', self.streak_tile(html))
+
+    def test_only_excluded_reports_render_the_paused_state_not_the_zero_state(self):
+        """An honestly-filed quiet week must not read as 'you never started'. The product asks
+        for that report; the tile has to distinguish paused from never-started."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report(
+            work_evidence={"quiet": True, "commits": 0, "merges": 0}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn('<div class="k-val">0</div>', tile)
+        self.assertIn("Paused", tile)
+        self.assertIn("not counted", tile)
+
+    def test_paused_state_does_not_use_the_warning_tone(self):
+        """A quiet week the product asked the user to file is not an error state."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report(test_run=True))
+        with contextlib.redirect_stderr(io.StringIO()):
+            html = self.render("2026-06-26")
+        self.assertIn("Paused", self.streak_tile(html))
+        self.assertEqual(self.streak_tone(html), "info")
+
+    def test_empty_workspace_keeps_the_warn_tone_call_to_action(self):
+        """The new branch must not steal the genuine zero-state."""
+        html = self.render("2026-06-26")
+        self.assertIn("Start a weekly report", self.streak_tile(html))
+        self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_at_risk_streak_warns_on_the_tile(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        html = self.render("2026-07-05")
+        tile = self.streak_tile(html)
+        self.assertIn('<div class="k-val">1</div>', tile)
+        self.assertIn("At risk", tile)
+        self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_a_met_north_star_still_warns_when_at_risk(self):
+        """Three weeks banked is exactly when a lapse costs the most, so at-risk must beat the
+        'North Star met' good tone rather than being masked by it."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
+        write_report(self.reports_dir, "2026-06-11-ceo-report.json", v1_report(window={"start": "2026-06-05", "end": "2026-06-11"}))
+        html = self.render("2026-07-05")
+        self.assertIn('<div class="k-val">3</div>', self.streak_tile(html))
+        self.assertIn("At risk", self.streak_tile(html))
+        self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_at_risk_and_paused_are_mutually_exclusive(self):
+        """Paused means the streak is 0; at risk means it is still live. One must never render
+        the other's copy."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report(test_run=True))
+        with contextlib.redirect_stderr(io.StringIO()):
+            tile = self.streak_tile(self.render("2026-07-05"))
+        self.assertIn("Paused", tile)
+        self.assertNotIn("At risk", tile)
+
+    def test_healthy_streak_shows_no_at_risk_copy(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertNotIn("At risk", tile)
+
+    def test_excluded_report_alongside_counting_ones_keeps_the_normal_tile(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(
+            test_run=True, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn('<div class="k-val">1</div>', tile)
+        self.assertIn("of 3 - North Star", tile)
+
+
+class TestClassifyWeeklyReports(unittest.TestCase):
+    """weekly_report_dates() is now a thin wrapper; the classifier is the one loop and the one
+    predicate call site that both the streak count and the index tile read."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_returns_counted_dates_and_named_exclusions(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(
+            test_run=True, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            dates, exclusions = artifact.classify_weekly_reports(self.folder)
+        self.assertEqual(dates, [dt.date(2026, 6, 25)])
+        self.assertEqual(len(exclusions), 1)
+        name, reason = exclusions[0]
+        self.assertEqual(name, "2026-06-18-ceo-report.json")
+        self.assertIn("test run", reason)
+
+    def test_wrapper_returns_only_the_counted_dates(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            artifact.classify_weekly_reports(self.folder)[0],
+        )
+
+    def test_missing_directory_returns_two_empty_lists(self):
+        self.assertEqual(artifact.classify_weekly_reports(self.folder / "missing"), ([], []))
+
+    def test_skipped_candidates_are_not_reported_as_exclusions(self):
+        """A malformed report is skipped, not excluded -- the two are different facts and the
+        index tile must not call an unreadable file a paused streak."""
+        (self.folder / "2026-06-25-ceo-report.json").write_text("{not json", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()):
+            dates, exclusions = artifact.classify_weekly_reports(self.folder)
+        self.assertEqual(dates, [])
+        self.assertEqual(exclusions, [])
 
 
 class TestRenderIndexWeeklyDefaultTile(unittest.TestCase):
@@ -767,6 +1090,73 @@ class TestCitedEvidenceSources(unittest.TestCase):
         self.assertEqual(html.count("<li>"), 1)
 
 
+class TestDayZeroCtoCredit(unittest.TestCase):
+    """DAYZEROCTO-17. The shared report is what actually reaches other people, so it is the
+    project's discovery surface -- but it is also a secret-egress boundary, so the credit must be
+    tool-identifying and never client-identifying."""
+
+    PROJECT_URL = "https://github.com/chuckblake/Day-Zero-CTO"
+    CREDIT_TEXT = "Generated with Day Zero CTO"
+
+    def footer(self, html: str) -> str:
+        start = html.index('<footer class="app-footer">')
+        return html[start:html.index("</footer>", start)]
+
+    def report_html(self, **overrides) -> str:
+        body = artifact.render_structured_report("ceo-updates", v1_report(**overrides), previous_data=None)
+        return artifact.render_report_page(
+            "CEO Report 2026-06-19 to 2026-06-25", "2026-06-25", "ceo-updates",
+            body, {}, "Acme Day Zero CTO CEO Reports",
+        )
+
+    def test_shared_report_carries_a_linked_credit(self):
+        footer = self.footer(self.report_html())
+        self.assertIn(self.CREDIT_TEXT, footer)
+        self.assertIn(f'href="{self.PROJECT_URL}"', footer)
+
+    def test_credit_link_is_safe_for_a_shared_file(self):
+        footer = self.footer(self.report_html())
+        self.assertIn('rel="noopener"', footer)
+        self.assertIn('target="_blank"', footer)
+
+    def test_credit_does_not_replace_the_skills_version(self):
+        """The version line is an existing affordance for identifying what regenerated a page."""
+        footer = self.footer(self.report_html())
+        self.assertIn("Day Zero CTO skills v", footer)
+
+    def test_credit_carries_no_client_identifying_data(self):
+        """Tool-identifying, not client-identifying -- the issue's own hard constraint."""
+        footer = self.footer(self.report_html(company="Contoso Financial Holdings"))
+        self.assertNotIn("Contoso", footer)
+        self.assertNotIn("CEO Report 2026-06-19", footer)
+        self.assertNotIn("2026-06-25", footer)
+
+    def test_credit_stays_out_of_the_report_body(self):
+        """Discreet means the footer, not the business content."""
+        html = self.report_html()
+        body = html[html.index('<div class="report-body">'):html.index('<footer class="app-footer">')]
+        self.assertNotIn(self.CREDIT_TEXT, body)
+
+    def test_credit_is_inline_and_needs_no_external_asset(self):
+        """The artifact is shared as a single self-contained file."""
+        footer = self.footer(self.report_html())
+        self.assertNotIn("<img", footer)
+        self.assertNotIn("<script", footer)
+
+    def test_index_carries_the_same_credit(self):
+        """The load-bearing proof of the single dispatch point: page_shell() is shared by the
+        index, report pages, and settings, so one edit had to cover all of them. If this passes
+        while the report test also passes, no second copy of the string can be drifting."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "ws"
+            (workspace / "reports" / "ceo-updates").mkdir(parents=True)
+            with mock.patch.object(artifact, "read_global_config", dict):
+                artifact.render_index(workspace, workspace, today=dt.date(2026, 6, 26))
+            footer = self.footer((workspace / "index.html").read_text(encoding="utf-8"))
+        self.assertIn(self.CREDIT_TEXT, footer)
+        self.assertIn(f'href="{self.PROJECT_URL}"', footer)
+
+
 class TestThinEvidenceRendering(unittest.TestCase):
     def test_empty_sources_prepend_banner_once(self):
         html = artifact.render_structured_report("ceo-updates", v1_report(sources=[]), previous_data=None)
@@ -929,6 +1319,83 @@ class TestSkillSchemaLockstep(unittest.TestCase):
             self.schema_block("dzcto-ceo-report-weekly"),
             "Report JSON schema (v1) blocks in the two SKILL.md files must stay byte-identical",
         )
+
+    def test_both_blocks_forbid_authoring_the_eligibility_fields(self):
+        """test_run and work_evidence decide streak eligibility, so an author must be told not to
+        write them -- the renderer strips authored values, and a skill that still invites them
+        would produce reports whose fields silently vanish."""
+        for skill in ("dzcto-ceo-report", "dzcto-ceo-report-weekly"):
+            with self.subTest(skill=skill):
+                block = self.schema_block(skill)
+                self.assertIn("Do not author", block)
+                self.assertIn("`test_run`", block)
+                self.assertIn("`work_evidence`", block)
+
+
+class TestEligibilityFieldsAreDocumented(unittest.TestCase):
+    """The renderer stamps these field names; the docs that describe the contract must use the
+    same ones, so a rename in code that skips the docs fails here instead of shipping."""
+
+    ELIGIBILITY_FIELDS = ("test_run", "work_evidence")
+
+    def test_template_canon_documents_both_fields(self):
+        text = (REPO / "docs" / "ceo-report-template.md").read_text(encoding="utf-8")
+        for field in self.ELIGIBILITY_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(f"`{field}`", text)
+
+    def test_readme_field_table_documents_both_fields(self):
+        text = (REPO / "README.md").read_text(encoding="utf-8")
+        for field in self.ELIGIBILITY_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(f"`{field}`", text)
+
+    def test_quiet_windows_section_describes_the_mechanism(self):
+        """The section already asserted the behavior before any code implemented it. It must now
+        name what actually causes the exclusion, or it stays an unbacked claim."""
+        text = (REPO / "docs" / "ceo-report-template.md").read_text(encoding="utf-8")
+        section = text.split("## Quiet windows", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("--evidence-file", section)
+        self.assertIn("work_evidence", section)
+
+    def test_concepts_weekly_streak_entry_matches_what_ships(self):
+        """CONCEPTS.md previously disclaimed these exclusions outright. It must describe the two
+        that ship without overclaiming the two that do not."""
+        text = (REPO / "CONCEPTS.md").read_text(encoding="utf-8")
+        entry = text.split("### Weekly streak", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("test_run", entry)
+        self.assertIn("work_evidence", entry)
+        self.assertNotIn(
+            "not the canonical North Star metric with exclusions such as test runs",
+            entry,
+            "the stale disclaimer contradicts the shipped exclusions",
+        )
+
+    def test_readme_documents_the_cli_streak_output_and_the_credit(self):
+        text = (REPO / "README.md").read_text(encoding="utf-8")
+        self.assertIn("weekly streak", text)
+        self.assertIn("at risk", text)
+        self.assertIn("Generated with Day Zero CTO", text)
+
+    def test_concepts_defines_the_at_risk_state(self):
+        text = (REPO / "CONCEPTS.md").read_text(encoding="utf-8")
+        self.assertIn("### Streak at risk", text)
+        entry = text.split("### Streak at risk", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("one configured cadence period", entry)
+
+    def test_only_the_weekly_skill_passes_the_evidence_file(self):
+        """Ad-hoc reports never enter the weekly pool, so wiring --evidence-file into that skill
+        would imply an eligibility contract it does not participate in."""
+        weekly = (REPO / "skills" / "dzcto-ceo-report-weekly" / "SKILL.md").read_text(encoding="utf-8")
+        ad_hoc = (REPO / "skills" / "dzcto-ceo-report" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("--evidence-file", weekly)
+        self.assertIn("--output-json", weekly)
+        self.assertNotIn("--evidence-file", ad_hoc)
+
+    def test_weekly_skill_saves_the_snapshot_before_it_renders_with_it(self):
+        """--evidence-file can only point at a path the collector was told to write."""
+        text = (REPO / "skills" / "dzcto-ceo-report-weekly" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLess(text.index("--output-json"), text.index("--evidence-file"))
 
 
 class TestWeeklySkillConsumesTheWindowResolver(unittest.TestCase):
@@ -1130,6 +1597,239 @@ class TestArtifactWritePath(unittest.TestCase):
 
         self.assertEqual(len(result.stdout.splitlines()), 1)
         self.assertIn("Save as PDF", result.stderr)
+
+    def test_test_run_flag_stamps_metadata_and_keeps_stdout_to_the_path(self):
+        result = self.generate(v1_report(), "CEO Report marked test run", "--test-run")
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        report_path = Path(stdout_lines[0])
+        self.assertTrue(report_path.exists())
+        written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(written["test_run"], True)
+        self.assertIn("test_run", result.stderr)
+
+    def test_without_test_run_flag_no_marker_is_stamped(self):
+        result = self.generate(v1_report(), "CEO Report unmarked")
+
+        report_path = Path(result.stdout.splitlines()[0])
+        written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertNotIn("test_run", written)
+
+    def test_authored_test_run_is_overwritten_by_the_renderer(self):
+        """Streak eligibility is renderer-owned metadata: a report author cannot mark their own
+        report a test run, and cannot suppress the flag the operator passed."""
+        result = self.generate(v1_report(test_run=True), "CEO Report authored marker")
+        report_path = Path(result.stdout.splitlines()[0])
+        written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertNotIn("test_run", written)
+
+    def evidence_snapshot(self, name, *, start="2026-06-19", end="2026-06-25", repos=1, commits=0, merges=0):
+        """Shaped like scripts/dzcto.py's build_evidence_data() output."""
+        snapshot = {
+            "window": {"start": start, "end": end},
+            "repos": [{"repo": f"/tmp/repo{i}"} for i in range(repos)],
+            "totals": {"repos": repos, "commits": commits, "merges": merges, "authors": 0},
+            "quiet": commits == 0,
+            "generated_at": "2026-06-25T00:00:00Z",
+        }
+        path = self.workspace.parent / name
+        path.write_text(json.dumps(snapshot), encoding="utf-8")
+        return path
+
+    def written_json(self, result):
+        return json.loads(Path(result.stdout.splitlines()[0]).with_suffix(".json").read_text(encoding="utf-8"))
+
+    def test_quiet_evidence_stamps_work_facts_and_drops_the_report_from_the_streak(self):
+        snapshot = self.evidence_snapshot("quiet-evidence.json", commits=0)
+        result = self.generate(v1_report(), "CEO Report quiet week", "--evidence-file", str(snapshot))
+
+        self.assertEqual(
+            self.written_json(result)["work_evidence"],
+            {"quiet": True, "commits": 0, "merges": 0},
+        )
+        self.assertIn("does not count toward the weekly streak", result.stderr)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [])
+
+    def test_busy_evidence_stamps_not_quiet_and_the_report_still_counts(self):
+        snapshot = self.evidence_snapshot("busy-evidence.json", commits=12, merges=3)
+        result = self.generate(v1_report(), "CEO Report busy week", "--evidence-file", str(snapshot))
+
+        self.assertEqual(
+            self.written_json(result)["work_evidence"],
+            {"quiet": False, "commits": 12, "merges": 3},
+        )
+        self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [dt.date(2026, 6, 25)])
+
+    def test_no_evidence_file_stamps_nothing_and_stays_silent(self):
+        """The legacy path must be unchanged: no flag, no field, no warning."""
+        result = self.generate(v1_report(), "CEO Report no evidence")
+
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertNotIn("work_evidence", result.stderr)
+
+    def test_mismatched_evidence_window_stamps_nothing_and_names_both_windows(self):
+        """KTD2: a stale snapshot marking a busy week quiet is the failure this guard prevents.
+        Absent-and-warned is strictly better than present-and-wrong."""
+        snapshot = self.evidence_snapshot("stale-evidence.json", start="2026-06-12", end="2026-06-18")
+        result = self.generate(v1_report(), "CEO Report stale evidence", "--evidence-file", str(snapshot))
+
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("2026-06-12 to 2026-06-18", result.stderr)
+        self.assertIn("2026-06-19 to 2026-06-25", result.stderr)
+        self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [dt.date(2026, 6, 25)])
+
+    def test_zero_repo_snapshot_is_undetermined_not_quiet(self):
+        """build_evidence_data() reports quiet=True when no repos are configured, because zero
+        commits is trivially true. No repos is absence of evidence, not evidence of no work --
+        treating it as quiet would exclude every report of every user without a configured repo."""
+        snapshot = self.evidence_snapshot("no-repos-evidence.json", repos=0, commits=0)
+        result = self.generate(v1_report(), "CEO Report no repos", "--evidence-file", str(snapshot))
+
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("zero readable repositories", result.stderr)
+        self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [dt.date(2026, 6, 25)])
+
+    def test_missing_or_malformed_evidence_file_warns_but_still_renders(self):
+        missing = self.workspace.parent / "nope-evidence.json"
+        result = self.generate(v1_report(), "CEO Report missing evidence", "--evidence-file", str(missing))
+        self.assertTrue(Path(result.stdout.splitlines()[0]).exists())
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("work_evidence was not stamped", result.stderr)
+
+        broken = self.workspace.parent / "broken-evidence.json"
+        broken.write_text("{not json", encoding="utf-8")
+        result = self.generate(v1_report(), "CEO Report broken evidence", "--evidence-file", str(broken))
+        self.assertTrue(Path(result.stdout.splitlines()[0]).exists())
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("work_evidence was not stamped", result.stderr)
+
+    def test_authored_work_evidence_is_overwritten_by_the_renderer(self):
+        snapshot = self.evidence_snapshot("authored-evidence.json", commits=0)
+        result = self.generate(
+            v1_report(work_evidence={"quiet": False, "commits": 999, "merges": 999}),
+            "CEO Report authored evidence",
+            "--evidence-file", str(snapshot),
+        )
+        self.assertEqual(
+            self.written_json(result)["work_evidence"],
+            {"quiet": True, "commits": 0, "merges": 0},
+        )
+
+    def test_authored_work_evidence_is_dropped_even_without_a_snapshot(self):
+        """An author must not be able to declare their own week busy by supplying the field."""
+        result = self.generate(
+            v1_report(work_evidence={"quiet": False, "commits": 999, "merges": 999}),
+            "CEO Report authored evidence only",
+        )
+        self.assertNotIn("work_evidence", self.written_json(result))
+
+    def test_wrapper_forwards_evidence_file_flag(self):
+        snapshot = self.evidence_snapshot("wrapper-evidence.json", commits=0)
+        data_file = self.workspace.parent / "wrapper-evidence-data.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "scripts" / "dzcto.py"),
+                "artifact",
+                "--artifacts-dir", str(self.workspace),
+                "--kind", "ceo-updates",
+                "--title", "CEO Report wrapper evidence",
+                "--data-file", str(data_file),
+                "--evidence-file", str(snapshot),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        written = json.loads(Path(stdout_lines[0]).with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(written["work_evidence"]["quiet"], True)
+
+    def test_wrapper_forwards_test_run_flag(self):
+        """Three-site wiring regression: the dzcto.py wrapper whitelists flags rather than
+        forwarding argv, so an engine-only flag silently vanishes on the real user path."""
+        data_file = self.workspace.parent / "wrapper-test-run.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "scripts" / "dzcto.py"),
+                "artifact",
+                "--artifacts-dir", str(self.workspace),
+                "--kind", "ceo-updates",
+                "--title", "CEO Report wrapper test run",
+                "--data-file", str(data_file),
+                "--test-run",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        written = json.loads(Path(stdout_lines[0]).with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(written["test_run"], True)
+
+    def streak_line(self, stderr: str) -> str:
+        matches = [line for line in stderr.splitlines() if "weekly streak:" in line]
+        self.assertEqual(len(matches), 1, f"expected exactly one streak line, got: {matches}")
+        return matches[0]
+
+    def test_report_run_prints_the_streak_to_stderr(self):
+        """Asserts the line's shape, not a positive count: this drives the CLI in a subprocess,
+        which reads the wall clock, so a past-dated fixture correctly reports a lapsed 0. Pinning
+        a positive streak requires the in-process date-injected render_index call instead."""
+        result = self.generate(v1_report(), "CEO Report streak line")
+        line = self.streak_line(result.stderr)
+        self.assertRegex(line, r"weekly streak: \d+")
+        self.assertIn(str(artifact.NORTH_STAR_STREAK_WEEKS), line)
+
+    def test_streak_line_prints_without_the_open_flag(self):
+        """emit_open_and_share only runs under --open, so the streak must not live there or every
+        non-interactive run would lose it."""
+        result = self.generate(v1_report(), "CEO Report streak no open")
+        self.assertIn("weekly streak:", result.stderr)
+        self.assertNotIn("Save as PDF", result.stderr)
+
+    def test_streak_line_does_not_touch_stdout(self):
+        result = self.generate(v1_report(), "CEO Report streak stdout")
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        self.assertTrue(Path(stdout_lines[0]).exists())
+        self.assertNotIn("weekly streak", result.stdout)
+
+    def test_cli_streak_matches_the_index_tile(self):
+        """DAYZEROCTO-16 AC3: 'matches, verifiable without relying on internal implementation
+        details'. Both numbers are read from rendered output, not from the helper."""
+        result = self.generate(v1_report(), "CEO Report streak parity")
+        line = self.streak_line(result.stderr)
+
+        index_html = (self.workspace / "index.html").read_text(encoding="utf-8")
+        label = index_html.index('<div class="k-label">Weekly streak</div>')
+        tile_value = re.search(r'<div class="k-val">(\d+)</div>', index_html[label:]).group(1)
+
+        self.assertIn(tile_value, line)
+
+    def test_excluded_report_is_named_once_not_twice(self):
+        """The CLI line reuses render_index's count. Recomputing the pool would re-emit every
+        exclusion note, so the operator would see each excluded report reported twice."""
+        self.generate(v1_report(), "CEO Report excluded once", "--test-run")
+        result = self.generate(v1_report(), "CEO Report second run")
+        self.assertEqual(result.stderr.count("excluding weekly-streak candidate"), 1)
+
+    def test_index_already_carries_the_streak_kpi(self):
+        """Characterization for DAYZEROCTO-16 AC2 -- already satisfied before this work, so it is
+        recorded rather than rebuilt (the issue's Background misreads the line reference as being
+        inside the report HTML; it is in render_index)."""
+        self.generate(v1_report(), "CEO Report index kpi")
+        index_html = (self.workspace / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<div class="k-label">Weekly streak</div>', index_html)
 
     def test_open_failure_is_advisory_and_uri_handles_spaces(self):
         report_path = self.workspace / "report with spaces.html"

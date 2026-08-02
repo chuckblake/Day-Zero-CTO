@@ -48,6 +48,7 @@ dzcto evidence \
   --artifacts-dir "<artifact/report folder>" \
   --start "<start>" \
   --end "<end>" \
+  --output-json "<evidence snapshot path>" \
   --json
 ```
 
@@ -59,6 +60,7 @@ python3 scripts/dzcto.py evidence \
   --artifacts-dir "<artifact/report folder>" \
   --start "<start>" \
   --end "<end>" \
+  --output-json "<evidence snapshot path>" \
   --json
 ```
 
@@ -67,7 +69,7 @@ Pass the resolver's `start` and `end` verbatim for `mode: "since_last_report"` w
 If the collector reports no configured repositories, continue with the secondary evidence sources instead of treating that as an error.
 5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true risks, asks, and next items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
 6. Write a CEO-facing report. Keep it business-facing: progress, impact, risk, asks, and what happens next. If the selected week is a quiet week, state that plainly in `headline`; never pad by manufacturing progress, inflating minor work, or restating old wins as new. Keep `metrics` with explicit zero values such as `prs_merged: 0` instead of dropping the key, and leave genuinely empty sections empty because the renderer labels them. If the selected week contains bad news, state it plainly in `headline`, `progress.status`, or `risks_blockers`; do not soften reversals, red CI, slipped work, or descopes. Do not include implementation detail unless it changes a CEO decision. Save structured JSON per the schema below, with `report_type` set to `"weekly"`.
-7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`):
+7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`). Pass the saved evidence snapshot with `--evidence-file` so the renderer can record whether the window had real work:
 
 ```bash
 dzcto artifact \
@@ -76,6 +78,7 @@ dzcto artifact \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
   --data-file "<json report data file>" \
+  --evidence-file "<evidence snapshot path>" \
   --open
 ```
 
@@ -88,6 +91,7 @@ python3 scripts/dzcto.py artifact \
   --kind ceo-updates \
   --title "CEO Report <start> to <end>" \
   --data-file "<json report data file>" \
+  --evidence-file "<evidence snapshot path>" \
   --open
 ```
 
@@ -112,7 +116,7 @@ Save structured JSON with these fields:
 - `metrics` (optional): flat object of `"label": scalar`; numeric values in consecutive reports render week-over-week deltas.
 - `sources`: array of strings — the evidence used.
 
-Do not author `schema_version`, `generated_at`, or `prior_report` — the renderer stamps them. The renderer also computes the week-over-week section from the prior report; never write that section yourself.
+Do not author `schema_version`, `generated_at`, `prior_report`, `test_run`, or `work_evidence` — the renderer stamps them. The renderer also computes the week-over-week section from the prior report; never write that section yourself.
 
 ## Standards
 
