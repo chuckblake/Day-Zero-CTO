@@ -2085,5 +2085,137 @@ class TestSampleReportIsNeverEvidence(unittest.TestCase):
         self.assertIsNotNone(dzcto.latest_weekly_report_cursor(self.workspace))
 
 
+class TestRenderIndexSampleReport(unittest.TestCase):
+    """DAYZEROCTO-19 U3: the index counts real work only, and badges the sample."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.reports = self.workspace / "reports" / "ceo-updates"
+        self.reports.mkdir(parents=True)
+        (self.workspace / ".dzcto").mkdir(parents=True, exist_ok=True)
+        (self.workspace / ".dzcto" / "config.json").write_text(json.dumps({"companyName": "Acme"}), encoding="utf-8")
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_sample(self):
+        data = artifact.build_sample_report_data("Acme", today=dt.date(2026, 8, 1))
+        path = write_report(self.reports, f"{artifact.SAMPLE_REPORT_STEM}.json", data)
+        path.with_suffix(".html").write_text(
+            "<!doctype html><title>CEO Report 2026-07-25 to 2026-07-31</title>", encoding="utf-8"
+        )
+        return path.with_suffix(".html")
+
+    def write_real(self, end="2026-07-31", start="2026-07-25"):
+        data = v1_report(window={"start": start, "end": end})
+        path = write_report(self.reports, f"{end}-ceo-report-real-{end}.json", data)
+        path.with_suffix(".html").write_text(f"<!doctype html><title>CEO Report {start} to {end}</title>", encoding="utf-8")
+        return path.with_suffix(".html")
+
+    def index_html(self) -> str:
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 8, 1))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def reports_section(self, html: str) -> str:
+        """The rendered CEO Reports section only.
+
+        Card-class assertions must never run against the whole page: base_css() ships a
+        `.report-sample-card` rule on every index, so `assertNotIn`/index-ordering checks over
+        the full document measure stylesheet order rather than card order and are silently
+        meaningless. Same trap as
+        docs/solutions/conventions/absence-proxy-assertions-break-on-additive-rendering-2026-07-23.md
+        """
+        self.assertIn('id="sec-reports"', html)
+        return html.split('id="sec-reports"', 1)[1].split("</details>", 1)[0]
+
+    def kpi(self, html: str) -> tuple[str, str]:
+        match = re.search(
+            r'CEO reports</div>\s*<div class="k-val">([^<]*)</div>\s*<div class="k-sub">([^<]*)</div>', html
+        )
+        self.assertIsNotNone(match, "CEO reports KPI tile not found")
+        return match.group(1), match.group(2)
+
+    def test_sample_only_workspace_reports_zero_and_keeps_the_empty_state(self):
+        # The defect this unit fixes: before U3 a fresh install rendered "1 / Unknown date".
+        self.write_sample()
+        html = self.index_html()
+        value, sub = self.kpi(html)
+        self.assertEqual(value, "0")
+        self.assertEqual(sub, "No reports yet")
+        self.assertIn("Start here", html)
+
+    def test_sample_only_workspace_still_offers_the_sample_to_open(self):
+        self.write_sample()
+        section = self.reports_section(self.index_html())
+        self.assertIn("report-sample-card", section)
+        self.assertIn(f"reports/ceo-updates/{artifact.SAMPLE_REPORT_STEM}.html", section)
+        self.assertIn("Sample report", section)
+
+    def test_real_reports_are_counted_and_the_sample_is_not(self):
+        self.write_sample()
+        self.write_real("2026-07-31", "2026-07-25")
+        self.write_real("2026-07-24", "2026-07-18")
+        value, sub = self.kpi(self.index_html())
+        self.assertEqual(value, "2")
+        self.assertEqual(sub, "2026-07-31")
+
+    def test_latest_pointer_never_targets_the_sample(self):
+        # sample-ceo-report.html sorts AFTER any 2026-*.html, so a reverse sort would hand the
+        # sample the primary slot and the latest-report link if it were not partitioned out.
+        self.write_sample()
+        real = self.write_real()
+        html = self.index_html()
+        match = re.search(r'<a class="kpi" href="([^"]*)">', html)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), f"reports/ceo-updates/{real.name}")
+
+    def test_sample_never_takes_the_primary_card_slot(self):
+        self.write_sample()
+        real = self.write_real()
+        html = self.index_html()
+        primary = re.search(r'<a class="report report-primary" href="([^"]*)"', html)
+        self.assertIsNotNone(primary, "a real report must hold the primary slot")
+        self.assertEqual(primary.group(1), f"reports/ceo-updates/{real.name}")
+        section = self.reports_section(html)
+        self.assertLess(section.index("report-primary"), section.index("report-sample-card"))
+
+    def test_sample_is_searchable_as_a_sample(self):
+        self.write_sample()
+        card = self.reports_section(self.index_html()).split("report-sample-card", 1)[1]
+        search_attr = re.search(r'data-search-text="([^"]*)"', card)
+        self.assertIsNotNone(search_attr)
+        self.assertIn("sample", search_attr.group(1).lower())
+
+    def test_workspace_without_a_sample_renders_no_sample_card(self):
+        self.write_real()
+        html = self.index_html()
+        value, _sub = self.kpi(html)
+        self.assertEqual(value, "1")
+        self.assertNotIn("report-sample-card", self.reports_section(html))
+
+    def test_sample_html_without_sibling_json_counts_as_a_real_report(self):
+        # Fail-safe direction: an unreadable marker must never silently hide a real report
+        # from the count. Mirrors test_malformed_json_does_not_block_index_write.
+        (self.reports / f"{artifact.SAMPLE_REPORT_STEM}.html").write_text("<html>orphan</html>", encoding="utf-8")
+        value, _sub = self.kpi(self.index_html())
+        self.assertEqual(value, "1")
+
+    def test_sample_card_css_uses_only_defined_custom_properties(self):
+        css = artifact.base_css()
+        self.assertIn(".report-sample-card", css)
+        declared = set(re.findall(r"(--[a-z0-9-]+):", css))
+        block = css.split(".report-sample-card", 1)[1].split("}", 1)[0]
+        self.assertEqual(set(re.findall(r"var\((--[a-z0-9-]+)\)", block)) - declared, set())
+
+    def test_index_and_status_agree_on_the_report_count(self):
+        self.write_sample()
+        self.write_real()
+        value, _sub = self.kpi(self.index_html())
+        checks = {check["label"]: check for check in dzcto.project_status_checks(self.workspace)}
+        self.assertIn(f"{value} generated report(s)", checks["CEO reports"]["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()
