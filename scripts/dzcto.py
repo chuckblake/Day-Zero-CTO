@@ -925,6 +925,7 @@ def main(argv: list[str]) -> int:
     init.add_argument("--weekly-end-day", help="Default weekly report end day, such as Sunday")
     init.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
     init.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports; persisted as ceoReportTone in .dzcto/config.json")
+    init.add_argument("--no-sample-report", action="store_true", help="Skip the first-run sample CEO report")
     init.add_argument("--no-save-preferences", action="store_true", help="Do not update ~/.dzcto/config.json")
     init.add_argument("--no-switch-default", action="store_true", help="Update the named profile without making it the global default")
     init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated. Persisted as codeRepos in .dzcto/config.json")
@@ -1059,6 +1060,8 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--weekly-lookback-days", str(args.weekly_lookback_days)])
         if args.ceo_report_tone:
             init_args.extend(["--ceo-report-tone", args.ceo_report_tone])
+        if args.no_sample_report:
+            init_args.append("--no-sample-report")
         if args.no_save_preferences:
             init_args.append("--no-save-preferences")
         if args.no_switch_default:
