@@ -14,10 +14,20 @@ issue_id: DAYZEROCTO-15
 
 ## Goal
 
-Make the weekly streak count only weekly CEO reports that carry positive evidence of work and were
-not marked as test/debug runs, so the product's North Star measures the ritual it claims to measure.
-The engineering shape is a single eligibility predicate over renderer-stamped facts, applied at the
-one dispatch point that already builds the streak pool.
+Make the weekly streak trustworthy, visible, and defensible — the four issues in this group are one
+piece of work on the North Star surface, so they share a branch, a plan, and a PR:
+
+- **DAYZEROCTO-15** (primary) — count only weekly reports that carry positive evidence of work and
+  were not marked test/debug runs, so the streak measures the ritual it claims to measure.
+- **DAYZEROCTO-16** — surface the streak count in the CLI tail after a run, where the user actually
+  finishes, instead of only on a page they must open.
+- **DAYZEROCTO-17** — add a discreet Day Zero CTO credit to the shareable artifact, turning every
+  shared report into a discovery surface for the project.
+- **DAYZEROCTO-18** — warn while a period is still open that the streak is at risk, so a user can
+  act before it silently resets.
+
+The engineering shape throughout is the same one the repo already favours: a single predicate or
+helper per fact, applied at the one dispatch point that already owns the surface.
 
 ---
 
@@ -610,6 +620,178 @@ are genuine characterization rather than assertions retrofitted to whatever the 
 - Both new tests fail if the exclusion predicate is wired into `latest_weekly_report_cursor()` or
   `locate_prior_report()`.
 - `python3 -m unittest discover -s tests` passes.
+
+---
+
+### Group extension — DAYZEROCTO-16, 17, 18
+
+These three ride the same branch and PR as the primary. They depend on U1–U5 only where noted.
+(This stays an H3 on purpose: `lib/plan-units` scans a single `## Implementation Units` section and
+stops at the next H2, so a second H2 here would make U6–U9 invisible to the per-unit frontier.)
+
+### Key technical decisions for the group extension
+
+**KTD8 — The credit belongs in `page_shell()`, the one footer every artifact already shares.**
+`page_shell()` renders the `app-footer` ("Day Zero CTO skills v…") and is called by the index
+(`render_index`), every report page (`render_report_page`), and the settings page. Putting the
+credit there covers the shareable artifact by construction, in exactly one edit. Rejected: adding it
+inside `render_report_page` only — the index and settings pages are shared too, and three copies of
+an attribution string is the drift hazard the single-dispatch-point learning warns about.
+
+**KTD9 — Half of DAYZEROCTO-16 is already shipped; say so rather than build it twice.** The issue's
+Background says the streak is "only rendered as a KPI inside each generated report's HTML
+(scripts/dzcto_artifact.py:3232-3235)". That line reference is in fact inside `render_index()` — the
+streak KPI is *already* on the report index, which is that issue's second acceptance criterion. The
+genuine gap is the CLI tail. This mirrors KTD6: characterize what already holds, build only what
+does not.
+
+**KTD10 — The CLI streak line must not depend on `--open`.** `emit_open_and_share()` only runs under
+`--open`, so putting the streak there would hide it from every non-interactive run. The streak line
+goes on the normal write path, unconditionally, and to **stderr** — stdout is contractually the
+single report path the skill parses.
+
+**KTD11 — "At risk" is period index exactly 1.** `weekly_streak()` returns 0 once
+`rounded_period_index((today - latest).days, cadence) >= 2`. So index `1` is precisely the window
+where a period has elapsed but the streak has not yet reset — the only place a warning can fire
+*before* the loss, which is that issue's second acceptance criterion. Index `0` is not at risk; index
+`>= 2` is too late to warn and already reads as lapsed.
+
+**KTD12 — One computation, three consumers, reusing U3's collector.** The CLI line, the at-risk
+warning, and the index tile must never disagree about the streak. They all read
+`classify_weekly_reports()` + `weekly_streak()` — the same pair U3 established — rather than
+recomputing. This is the U1/KTD4 rule applied to the new surfaces.
+
+---
+
+- U6. **Day Zero CTO credit in the shared page footer** *(DAYZEROCTO-17)*
+
+**Goal:** Every shareable artifact carries a discreet, linked "Generated with Day Zero CTO" credit
+without touching report content.
+
+**Requirements:** DAYZEROCTO-17 AC1–AC3
+
+**Dependencies:** None
+
+**Files:**
+- Modify: `scripts/dzcto_artifact.py`
+- Test: `tests/test_dzcto_artifact.py`
+
+**Approach:**
+- Extend the existing `app-footer` in `page_shell()` with a project link beside the existing skills
+  version span. One edit, three surfaces (KTD8).
+- The credit is tool-identifying, never client-identifying — the issue's own constraint. It must
+  carry no company, profile, or report data.
+- Keep it visually subordinate: it sits in the footer that already exists, styled with the muted
+  footer tokens, not promoted into the report body.
+- The artifact is self-contained, so the credit must be inline markup, not a fetched asset.
+
+**Test scenarios:**
+- Happy path: a rendered report page contains the credit text and a link to the project.
+- Happy path: the rendered index carries the same credit (proving the single dispatch point).
+- Edge case: the credit renders no company name, profile name, or report title — assert the report's
+  company string is absent from the footer region.
+- Edge case: the existing skills-version footer text is still present, so the credit was added
+  beside it rather than replacing it.
+
+**Verification:** opening a generated report shows the credit in the footer; the report body is
+unchanged.
+
+---
+
+- U7. **Streak in the CLI tail** *(DAYZEROCTO-16)*
+
+**Goal:** After a report run the terminal states the current streak, so the North Star is visible at
+the moment the user finishes.
+
+**Requirements:** DAYZEROCTO-16 AC1, AC3
+
+**Dependencies:** U3 (reuses `classify_weekly_reports()`)
+
+**Files:**
+- Modify: `scripts/dzcto_artifact.py`
+- Test: `tests/test_dzcto_artifact.py`
+
+**Approach:**
+- On the artifact write path, after the report and index are written, compute the streak from the
+  same collector the index uses and print one stderr line naming the count (KTD10, KTD12).
+- Do not gate it on `--open`.
+- Reuse `resolve_weekly_cadence_days()` so the CLI and the tile agree on cadence.
+- AC2 (index visibility) is already satisfied — cover it with a characterization test rather than
+  new rendering (KTD9).
+
+**Test scenarios:**
+- Happy path: generating a weekly report prints a stderr line containing the streak count.
+- Happy path: the printed count equals the index tile's `k-val` for the same workspace — AC3's
+  "matches, verifiable without internal details".
+- Edge case: the line prints without `--open`.
+- Edge case: stdout remains exactly the report path.
+- Characterization: the index already renders the streak KPI (records AC2 as pre-satisfied).
+
+**Verification:** a report run prints the streak; the number matches the index tile.
+
+---
+
+- U8. **Streak-at-risk warning** *(DAYZEROCTO-18)*
+
+**Goal:** Warn while the period is still open, before a missed period resets the streak.
+
+**Requirements:** DAYZEROCTO-18 AC1–AC3
+
+**Dependencies:** U3, U7
+
+**Files:**
+- Modify: `scripts/dzcto_artifact.py`
+- Test: `tests/test_dzcto_artifact.py`
+
+**Approach:**
+- Add a pure predicate beside `weekly_streak()` that answers "is the live streak at risk?" — true
+  exactly when the streak is non-zero and the newest counted report's period index is 1 (KTD11).
+  Pure and date-injected, like `weekly_streak()`, so it is testable without the clock.
+- Surface it on both consumers that already exist: a stderr warning on the write path beside U7's
+  streak line, and the index tile's sub-label/tone so the warning persists on a page the user
+  revisits rather than scrolling out of a terminal.
+- Compose with U3's paused state rather than competing with it: paused (streak 0 with exclusions)
+  and at-risk (streak live, period elapsing) are different states and must not overwrite each other.
+
+**Test scenarios:**
+- Happy path: newest weekly one full period old, streak live → at risk true, warning printed, tile
+  shows the at-risk state.
+- Edge case (KTD11 boundary): period index 0 → not at risk, no warning.
+- Edge case (KTD11 boundary): period index >= 2 → streak already 0, so the at-risk warning must not
+  fire (it would be after the loss, which the AC forbids).
+- Edge case: no reports at all → no warning.
+- Edge case: a non-default cadence (14 days) moves the boundary, proving cadence is honoured.
+- Integration: at-risk does not suppress or get suppressed by U3's paused state.
+
+**Verification:** a workspace whose last weekly is one period old warns on stderr and shows the
+at-risk tile; one that is two periods old does not warn.
+
+---
+
+- U9. **Document the group's new surfaces** *(DAYZEROCTO-16, 17, 18)*
+
+**Goal:** README and CONCEPTS describe the CLI streak line, the credit, and the at-risk warning.
+
+**Requirements:** DAYZEROCTO-16 AC3, DAYZEROCTO-17 AC3, DAYZEROCTO-18 AC3
+
+**Dependencies:** U6, U7, U8
+
+**Files:**
+- Modify: `README.md`
+- Modify: `CONCEPTS.md`
+- Test: `tests/test_dzcto_artifact.py`
+
+**Approach:**
+- README: describe what a report run now prints, and note the footer credit.
+- CONCEPTS: add the at-risk concept beside "Weekly streak"; it is a distinct status concept, which
+  is exactly what that glossary is for.
+- No `SKILL.md` or template-schema change — none of these three adds a report JSON field.
+
+**Test scenarios:**
+- Happy path: README names the CLI streak output and the credit.
+- Happy path: CONCEPTS defines the at-risk concept.
+
+**Verification:** `python3 -m unittest discover -s tests` passes.
 
 ---
 
