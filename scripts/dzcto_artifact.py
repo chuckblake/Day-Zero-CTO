@@ -1507,10 +1507,11 @@ def counts_toward_weekly_streak(data: dict[str, Any]) -> tuple[bool, str | None]
     return True, None
 
 
-def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
+def classify_weekly_reports(reports_dir: Path) -> tuple[list[dt.date], list[tuple[str, str]]]:
     dates: set[dt.date] = set()
+    exclusions: list[tuple[str, str]] = []
     if not reports_dir.exists():
-        return []
+        return [], []
     for path in sorted(reports_dir.glob("*.json")):
         if path.name == "data.json":
             continue
@@ -1530,9 +1531,14 @@ def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
                 f"dzcto: excluding weekly-streak candidate {path.name} ({exclusion_reason})",
                 file=sys.stderr,
             )
+            exclusions.append((path.name, exclusion_reason))
             continue
         dates.add(effective_date)
-    return sorted(dates, reverse=True)
+    return sorted(dates, reverse=True), exclusions
+
+
+def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
+    return classify_weekly_reports(reports_dir)[0]
 
 
 def rounded_period_index(delta_days: int, cadence_days_value: int) -> int:
@@ -3241,8 +3247,12 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
     latest_href = report_links[0].relative_to(wiki_root).as_posix() if report_links else "#sec-reports"
     latest_date = report_run_date(report_links[0]) if report_links else "No reports yet"
     weekly_cadence = resolve_weekly_cadence_days(core_dir, report_folder)
-    weekly_streak_count = weekly_streak(weekly_report_dates(reports_dir / report_folder), today, weekly_cadence)
-    if weekly_streak_count == 0:
+    weekly_report_dates_counted, weekly_report_exclusions = classify_weekly_reports(reports_dir / report_folder)
+    weekly_streak_count = weekly_streak(weekly_report_dates_counted, today, weekly_cadence)
+    weekly_streak_paused = weekly_streak_count == 0 and bool(weekly_report_exclusions)
+    if weekly_streak_paused:
+        weekly_streak_sub = "Paused - report logged, not counted"
+    elif weekly_streak_count == 0:
         weekly_streak_sub = "Start a weekly report"
     elif weekly_streak_count >= NORTH_STAR_STREAK_WEEKS:
         weekly_streak_sub = "North Star met"
@@ -3341,7 +3351,7 @@ def render_index(wiki_root: Path, project_folder: Path, today: dt.date | None = 
       <div class="k-val">{esc(report_count)}</div>
       <div class="k-sub">{esc(latest_date)}</div>
     </a>
-    <div class="kpi" data-tone="{esc('good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'warn' if weekly_streak_count == 0 else 'info')}">
+    <div class="kpi" data-tone="{esc('good' if weekly_streak_count >= NORTH_STAR_STREAK_WEEKS else 'info' if weekly_streak_paused else 'warn' if weekly_streak_count == 0 else 'info')}">
       <div class="k-label">Weekly streak</div>
       <div class="k-val">{esc(weekly_streak_count)}</div>
       <div class="k-sub">{esc(weekly_streak_sub)}</div>

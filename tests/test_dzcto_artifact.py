@@ -369,6 +369,13 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         end = html.index('<div class="k-label">Weekly default</div>', start)
         return html[start:end]
 
+    def streak_tone(self, html: str) -> str:
+        """data-tone lives on the tile's opening tag, which sits before the label streak_tile()
+        slices from -- so read it from the enclosing element, not the sliced body."""
+        label = html.index('<div class="k-label">Weekly streak</div>')
+        opening = html.rindex('<div class="kpi"', 0, label)
+        return re.search(r'data-tone="([^"]*)"', html[opening:label]).group(1)
+
     def test_two_consecutive_weeklies_render_streak_tile(self):
         write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
         write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(window={"start": "2026-06-12", "end": "2026-06-18"}))
@@ -405,6 +412,81 @@ class TestRenderIndexWeeklyStreak(unittest.TestCase):
         html = self.render("2026-06-26")
         self.assertTrue((self.workspace / "index.html").exists())
         self.assertIn('<div class="k-val">2</div>', self.streak_tile(html))
+
+    def test_only_excluded_reports_render_the_paused_state_not_the_zero_state(self):
+        """An honestly-filed quiet week must not read as 'you never started'. The product asks
+        for that report; the tile has to distinguish paused from never-started."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report(
+            work_evidence={"quiet": True, "commits": 0, "merges": 0}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn('<div class="k-val">0</div>', tile)
+        self.assertIn("Paused", tile)
+        self.assertIn("not counted", tile)
+
+    def test_paused_state_does_not_use_the_warning_tone(self):
+        """A quiet week the product asked the user to file is not an error state."""
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report(test_run=True))
+        with contextlib.redirect_stderr(io.StringIO()):
+            html = self.render("2026-06-26")
+        self.assertIn("Paused", self.streak_tile(html))
+        self.assertEqual(self.streak_tone(html), "info")
+
+    def test_empty_workspace_keeps_the_warn_tone_call_to_action(self):
+        """The new branch must not steal the genuine zero-state."""
+        html = self.render("2026-06-26")
+        self.assertIn("Start a weekly report", self.streak_tile(html))
+        self.assertEqual(self.streak_tone(html), "warn")
+
+    def test_excluded_report_alongside_counting_ones_keeps_the_normal_tile(self):
+        write_report(self.reports_dir, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.reports_dir, "2026-06-18-ceo-report.json", v1_report(
+            test_run=True, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            tile = self.streak_tile(self.render("2026-06-26"))
+        self.assertIn('<div class="k-val">1</div>', tile)
+        self.assertIn("of 3 - North Star", tile)
+
+
+class TestClassifyWeeklyReports(unittest.TestCase):
+    """weekly_report_dates() is now a thin wrapper; the classifier is the one loop and the one
+    predicate call site that both the streak count and the index tile read."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.folder = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_returns_counted_dates_and_named_exclusions(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        write_report(self.folder, "2026-06-18-ceo-report.json", v1_report(
+            test_run=True, window={"start": "2026-06-12", "end": "2026-06-18"}))
+        with contextlib.redirect_stderr(io.StringIO()):
+            dates, exclusions = artifact.classify_weekly_reports(self.folder)
+        self.assertEqual(dates, [dt.date(2026, 6, 25)])
+        self.assertEqual(len(exclusions), 1)
+        name, reason = exclusions[0]
+        self.assertEqual(name, "2026-06-18-ceo-report.json")
+        self.assertIn("test run", reason)
+
+    def test_wrapper_returns_only_the_counted_dates(self):
+        write_report(self.folder, "2026-06-25-ceo-report.json", v1_report())
+        self.assertEqual(
+            artifact.weekly_report_dates(self.folder),
+            artifact.classify_weekly_reports(self.folder)[0],
+        )
+
+    def test_missing_directory_returns_two_empty_lists(self):
+        self.assertEqual(artifact.classify_weekly_reports(self.folder / "missing"), ([], []))
+
+    def test_skipped_candidates_are_not_reported_as_exclusions(self):
+        """A malformed report is skipped, not excluded -- the two are different facts and the
+        index tile must not call an unreadable file a paused streak."""
+        (self.folder / "2026-06-25-ceo-report.json").write_text("{not json", encoding="utf-8")
+        with contextlib.redirect_stderr(io.StringIO()):
+            dates, exclusions = artifact.classify_weekly_reports(self.folder)
+        self.assertEqual(dates, [])
+        self.assertEqual(exclusions, [])
 
 
 class TestRenderIndexWeeklyDefaultTile(unittest.TestCase):
