@@ -2029,6 +2029,31 @@ class TestSampleReportIsNeverEvidence(unittest.TestCase):
         self.assertIsNone(path)
         self.assertIsNone(data)
 
+    def test_sample_never_gets_a_prior_report_of_its_own(self):
+        # The inverse direction, and the one that actually bit: the sample is excluded as a
+        # CANDIDATE, but nothing stopped it from being the CURRENT report. A re-init once real
+        # reports exist re-renders the sample, and locate_prior_report would hand it the reader's
+        # real report as a baseline -- rendering a week-over-week diff of fabricated content
+        # against real work, inside the shareable artifact.
+        self.write_real_weekly(end="2026-07-24", start="2026-07-18")
+        sample = artifact.build_sample_report_data("Acme", today=dt.date(2026, 8, 2))
+        path, data, eff, notes = artifact.locate_prior_report(
+            self.reports / f"{artifact.SAMPLE_REPORT_STEM}.json", sample
+        )
+        self.assertIsNone(path)
+        self.assertIsNone(data)
+        self.assertEqual(eff, "")
+        self.assertEqual(notes, [])
+
+    def test_refreshed_sample_renders_no_diff_against_real_work(self):
+        # End-to-end form of the same defect, through the refresh path that triggers it.
+        self.write_sample()
+        self.write_real_weekly(end="2026-07-24", start="2026-07-18")
+        artifact.refresh_existing_report_pages(self.workspace, "Acme")
+        html = (self.reports / f"{artifact.SAMPLE_REPORT_STEM}.html").read_text(encoding="utf-8")
+        self.assertIn("no prior baseline", html)
+        self.assertNotIn("since the last report was run", html)
+
     def test_real_prior_still_wins_over_a_sample(self):
         self.write_sample()
         real = self.write_real_weekly()

@@ -1535,6 +1535,14 @@ def locate_prior_report(json_path: Path, data: dict[str, Any]) -> tuple[Path | N
     (weekly report diffed against an untyped/ad-hoc prior because no weekly prior exists)
     and/or "overlap" (only overlapping-window priors were available).
     """
+    # A sample is excluded in BOTH directions: it is never a prior (see the candidate skip below),
+    # and it never HAS one. Without this, a re-init once real reports exist re-renders the sample
+    # with a week-over-week section diffing fabricated content against the reader's real work --
+    # the "sample mistaken for evidence" failure inverted, and visible in the shareable artifact.
+    # write_sample_report already passes previous_data=None; this makes the guarantee structural
+    # rather than something every future call site has to remember.
+    if is_sample_report(data):
+        return None, None, "", []
     current_type = data.get("report_type") if data.get("report_type") in CEO_REPORT_TYPES else "ad_hoc"
     window = data.get("window") if isinstance(data.get("window"), dict) else {}
     current_start = date_value(window.get("start"))
