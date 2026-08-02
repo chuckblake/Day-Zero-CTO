@@ -1102,6 +1102,71 @@ class TestSkillSchemaLockstep(unittest.TestCase):
             "Report JSON schema (v1) blocks in the two SKILL.md files must stay byte-identical",
         )
 
+    def test_both_blocks_forbid_authoring_the_eligibility_fields(self):
+        """test_run and work_evidence decide streak eligibility, so an author must be told not to
+        write them -- the renderer strips authored values, and a skill that still invites them
+        would produce reports whose fields silently vanish."""
+        for skill in ("dzcto-ceo-report", "dzcto-ceo-report-weekly"):
+            with self.subTest(skill=skill):
+                block = self.schema_block(skill)
+                self.assertIn("Do not author", block)
+                self.assertIn("`test_run`", block)
+                self.assertIn("`work_evidence`", block)
+
+
+class TestEligibilityFieldsAreDocumented(unittest.TestCase):
+    """The renderer stamps these field names; the docs that describe the contract must use the
+    same ones, so a rename in code that skips the docs fails here instead of shipping."""
+
+    ELIGIBILITY_FIELDS = ("test_run", "work_evidence")
+
+    def test_template_canon_documents_both_fields(self):
+        text = (REPO / "docs" / "ceo-report-template.md").read_text(encoding="utf-8")
+        for field in self.ELIGIBILITY_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(f"`{field}`", text)
+
+    def test_readme_field_table_documents_both_fields(self):
+        text = (REPO / "README.md").read_text(encoding="utf-8")
+        for field in self.ELIGIBILITY_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(f"`{field}`", text)
+
+    def test_quiet_windows_section_describes_the_mechanism(self):
+        """The section already asserted the behavior before any code implemented it. It must now
+        name what actually causes the exclusion, or it stays an unbacked claim."""
+        text = (REPO / "docs" / "ceo-report-template.md").read_text(encoding="utf-8")
+        section = text.split("## Quiet windows", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("--evidence-file", section)
+        self.assertIn("work_evidence", section)
+
+    def test_concepts_weekly_streak_entry_matches_what_ships(self):
+        """CONCEPTS.md previously disclaimed these exclusions outright. It must describe the two
+        that ship without overclaiming the two that do not."""
+        text = (REPO / "CONCEPTS.md").read_text(encoding="utf-8")
+        entry = text.split("### Weekly streak", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("test_run", entry)
+        self.assertIn("work_evidence", entry)
+        self.assertNotIn(
+            "not the canonical North Star metric with exclusions such as test runs",
+            entry,
+            "the stale disclaimer contradicts the shipped exclusions",
+        )
+
+    def test_only_the_weekly_skill_passes_the_evidence_file(self):
+        """Ad-hoc reports never enter the weekly pool, so wiring --evidence-file into that skill
+        would imply an eligibility contract it does not participate in."""
+        weekly = (REPO / "skills" / "dzcto-ceo-report-weekly" / "SKILL.md").read_text(encoding="utf-8")
+        ad_hoc = (REPO / "skills" / "dzcto-ceo-report" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("--evidence-file", weekly)
+        self.assertIn("--output-json", weekly)
+        self.assertNotIn("--evidence-file", ad_hoc)
+
+    def test_weekly_skill_saves_the_snapshot_before_it_renders_with_it(self):
+        """--evidence-file can only point at a path the collector was told to write."""
+        text = (REPO / "skills" / "dzcto-ceo-report-weekly" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLess(text.index("--output-json"), text.index("--evidence-file"))
+
 
 class TestWeeklySkillConsumesTheWindowResolver(unittest.TestCase):
     """The weekly skill must consume resolved dates, not interpret weeklyReportDefaults itself."""

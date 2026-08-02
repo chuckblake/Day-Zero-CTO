@@ -39,6 +39,8 @@ Top-level keys (all required unless marked optional):
 | --- | --- | --- |
 | `schema_version` | string | `"ceo-report/1"`. Stamped by the renderer when absent. |
 | `report_type` | string | `"weekly"` (weekly skill) or `"ad_hoc"` (date-range skill). Drives prior-report selection. |
+| `test_run` | boolean (optional) | Recorded by the renderer from `--test-run`; `true` marks a report as excluded from the weekly streak. Do not author this field. |
+| `work_evidence` | object (optional) | Recorded by the renderer from the evidence snapshot passed via `--evidence-file`: `{ "quiet": bool, "commits": int, "merges": int }`. Do not author this field. |
 | `company` | string | Company/product name. Filled from the profile when absent. |
 | `window` | object | `{ "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" }`. ISO dates only; no free-text `label`. |
 | `generated_at` | string | UTC ISO timestamp. Stamped by the renderer when absent. |
@@ -66,7 +68,11 @@ week-over-week diff reads as continuity instead of churn. Genuinely empty requir
 empty in the JSON; the renderer labels them as "No ... this window" placeholders. Metrics may
 vanish when omitted because they are optional, but authors should keep explicit zero values when a
 zero is the honest comparison. A quiet-week report preserves the reporting ritual; it does not
-count toward the North Star streak.
+count toward the North Star streak. The weekly workflow saves its evidence snapshot and passes it
+to the renderer with `--evidence-file`; the renderer stamps `work_evidence` from that snapshot. A
+quiet snapshot for the report's own window is what excludes the report from the streak. The report
+is still written, still renders, still advances the reporting cadence, and still serves as the
+prior report for the next week's diff. Only the streak count is affected.
 
 ## Date and naming discipline
 

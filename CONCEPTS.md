@@ -17,7 +17,7 @@ The previous report in the same cadence, selected as the comparison baseline so 
 The weekly coverage span from the prior weekly report artifact's `window.end` (exclusive) through the run date (inclusive), so every calendar day lands in exactly one report. Its coverage cursor is weekly-scoped, while the prior-report diff baseline is not; these rules deliberately differ because the cursor is a coverage ledger and the diff baseline is a narrative comparison baseline.
 
 ### Weekly streak
-The count of consecutive configured weekly cadence periods, ending at today, that contain a `weekly` CEO report. It is a best-effort local signal derived from report JSON on the index, not the canonical North Star metric with exclusions such as test runs or unopened reports.
+The count of consecutive configured weekly cadence periods, ending at today, that contain an eligible `weekly` CEO report. Eligibility excludes reports with `test_run: true` and reports whose renderer-stamped `work_evidence` shows `quiet: true`; reports without either fact still count so an upgrade does not erase an existing streak. It remains a best-effort local signal derived from report JSON on the index, not the full canonical North Star metric: two of the strategy's four exclusions are implemented, while automated runs nobody opens and the maintainer's own usage are not.
 
 ### Provenance
 The embedded machine-readable record identifying which skill version generated an artifact and from what inputs, carried inside the artifact so a regenerated page is self-describing. Because it echoes user-supplied fields such as the report title, it is one of the inputs that must be sanitized before the artifact is written.

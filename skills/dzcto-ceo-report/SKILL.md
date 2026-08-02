@@ -91,7 +91,7 @@ Save structured JSON with these fields:
 - `metrics` (optional): flat object of `"label": scalar`; numeric values in consecutive reports render week-over-week deltas.
 - `sources`: array of strings — the evidence used.
 
-Do not author `schema_version`, `generated_at`, or `prior_report` — the renderer stamps them. The renderer also computes the week-over-week section from the prior report; never write that section yourself.
+Do not author `schema_version`, `generated_at`, `prior_report`, `test_run`, or `work_evidence` — the renderer stamps them. The renderer also computes the week-over-week section from the prior report; never write that section yourself.
 
 ## Standards
 

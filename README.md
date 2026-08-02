@@ -119,6 +119,8 @@ Agents should write structured JSON (schema v1) with these fields:
 | --- | --- |
 | `schema_version` | `"ceo-report/1"`. Stamped by the renderer when absent. |
 | `report_type` | `"weekly"` or `"ad_hoc"`. Drives week-over-week prior selection. |
+| `test_run` | Renderer-stamped boolean from `--test-run`; `true` excludes a weekly report from the streak. Do not author this field. |
+| `work_evidence` | Renderer-stamped `{ "quiet": bool, "commits": int, "merges": int }` from the snapshot passed via `--evidence-file`. Do not author this field. |
 | `company` | Company/product name. Filled from the profile when absent. |
 | `window` | `{ "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" }` — ISO dates for the report period. |
 | `generated_at` | UTC ISO timestamp. Stamped by the renderer when absent. |
