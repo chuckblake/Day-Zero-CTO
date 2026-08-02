@@ -1284,6 +1284,96 @@ def read_json_file(path: Path, default: Any) -> Any:
         return default
 
 
+def window_description(window: Any) -> str:
+    if not isinstance(window, dict):
+        return "<missing>"
+    return f"{window.get('start', '<missing>')} to {window.get('end', '<missing>')}"
+
+
+def is_nonnegative_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def work_evidence_from_snapshot(path: Path, report_window: Any) -> dict[str, Any] | None:
+    try:
+        snapshot = read_json_file(path, None)
+    except (OSError, UnicodeError) as exc:
+        print(
+            f"dzcto: could not read evidence snapshot {path}: {exc}; work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    if not isinstance(snapshot, dict):
+        print(
+            f"dzcto: evidence snapshot {path} is missing, unreadable, or not a JSON object; "
+            "work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    snapshot_window = snapshot.get("window")
+    totals = snapshot.get("totals")
+    if not isinstance(snapshot_window, dict) or not isinstance(totals, dict):
+        print(
+            f"dzcto: evidence snapshot {path} is missing a valid window or totals object "
+            f"(evidence window {window_description(snapshot_window)}; "
+            f"report window {window_description(report_window)}); work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    evidence_start = snapshot_window.get("start")
+    evidence_end = snapshot_window.get("end")
+    if not isinstance(evidence_start, str) or not isinstance(evidence_end, str):
+        print(
+            f"dzcto: evidence snapshot {path} has a malformed window "
+            f"(evidence window {window_description(snapshot_window)}; "
+            f"report window {window_description(report_window)}); work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    report_start = report_window.get("start") if isinstance(report_window, dict) else None
+    report_end = report_window.get("end") if isinstance(report_window, dict) else None
+    if evidence_start != report_start or evidence_end != report_end:
+        print(
+            f"dzcto: evidence snapshot window {window_description(snapshot_window)} does not match "
+            f"report window {window_description(report_window)}; work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    repos = totals.get("repos")
+    if not is_nonnegative_int(repos):
+        print(
+            f"dzcto: evidence snapshot {path} has a malformed totals.repos value; "
+            "work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+    if repos == 0:
+        print(
+            f"dzcto: evidence snapshot {path} reports zero readable repositories for window "
+            f"{window_description(snapshot_window)}; work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    quiet = snapshot.get("quiet")
+    commits = totals.get("commits")
+    merges = totals.get("merges")
+    if not isinstance(quiet, bool) or not is_nonnegative_int(commits) or not is_nonnegative_int(merges):
+        print(
+            f"dzcto: evidence snapshot {path} has malformed quiet or commit/merge totals; "
+            "work_evidence was not stamped",
+            file=sys.stderr,
+        )
+        return None
+
+    return {"quiet": quiet, "commits": commits, "merges": merges}
+
+
 def date_value(value: Any) -> dt.date | None:
     try:
         return dt.date.fromisoformat(str(value))
@@ -1405,6 +1495,12 @@ def report_effective_date(json_path: Path, data: Any) -> str | None:
 def counts_toward_weekly_streak(data: dict[str, Any]) -> tuple[bool, str | None]:
     if data.get("test_run") is True:
         return False, "marked as a test run"
+
+    work_evidence = data.get("work_evidence")
+    if isinstance(work_evidence, dict) and work_evidence.get("quiet") is True:
+        commits = work_evidence.get("commits")
+        commit_count = commits if is_nonnegative_int(commits) else "unknown"
+        return False, f"quiet window {window_description(data.get('window'))}: {commit_count} commits"
 
     # Eligibility facts were added after weekly reports already existed. Missing
     # facts must count so an upgrade does not erase an existing user's streak.
@@ -3474,6 +3570,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--date", help="Report date (YYYY-MM-DD); derived from the report JSON's window.end when omitted")
     parser.add_argument("--body-file", help="Legacy: raw HTML body file")
     parser.add_argument("--data-file", help="Structured JSON report data file")
+    parser.add_argument("--evidence-file", help="Evidence snapshot used to stamp renderer-owned work facts")
     parser.add_argument("--open", action="store_true", help="Open the rendered report and print a share recipe")
     parser.add_argument("--test-run", action="store_true", help="Mark the report as a test run that does not count toward the weekly streak")
     parser.add_argument("--init", action="store_true")
@@ -3626,6 +3723,14 @@ def main(argv: list[str]) -> int:
                 if args.test_run:
                     structured_data["test_run"] = True
                     print("dzcto: stamped test_run: true on report metadata", file=sys.stderr)
+                # Work evidence is machine-derived renderer metadata. Authored
+                # values are removed even when no usable snapshot was supplied.
+                structured_data.pop("work_evidence", None)
+                if args.evidence_file is not None:
+                    evidence_path = Path(args.evidence_file).expanduser()
+                    work_evidence = work_evidence_from_snapshot(evidence_path, structured_data.get("window"))
+                    if work_evidence is not None:
+                        structured_data["work_evidence"] = work_evidence
             structured_data = sanitize_current_report_data(structured_data)
             if not cited_evidence_sources(structured_data):
                 print(
@@ -3684,6 +3789,13 @@ def main(argv: list[str]) -> int:
         if structured_data is not None:
             write_json(report_path.with_suffix(".json"), structured_data)
             write_json(reports_dir / args.kind / "data.json", structured_data)
+            work_evidence = structured_data.get("work_evidence")
+            if isinstance(work_evidence, dict) and work_evidence.get("quiet") is True:
+                print(
+                    f"dzcto: wrote quiet report for window {window_description(structured_data.get('window'))} "
+                    f"({work_evidence.get('commits')} commits); it does not count toward the weekly streak",
+                    file=sys.stderr,
+                )
         update_manifest(wiki_root, provenance)
         written_report = report_path
 

@@ -277,6 +277,31 @@ class TestCountsTowardWeeklyStreak(unittest.TestCase):
         self.assertIsInstance(reason, str)
         self.assertIn("test run", reason)
 
+    def test_quiet_work_evidence_excludes_and_names_the_commit_count(self):
+        counts, reason = artifact.counts_toward_weekly_streak(
+            v1_report(work_evidence={"quiet": True, "commits": 0, "merges": 0})
+        )
+        self.assertFalse(counts)
+        self.assertIn("quiet window", reason)
+        self.assertIn("0 commits", reason)
+
+    def test_non_quiet_work_evidence_counts(self):
+        self.assertEqual(
+            artifact.counts_toward_weekly_streak(
+                v1_report(work_evidence={"quiet": False, "commits": 12, "merges": 3})
+            ),
+            (True, None),
+        )
+
+    def test_malformed_work_evidence_counts_and_does_not_raise(self):
+        """Malformed eligibility facts fail safe toward counting (KTD3), never toward exclusion."""
+        for bad in ("quiet", None, [], {"quiet": "yes"}, {"commits": 0}):
+            with self.subTest(work_evidence=bad):
+                self.assertEqual(
+                    artifact.counts_toward_weekly_streak(v1_report(work_evidence=bad)),
+                    (True, None),
+                )
+
 
 class TestResolveWeeklyCadenceDays(unittest.TestCase):
     def setUp(self):
@@ -1209,6 +1234,132 @@ class TestArtifactWritePath(unittest.TestCase):
         report_path = Path(result.stdout.splitlines()[0])
         written = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
         self.assertNotIn("test_run", written)
+
+    def evidence_snapshot(self, name, *, start="2026-06-19", end="2026-06-25", repos=1, commits=0, merges=0):
+        """Shaped like scripts/dzcto.py's build_evidence_data() output."""
+        snapshot = {
+            "window": {"start": start, "end": end},
+            "repos": [{"repo": f"/tmp/repo{i}"} for i in range(repos)],
+            "totals": {"repos": repos, "commits": commits, "merges": merges, "authors": 0},
+            "quiet": commits == 0,
+            "generated_at": "2026-06-25T00:00:00Z",
+        }
+        path = self.workspace.parent / name
+        path.write_text(json.dumps(snapshot), encoding="utf-8")
+        return path
+
+    def written_json(self, result):
+        return json.loads(Path(result.stdout.splitlines()[0]).with_suffix(".json").read_text(encoding="utf-8"))
+
+    def test_quiet_evidence_stamps_work_facts_and_drops_the_report_from_the_streak(self):
+        snapshot = self.evidence_snapshot("quiet-evidence.json", commits=0)
+        result = self.generate(v1_report(), "CEO Report quiet week", "--evidence-file", str(snapshot))
+
+        self.assertEqual(
+            self.written_json(result)["work_evidence"],
+            {"quiet": True, "commits": 0, "merges": 0},
+        )
+        self.assertIn("does not count toward the weekly streak", result.stderr)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [])
+
+    def test_busy_evidence_stamps_not_quiet_and_the_report_still_counts(self):
+        snapshot = self.evidence_snapshot("busy-evidence.json", commits=12, merges=3)
+        result = self.generate(v1_report(), "CEO Report busy week", "--evidence-file", str(snapshot))
+
+        self.assertEqual(
+            self.written_json(result)["work_evidence"],
+            {"quiet": False, "commits": 12, "merges": 3},
+        )
+        self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [dt.date(2026, 6, 25)])
+
+    def test_no_evidence_file_stamps_nothing_and_stays_silent(self):
+        """The legacy path must be unchanged: no flag, no field, no warning."""
+        result = self.generate(v1_report(), "CEO Report no evidence")
+
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertNotIn("work_evidence", result.stderr)
+
+    def test_mismatched_evidence_window_stamps_nothing_and_names_both_windows(self):
+        """KTD2: a stale snapshot marking a busy week quiet is the failure this guard prevents.
+        Absent-and-warned is strictly better than present-and-wrong."""
+        snapshot = self.evidence_snapshot("stale-evidence.json", start="2026-06-12", end="2026-06-18")
+        result = self.generate(v1_report(), "CEO Report stale evidence", "--evidence-file", str(snapshot))
+
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("2026-06-12 to 2026-06-18", result.stderr)
+        self.assertIn("2026-06-19 to 2026-06-25", result.stderr)
+        self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [dt.date(2026, 6, 25)])
+
+    def test_zero_repo_snapshot_is_undetermined_not_quiet(self):
+        """build_evidence_data() reports quiet=True when no repos are configured, because zero
+        commits is trivially true. No repos is absence of evidence, not evidence of no work --
+        treating it as quiet would exclude every report of every user without a configured repo."""
+        snapshot = self.evidence_snapshot("no-repos-evidence.json", repos=0, commits=0)
+        result = self.generate(v1_report(), "CEO Report no repos", "--evidence-file", str(snapshot))
+
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("zero readable repositories", result.stderr)
+        self.assertEqual(artifact.weekly_report_dates(self.reports_dir()), [dt.date(2026, 6, 25)])
+
+    def test_missing_or_malformed_evidence_file_warns_but_still_renders(self):
+        missing = self.workspace.parent / "nope-evidence.json"
+        result = self.generate(v1_report(), "CEO Report missing evidence", "--evidence-file", str(missing))
+        self.assertTrue(Path(result.stdout.splitlines()[0]).exists())
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("work_evidence was not stamped", result.stderr)
+
+        broken = self.workspace.parent / "broken-evidence.json"
+        broken.write_text("{not json", encoding="utf-8")
+        result = self.generate(v1_report(), "CEO Report broken evidence", "--evidence-file", str(broken))
+        self.assertTrue(Path(result.stdout.splitlines()[0]).exists())
+        self.assertNotIn("work_evidence", self.written_json(result))
+        self.assertIn("work_evidence was not stamped", result.stderr)
+
+    def test_authored_work_evidence_is_overwritten_by_the_renderer(self):
+        snapshot = self.evidence_snapshot("authored-evidence.json", commits=0)
+        result = self.generate(
+            v1_report(work_evidence={"quiet": False, "commits": 999, "merges": 999}),
+            "CEO Report authored evidence",
+            "--evidence-file", str(snapshot),
+        )
+        self.assertEqual(
+            self.written_json(result)["work_evidence"],
+            {"quiet": True, "commits": 0, "merges": 0},
+        )
+
+    def test_authored_work_evidence_is_dropped_even_without_a_snapshot(self):
+        """An author must not be able to declare their own week busy by supplying the field."""
+        result = self.generate(
+            v1_report(work_evidence={"quiet": False, "commits": 999, "merges": 999}),
+            "CEO Report authored evidence only",
+        )
+        self.assertNotIn("work_evidence", self.written_json(result))
+
+    def test_wrapper_forwards_evidence_file_flag(self):
+        snapshot = self.evidence_snapshot("wrapper-evidence.json", commits=0)
+        data_file = self.workspace.parent / "wrapper-evidence-data.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "scripts" / "dzcto.py"),
+                "artifact",
+                "--artifacts-dir", str(self.workspace),
+                "--kind", "ceo-updates",
+                "--title", "CEO Report wrapper evidence",
+                "--data-file", str(data_file),
+                "--evidence-file", str(snapshot),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        stdout_lines = result.stdout.splitlines()
+        self.assertEqual(len(stdout_lines), 1)
+        written = json.loads(Path(stdout_lines[0]).with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(written["work_evidence"]["quiet"], True)
 
     def test_wrapper_forwards_test_run_flag(self):
         """Three-site wiring regression: the dzcto.py wrapper whitelists flags rather than
