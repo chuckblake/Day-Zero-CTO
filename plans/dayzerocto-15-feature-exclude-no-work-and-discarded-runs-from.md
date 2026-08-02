@@ -586,6 +586,10 @@ cannot quietly break either.
 **Files:**
 - Test: `tests/test_dzcto_artifact.py`
 - Test: `tests/test_dzcto_window.py`
+- Modify: `.codex-plugin/plugin.json` — release version bump (AGENTS.md: plugin-facing change)
+- Modify: `.claude-plugin/plugin.json` — release version bump
+- Modify: `.claude-plugin/marketplace.json` — release version bump
+- Modify: `scripts/dzcto_common.py` — TOOL_VERSION, rendered in every page footer
 
 **Approach:**
 - Characterize the already-satisfied half of the discarded criterion: a weekly report whose JSON is
@@ -981,3 +985,49 @@ an existing absence-sentinel test) and applied that to the `Do not author ...` l
 an em-dash. Picked: restore the em-dash in both `SKILL.md` files, byte-identically. The
 lockstep test only enforces that the two blocks match each other, not that they match the
 surrounding prose style — so the inconsistency would have survived undetected.
+
+### The group ran single-issue for its first five units — 2026-08-01
+
+`cb-start` wrote `plans/<branch>.group.json` at 20:01:56; `cb-lfg`'s Step 2 read `group members`
+at 20:01:53 and got nothing, so the durable marker recorded `members: ["DAYZEROCTO-15"]` and U1–U5
+were planned, implemented, and transitioned as a single-issue run. Picked: reconcile the marker
+from the committed manifest, transition the three stranded members, extend this plan with U6–U9,
+and ship one combined PR — the shape the worktree encoded. Rejected: shipping the primary alone,
+which would have left three `planning` issues stranded behind a branch that already carried the
+work's foundation. Also rejected: letting `/cb:done` run against the manifest as-is, which would
+have moved DAYZEROCTO-16/17/18 to `in_review` with no code written for them.
+
+The durable lesson is that a member probe racing the manifest write is silent — nothing failed, the
+run just quietly narrowed. The manifest is now committed rather than untracked, so the member set
+survives independently of that timing.
+
+### `## Implementation Units` had to stay a single H2 — 2026-08-01
+
+`lib/plan-units` scans one `## Implementation Units` section and stops at the next H2, so the first
+draft of the group extension (a second `## Implementation Units — DAYZEROCTO-16, 17, 18` heading)
+made U6–U9 invisible to the per-unit frontier: `plan-units list` returned five units, not nine.
+Picked: demote the extension to an H3 inside the existing section. Rejected: renaming the parser's
+expected heading, which would break every other plan in the corpus.
+
+### `render_index()` returns its streak state instead of the CLI recomputing it — 2026-08-01
+
+U7's first implementation rebuilt the pool with a second `classify_weekly_reports()` call, which
+re-emitted every exclusion note — an operator with one excluded report saw it reported twice.
+Picked: `render_index()` returns what it already computed (`int` in U7, widened to
+`tuple[int, bool]` in U8). Rejected: a `quiet=` suppression flag on the collector, which would have
+added a parameter whose only purpose is hiding a symptom of computing the same thing twice.
+
+### At-risk outranks "North Star met" in the tile tone — 2026-08-01
+
+A three-week streak one period from resetting renders `warn`, not `good`. Rejected: letting the
+met-target branch win, which would paint the tile green at exactly the moment the user has the most
+to lose. The paused and at-risk states remain mutually exclusive by construction — paused requires
+a zero count, at-risk a live one — so neither can mask the other.
+
+### The release version bump is part of this change — 2026-08-01
+
+`AGENTS.md` requires bumping both plugin manifests (and the marketplace entry, which carries a
+version) when shipping plugin-facing changes. U4 edited both `SKILL.md` files, which installers
+copy, so this qualifies. Bumped 0.9.3 to 0.9.4 across the two manifests, the marketplace entry, and
+`TOOL_VERSION` — the last of which is rendered in every page footer beside U6's new credit, so
+leaving it stale would have mislabelled which version generated the artifact.
