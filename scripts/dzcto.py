@@ -19,6 +19,8 @@ from dzcto_artifact import (
     date_value,
     default_artifacts_dir_for_profile,
     default_artifacts_dir_from_global,
+    is_sample_report,
+    is_sample_report_path,
     normalize_report_folder,
     profile_from_global,
     read_json_file,
@@ -156,6 +158,9 @@ def latest_weekly_report_cursor(wiki_root: Path) -> tuple[Path, dt.date] | None:
             print(f"dzcto: skipping weekly-report cursor candidate {path.name} (unreadable JSON)", file=sys.stderr)
             continue
 
+        # Sample reports are weekly-shaped examples, not coverage cursors.
+        if is_sample_report(data):
+            continue
         # Coverage cursors are weekly-only. Prior-report diff selection may fall back to
         # another report type because comparison and coverage are deliberately different jobs.
         if data.get("report_type") != "weekly":
@@ -578,7 +583,7 @@ def project_status_checks(project: Path) -> list[dict[str, str]]:
     )
 
     reports_dir = wiki_root / "reports" / "ceo-updates"
-    report_count = len(list(reports_dir.glob("*.html")))
+    report_count = sum(1 for path in reports_dir.glob("*.html") if not is_sample_report_path(path))
     add(
         "pass" if report_count else "warn",
         "CEO reports",
@@ -925,6 +930,7 @@ def main(argv: list[str]) -> int:
     init.add_argument("--weekly-end-day", help="Default weekly report end day, such as Sunday")
     init.add_argument("--weekly-lookback-days", type=int, help="Default rolling lookback days for weekly CEO reports")
     init.add_argument("--ceo-report-tone", help="Tone guidance for CEO reports; persisted as ceoReportTone in .dzcto/config.json")
+    init.add_argument("--no-sample-report", action="store_true", help="Skip the first-run sample CEO report")
     init.add_argument("--no-save-preferences", action="store_true", help="Do not update ~/.dzcto/config.json")
     init.add_argument("--no-switch-default", action="store_true", help="Update the named profile without making it the global default")
     init.add_argument("--repo", action="append", default=[], help="Read-only code repository path; may be repeated. Persisted as codeRepos in .dzcto/config.json")
@@ -1059,6 +1065,8 @@ def main(argv: list[str]) -> int:
             init_args.extend(["--weekly-lookback-days", str(args.weekly_lookback_days)])
         if args.ceo_report_tone:
             init_args.extend(["--ceo-report-tone", args.ceo_report_tone])
+        if args.no_sample_report:
+            init_args.append("--no-sample-report")
         if args.no_save_preferences:
             init_args.append("--no-save-preferences")
         if args.no_switch_default:

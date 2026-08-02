@@ -31,6 +31,7 @@ Current product scope is intentionally small: `/dzcto-init`, `/dzcto-ceo-report-
 - Local install updates should go through `dzcto update`, which uses `git pull --ff-only`, refreshes local plugin/skill links, and runs doctor. Do not tell users to remember a manual `git pull` plus `setup` sequence for Codex Desktop local installs.
 - Keep the skill route primary for users. Add deterministic local helper behavior under `dzcto` before introducing provider-specific complexity.
 - Generated report/index HTML should be template-rendered by helpers, include embedded `dzcto-provenance` JSON, and update `.dzcto/` sidecar metadata.
+- `dzcto init` seeds one sample CEO report into a workspace that has no report yet. It carries a `sample` marker on its report JSON, and `is_sample_report` is the single predicate that keeps it out of report counts, the weekly streak, prior-report comparison, and the since-last-report window. Any new code that reads the `reports/ceo-updates/` glob must decide explicitly whether it is counting evidence (route through the predicate) or refreshing format (deliberately include the sample). Never let the sample reach a surface that presents it as real work.
 - The active generated index is a CEO report index, not a full CTO command center.
 - Generated pages should keep a visible footer with the Day Zero CTO skills version so users can identify what regenerated the wiki.
 - Generated pages should include sticky top navigation with breadcrumbs back to the dashboard, page title, search, and theme toggle.

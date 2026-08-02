@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR Review Dossier — DAYZEROCTO-19</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f2ea;
+      --surface: #fffdf7;
+      --surface-alt: #eee9de;
+      --text: #24231f;
+      --muted: #68645c;
+      --border: #d3ccbd;
+      --accent: #8c4c18;
+      --accent-soft: #f3dfc9;
+      --good: #286447;
+      --low: #64748b;
+      --medium: #9a6700;
+      --high: #b54708;
+      --critical: #b42318;
+      --placeholder: #fff1b8;
+      --code: #ede7db;
+      --shadow: 0 12px 35px rgba(56, 45, 25, 0.09);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #181713;
+        --surface: #23211c;
+        --surface-alt: #2c2922;
+        --text: #eee9dc;
+        --muted: #bbb4a6;
+        --border: #49443a;
+        --accent: #f2a65a;
+        --accent-soft: #4a311e;
+        --good: #66c796;
+        --low: #aab4c3;
+        --medium: #e2b84e;
+        --high: #f5a15f;
+        --critical: #ff7a70;
+        --placeholder: #58491d;
+        --code: #302d26;
+        --shadow: none;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    code {
+      padding: 0.12rem 0.35rem;
+      border-radius: 0.3rem;
+      background: var(--code);
+      font-size: 0.9em;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 0;
+      padding: 1rem;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      background: var(--code);
+      color: var(--text);
+      font-size: 0.88rem;
+      line-height: 1.55;
+    }
+
+    header {
+      padding: 3.5rem max(1.25rem, calc((100vw - 1120px) / 2));
+      border-bottom: 1px solid var(--border);
+      background:
+        radial-gradient(circle at 85% 10%, var(--accent-soft), transparent 34%),
+        var(--surface);
+    }
+
+    header .eyebrow {
+      margin: 0 0 0.65rem;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 3.6rem);
+      line-height: 1.06;
+      letter-spacing: -0.04em;
+    }
+
+    header .summary {
+      max-width: 850px;
+      margin: 1.25rem 0 0;
+      color: var(--muted);
+      font-size: 1.14rem;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 2rem));
+      margin: 2rem auto 4rem;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      backdrop-filter: blur(12px);
+    }
+
+    nav ul {
+      display: flex;
+      width: min(1120px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 0;
+      list-style: none;
+    }
+
+    nav a {
+      display: block;
+      padding: 0.9rem 0.8rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    nav a:hover,
+    nav a:focus-visible {
+      color: var(--accent);
+    }
+
+    section,
+    details {
+      margin-top: 1.25rem;
+      border: 1px solid var(--border);
+      border-radius: 0.8rem;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    section {
+      padding: clamp(1.15rem, 3vw, 2rem);
+    }
+
+    section h2 {
+      margin: 0 0 1rem;
+      font-size: 1.35rem;
+      letter-spacing: -0.02em;
+    }
+
+    h3 {
+      margin: 1.35rem 0 0.55rem;
+      font-size: 1rem;
+    }
+
+    p {
+      margin: 0.65rem 0;
+    }
+
+    ul,
+    ol {
+      margin: 0.6rem 0;
+      padding-left: 1.35rem;
+    }
+
+    li + li {
+      margin-top: 0.45rem;
+    }
+
+    .meta-grid,
+    .number-grid,
+    .review-grid {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .meta-grid {
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    }
+
+    .number-grid {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+
+    .review-grid {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .cell,
+    .number,
+    .review-column {
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 0.65rem;
+      background: var(--surface-alt);
+    }
+
+    .label {
+      display: block;
+      margin-bottom: 0.3rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .value {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .number strong {
+      display: block;
+      font-size: 1.45rem;
+      line-height: 1.2;
+    }
+
+    .number span {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .fill {
+      display: inline-block;
+      min-width: 7rem;
+      padding: 0.12rem 0.35rem;
+      border: 1px dashed #a67c00;
+      border-radius: 0.25rem;
+      background: var(--placeholder);
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .risk-banner {
+      padding: 1rem 1.2rem;
+      border: 2px solid var(--low);
+      border-radius: 0.7rem;
+      background: var(--surface-alt);
+    }
+
+    .risk-banner strong {
+      display: block;
+      margin-bottom: 0.2rem;
+      font-size: 1.08rem;
+    }
+
+    .risk-banner.risk-critical {
+      border-color: var(--critical);
+    }
+
+    .risk-banner.risk-high {
+      border-color: var(--high);
+    }
+
+    .risk-banner.risk-medium {
+      border-color: var(--medium);
+    }
+
+    .risk-banner.risk-low,
+    .risk-banner.risk-none {
+      border-color: var(--low);
+    }
+
+    .risk-flags {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 0.55rem;
+      margin-top: 1rem;
+    }
+
+    .risk-flag {
+      display: flex;
+      gap: 0.55rem;
+      align-items: center;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 0.55rem;
+      color: var(--muted);
+      background: var(--surface-alt);
+      font-size: 0.9rem;
+    }
+
+    .risk-flag::before {
+      content: "○";
+      font-weight: 900;
+    }
+
+    .risk-flag[data-active="true"] {
+      color: var(--text);
+      border-color: currentColor;
+      font-weight: 750;
+    }
+
+    .risk-flag[data-active="true"]::before {
+      content: "●";
+    }
+
+    .risk-flag[data-severity="critical"][data-active="true"] {
+      color: var(--critical);
+    }
+
+    .risk-flag[data-severity="high"][data-active="true"] {
+      color: var(--high);
+    }
+
+    .risk-flag[data-severity="medium"][data-active="true"] {
+      color: var(--medium);
+    }
+
+    .risk-flag[data-severity="low"][data-active="true"] {
+      color: var(--low);
+    }
+
+    .callout {
+      margin-top: 1rem;
+      padding: 0.9rem 1rem;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .path-list {
+      columns: 2;
+      column-gap: 2rem;
+    }
+
+    .path-list li {
+      break-inside: avoid;
+    }
+
+    details {
+      overflow: hidden;
+    }
+
+    summary {
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    details[open] summary {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .details-body {
+      padding: 0.5rem 1.25rem 1.25rem;
+    }
+
+    .check {
+      margin-top: 1rem;
+    }
+
+    .check:first-child {
+      margin-top: 0;
+    }
+
+    .status-unknown {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .flow {
+      margin: 1rem 0;
+      padding-left: 1.25rem;
+      border-left: 3px solid var(--accent);
+    }
+
+    .flow div {
+      position: relative;
+      padding: 0.35rem 0 0.85rem 0.8rem;
+    }
+
+    .flow div::before {
+      position: absolute;
+      left: -1.65rem;
+      content: "→";
+      color: var(--accent);
+      font-weight: 900;
+    }
+
+    footer {
+      padding: 2rem 1rem 3rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      text-align: center;
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 700px) {
+      .path-list {
+        columns: 1;
+      }
+
+      nav a {
+        padding-inline: 0.65rem;
+      }
+    }
+
+    @media print {
+      nav {
+        display: none;
+      }
+
+      body {
+        background: white;
+      }
+
+      header,
+      section,
+      details {
+        box-shadow: none;
+      }
+
+      details:not([open]) > *:not(summary) {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">PR review dossier</p>
+    <h1>DAYZEROCTO-19: Generate a sample report on first run to reach value in minutes</h1>
+    <p class="summary">
+      This change gives users initializing a new Day Zero CTO workspace a clearly labelled sample CEO report, while protecting report counts, weekly streaks, prior-report comparisons, and reporting windows from treating the example as real evidence.
+    </p>
+  </header>
+
+  <nav aria-label="Dossier sections">
+    <ul>
+      <li><a href="#metadata">Metadata</a></li>
+      <li><a href="#numbers">Numbers</a></li>
+      <li><a href="#risk">Risk</a></li>
+      <li><a href="#review-guide">Review guide</a></li>
+      <li><a href="#changes">Changes</a></li>
+      <li><a href="#checks">Checks</a></li>
+      <li><a href="#details">Details</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <section id="metadata">
+      <h2>Review metadata</h2>
+      <div class="meta-grid">
+        <div class="cell">
+          <span class="label">Repository</span>
+          <span class="value">chuckblake/Day-Zero-CTO</span>
+        </div>
+        <div class="cell">
+          <span class="label">Branch</span>
+          <span class="value">dayzerocto-19-feature-generate-a-sample-report-on-first-run-to</span>
+        </div>
+        <div class="cell">
+          <span class="label">Author</span>
+          <span class="value">Chuck Blake</span>
+        </div>
+        <div class="cell">
+          <span class="label">Date</span>
+          <span class="value">2026-08-01</span>
+        </div>
+        <div class="cell">
+          <span class="label">Head SHA</span>
+          <span class="value"><code>1e0983b</code></span>
+        </div>
+        <div class="cell">
+          <span class="label">Backlog issue</span>
+          <span class="value">DAYZEROCTO-19</span>
+        </div>
+        <div class="cell">
+          <span class="label">PR number</span>
+          <span class="fill">Not provided</span>
+        </div>
+        <div class="cell">
+          <span class="label">Reviewers</span>
+          <span class="fill">Not provided</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="numbers">
+      <h2>Quick numbers</h2>
+      <div class="number-grid">
+        <div class="number">
+          <strong>15</strong>
+          <span>files changed</span>
+        </div>
+        <div class="number">
+          <strong>+1,448 / −15</strong>
+          <span>reported line churn</span>
+        </div>
+        <div class="number">
+          <strong>8</strong>
+          <span>branch commits</span>
+        </div>
+        <div class="number">
+          <strong>Unit tests</strong>
+          <span><code>python3 -m unittest discover -s tests</code></span>
+        </div>
+        <div class="number">
+          <strong>None</strong>
+          <span>database migrations or schema changes shown</span>
+        </div>
+        <div class="number">
+          <strong>None</strong>
+          <span>package manifests or lockfiles shown</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="risk">
+      <h2>Risk flags</h2>
+      <div id="risk-banner" class="risk-banner" aria-live="polite">
+        <strong id="risk-level">Computing risk from active flags…</strong>
+        <span id="risk-explanation"></span>
+      </div>
+
+      <div class="risk-flags" aria-label="Mapped risk flags">
+        <div class="risk-flag" data-severity="critical" data-active="false">Sensitive data</div>
+        <div class="risk-flag" data-severity="critical" data-active="false">Payments or billing</div>
+        <div class="risk-flag" data-severity="high" data-active="false">Login or permissions</div>
+        <div class="risk-flag" data-severity="high" data-active="false">Secrets or tokens</div>
+        <div class="risk-flag" data-severity="high" data-active="false">API behavior changes</div>
+        <div class="risk-flag" data-severity="medium" data-active="false">Database change</div>
+        <div class="risk-flag" data-severity="medium" data-active="false">External service</div>
+        <div class="risk-flag" data-severity="medium" data-active="false">Background work</div>
+        <div class="risk-flag" data-severity="medium" data-active="false">Could affect speed</div>
+        <div class="risk-flag" data-severity="low" data-active="false">New or updated package</div>
+        <div class="risk-flag" data-severity="low" data-active="false">Config or deploy setup</div>
+      </div>
+
+      <div class="callout">
+        No changed path or plan statement matches the dossier’s defined flag signals. The principal review risk is instead a product-integrity invariant: a sample report must remain visible as an example while never reaching a surface that presents it as real work.
+      </div>
+    </section>
+
+    <section id="review-guide">
+      <h2>Review guide</h2>
+      <div class="review-grid">
+        <div class="review-column">
+          <h3>Look closely</h3>
+          <ol>
+            <li>
+              <strong><code>scripts/dzcto_artifact.py</code></strong> — verify the single sample predicate is applied to every evidence-bearing selection surface, the sample writer never creates <code>data.json</code>, and format refresh deliberately continues to include the sample.
+            </li>
+            <li>
+              <strong><code>scripts/dzcto.py</code></strong> — verify the since-last-report cursor and status count exclude samples, and <code>--no-sample-report</code> is declared and forwarded consistently.
+            </li>
+            <li>
+              <strong><code>tests/test_dzcto_artifact.py</code></strong> — verify tests exercise each exclusion independently, guard against false-positive fixtures, and preserve coverage from init-shelling tests.
+            </li>
+            <li>
+              <strong>Index behavior in <code>scripts/dzcto_artifact.py</code></strong> — verify the sample is linked and badged but cannot affect report count, latest report metadata, primary-card selection, or weekly streak.
+            </li>
+            <li>
+              <strong>Release fields</strong> — verify version <code>0.9.4</code> remains consistent across the Codex manifest, Claude plugin manifest, Claude marketplace entries, and <code>scripts/dzcto_common.py</code>.
+            </li>
+          </ol>
+        </div>
+
+        <div class="review-column">
+          <h3>Okay to skim</h3>
+          <p>
+            <span class="fill">No generated files, fixtures, renames, or formatting-only churn are identified by the supplied facts.</span>
+          </p>
+          <p>
+            The documentation and plan changes are substantial enough that the available evidence does not support classifying them as mechanical churn.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="changes">
+      <h2>What changed</h2>
+      <ol>
+        <li>
+          Running <code>dzcto init</code> in an eligible empty workspace now seeds <code>reports/ceo-updates/sample-ceo-report.html</code> and its sibling JSON as a visibly labelled weekly-report example.
+        </li>
+        <li>
+          The sample carries <code>sample: true</code> and <code>sources: []</code>, so it renders both a sample banner and the existing thin-evidence warning without fabricated citations.
+        </li>
+        <li>
+          A shared sample predicate keeps the artifact out of weekly streaks, prior-report comparison, the since-last-report cursor, generated-report status counts, and index count/latest selection.
+        </li>
+        <li>
+          The CEO report index still exposes the sample as a distinct searchable card, but a sample-only workspace continues to show zero real reports and a zero weekly streak.
+        </li>
+        <li>
+          Initialization supports <code>--no-sample-report</code>; documentation, domain vocabulary, skill result text, editing guidance, and plugin release fields were updated for the new behavior and version <code>0.9.4</code>.
+        </li>
+      </ol>
+
+      <h3>Changed paths</h3>
+      <ul class="path-list">
+        <li><code>.claude-plugin/marketplace.json</code></li>
+        <li><code>.claude-plugin/plugin.json</code></li>
+        <li><code>.codex-plugin/plugin.json</code></li>
+        <li><code>AGENTS.md</code></li>
+        <li><code>CONCEPTS.md</code></li>
+        <li><code>INSTALL_FOR_AGENTS.md</code></li>
+        <li><code>README.md</code></li>
+        <li><code>docs/ceo-report-template.md</code></li>
+        <li><code>docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md</code></li>
+        <li><code>plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md</code></li>
+        <li><code>scripts/dzcto.py</code></li>
+        <li><code>scripts/dzcto_artifact.py</code></li>
+        <li><code>scripts/dzcto_common.py</code></li>
+        <li><code>skills/dzcto-init/SKILL.md</code></li>
+        <li><code>tests/test_dzcto_artifact.py</code></li>
+      </ul>
+    </section>
+
+    <section id="checks">
+      <h2>How to check it</h2>
+
+      <div class="check">
+        <h3>Compile the changed Python helpers</h3>
+        <pre><code>python3 -m py_compile scripts/dzcto_artifact.py scripts/dzcto.py scripts/dzcto_common.py</code></pre>
+      </div>
+
+      <div class="check">
+        <h3>Run the full unit suite</h3>
+        <pre><code>python3 -m unittest discover -s tests</code></pre>
+      </div>
+
+      <div class="check">
+        <h3>Smoke-test first-run behavior</h3>
+        <pre><code>review_dir="$(mktemp -d /tmp/dzcto-sample-review.XXXXXX)"
+dzcto init --artifacts-dir "$review_dir"
+open "$review_dir/index.html"</code></pre>
+        <p>
+          Confirm that the index shows zero CEO reports, a zero weekly streak, and one clearly labelled sample card. Open that card and confirm the sample banner appears before the thin-evidence banner.
+        </p>
+      </div>
+
+      <div class="check">
+        <h3>Check evidence-selection behavior</h3>
+        <pre><code>dzcto status --artifacts-dir "$review_dir"
+dzcto window --artifacts-dir "$review_dir"</code></pre>
+        <p>
+          In the sample-only workspace, status should report no generated reports and retain the next-step command; the reporting window should have no prior weekly-report cursor.
+        </p>
+      </div>
+
+      <div class="check">
+        <h3>Check opt-out behavior</h3>
+        <pre><code>opt_out_dir="$(mktemp -d /tmp/dzcto-sample-opt-out.XXXXXX)"
+dzcto init --artifacts-dir "$opt_out_dir" --no-sample-report</code></pre>
+        <p>
+          Confirm that <code>reports/ceo-updates/sample-ceo-report.html</code> is absent.
+        </p>
+      </div>
+
+      <div class="check">
+        <h3>Release checks</h3>
+        <pre><code>dzcto version
+dzcto doctor</code></pre>
+        <p>
+          The plan expects <code>dzcto version</code> to report <code>0.9.4</code> and the generated index footer to show the same value.
+        </p>
+      </div>
+
+      <div class="callout status-unknown">
+        Execution results were not included in the supplied git facts or plan. Passing status is therefore not asserted here.
+      </div>
+
+      <h3>Rollback plan</h3>
+      <p><span class="fill">Not specified in the plan.</span></p>
+    </section>
+
+    <div id="details">
+      <details open>
+        <summary>Why this approach</summary>
+        <div class="details-body">
+          <p>
+            The goal is not merely to create an example report; it is to ensure that one new artifact can coexist with six existing readers of <code>reports/ceo-updates/</code> without becoming fabricated evidence.
+          </p>
+          <p>
+            The plan centralizes that contract in <code>is_sample_report()</code>. An additive <code>sample: true</code> marker is smaller and stricter than introducing another report type, because the sample can remain a realistic weekly report while every evidence-bearing consumer applies the same exclusion rule.
+          </p>
+          <p>
+            Artifact creation stays in the deterministic helper, and the init skill reports the result. Date-dependent sample data uses an injectable <code>today</code> value so tests can remain hermetic.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Other options considered</summary>
+        <div class="details-body">
+          <ul>
+            <li>
+              <strong>New <code>report_type: "sample"</code> — rejected.</strong>
+              It would expand report-type validation and schema surfaces while failing to protect prior-report selection, which coerces unknown types to <code>ad_hoc</code>.
+            </li>
+            <li>
+              <strong>Plausible sample sources — rejected.</strong>
+              The sample uses <code>sources: []</code> so the existing thin-evidence banner remains truthful and no citations are fabricated.
+            </li>
+            <li>
+              <strong>Delete the sample after real reports exist — rejected.</strong>
+              The selected behavior avoids deleting user files; creation is suppressed when real reports exist, while an existing sample remains excluded and badged.
+            </li>
+            <li>
+              <strong>Store the opt-out as workspace configuration — rejected.</strong>
+              <code>--no-sample-report</code> is treated as an operator-only flag with no stored configuration key.
+            </li>
+            <li>
+              <strong>Fix the pre-existing company-name page-chrome egress gap — rejected for this branch.</strong>
+              The plan records it as a separate shared-chrome concern outside this feature’s scope.
+            </li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Tradeoffs</summary>
+        <div class="details-body">
+          <ul>
+            <li>
+              Keeping the sample permanently avoids destructive cleanup, but every future reader of the CEO-report glob must consciously route evidence selection through the shared predicate.
+            </li>
+            <li>
+              Treating missing or corrupt sample metadata as real is the documented fail-safe direction for the index; this avoids crashes but can temporarily lose the exclusion when the sibling JSON is unavailable.
+            </li>
+            <li>
+              The sample is intentionally included in format refresh while excluded from evidence selection. That two-direction rule preserves current rendering without contaminating counts or comparisons.
+            </li>
+            <li>
+              Adding first-run output required retargeting absence-based tests so they continue to assert whether a blocked operation authored a report, rather than whether the folder is completely empty.
+            </li>
+          </ul>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Design / flow change</summary>
+        <div class="details-body">
+          <p>
+            The diff represents a structural call-path change: initialization can now build and write a sample artifact, while a shared predicate is consumed in opposite directions by evidence-selection and format-refresh paths.
+          </p>
+          <div class="flow" aria-label="Textual flow summary">
+            <div><code>dzcto init</code> refreshes existing report pages.</div>
+            <div>If no real report exists, no sample already exists, and opt-out is absent, it builds sanitized sample data.</div>
+            <div>The writer creates <code>sample-ceo-report.html</code> and its sibling JSON, updates provenance and manifest state, and never writes the rolling <code>data.json</code> pointer.</div>
+            <div>The shared renderer places the sample banner above the thin-evidence banner.</div>
+            <div>The index exposes the sample card, while report counts, latest selection, streaks, status, prior-report lookup, and reporting-window cursors exclude it.</div>
+          </div>
+<svg viewBox="0 0 1728 1490" width="1728" height="1490" style="max-width:100%;height:auto" role="img" aria-labelledby="diagram-title diagram-desc">
+  <title id="diagram-title">Changed-path containment diagram</title>
+  <desc id="diagram-desc">Directory containment from left to right; shape identifies each changed file's kind and every label includes a changed-file count.</desc>
+  <style>
+    .edge { fill: none; stroke: #333333; stroke-width: 2; }
+    .node { stroke: #333333; stroke-width: 2; }
+    .group { fill: #E69F00; }
+    .created { fill: #009E73; }
+    .test { fill: #F0E442; }
+    .modified { fill: #56B4E9; }
+    .deleted { fill: #D55E00; }
+    text { fill: #000000; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; text-anchor: middle; }
+    .path { font-weight: 700; }
+  </style>
+  <g class="edges">
+    <path class="edge" data-from="n0" data-to="n1" d="M 262 722.0 C 307.0 722.0, 307.0 101.0, 352 101.0"/>
+    <path class="edge" data-from="n0" data-to="n4" d="M 262 722.0 C 307.0 722.0, 307.0 239, 352 239"/>
+    <path class="edge" data-from="n0" data-to="n5" d="M 262 722.0 C 307.0 722.0, 307.0 331, 352 331"/>
+    <path class="edge" data-from="n0" data-to="n6" d="M 262 722.0 C 307.0 722.0, 307.0 423, 352 423"/>
+    <path class="edge" data-from="n0" data-to="n7" d="M 262 722.0 C 307.0 722.0, 307.0 515, 352 515"/>
+    <path class="edge" data-from="n0" data-to="n8" d="M 262 722.0 C 307.0 722.0, 307.0 607, 352 607"/>
+    <path class="edge" data-from="n0" data-to="n9" d="M 262 722.0 C 307.0 722.0, 307.0 745.0, 352 745.0"/>
+    <path class="edge" data-from="n0" data-to="n12" d="M 262 722.0 C 307.0 722.0, 307.0 883, 352 883"/>
+    <path class="edge" data-from="n0" data-to="n13" d="M 262 722.0 C 307.0 722.0, 307.0 1067.0, 352 1067.0"/>
+    <path class="edge" data-from="n0" data-to="n17" d="M 262 722.0 C 307.0 722.0, 307.0 1251, 352 1251"/>
+    <path class="edge" data-from="n0" data-to="n18" d="M 262 722.0 C 307.0 722.0, 307.0 1343, 352 1343"/>
+    <path class="edge" data-from="n1" data-to="n2" d="M 548 101.0 C 766.0 101.0, 766.0 55, 984 55"/>
+    <path class="edge" data-from="n1" data-to="n3" d="M 548 101.0 C 766.0 101.0, 766.0 147, 984 147"/>
+    <path class="edge" data-from="n9" data-to="n10" d="M 562 745.0 C 773.0 745.0, 773.0 699, 984 699"/>
+    <path class="edge" data-from="n9" data-to="n11" d="M 562 745.0 C 773.0 745.0, 773.0 791, 984 791"/>
+    <path class="edge" data-from="n13" data-to="n14" d="M 562 1067.0 C 773.0 1067.0, 773.0 975, 984 975"/>
+    <path class="edge" data-from="n13" data-to="n15" d="M 562 1067.0 C 773.0 1067.0, 773.0 1067, 984 1067"/>
+    <path class="edge" data-from="n13" data-to="n16" d="M 562 1067.0 C 773.0 1067.0, 773.0 1159, 984 1159"/>
+  </g>
+  <g class="nodes">
+    <rect class="node group" data-node-id="n0" data-path="Changed paths" data-kind="group" data-files="15" role="img" aria-label="path group: Changed paths · 15 changed files · +1448/-15" x="30" y="693.0" width="232" height="58" rx="8"/>
+    <text x="146.0" y="716.0" aria-hidden="true">
+      <tspan class="path" x="146.0">Changed paths</tspan>
+      <tspan x="146.0" dy="18">15 changed files · +1448/-15</tspan>
+    </text>
+    <rect class="node group" data-node-id="n1" data-path=".claude-plugin" data-kind="group" data-files="2" role="img" aria-label="path group: .claude-plugin · 2 changed files · +3/-3" x="352" y="72.0" width="196" height="58" rx="8"/>
+    <text x="450.0" y="95.0" aria-hidden="true">
+      <tspan class="path" x="450.0">.claude-plugin</tspan>
+      <tspan x="450.0" dy="18">2 changed files · +3/-3</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n2" data-path=".claude-plugin/marketplace.json" data-kind="modified" data-files="1" role="img" aria-label="modified file: .claude-plugin/marketplace.json · 1 changed file · +2/-2" x="984" y="26" width="254" height="58"/>
+    <text x="1111.0" y="49" aria-hidden="true">
+      <tspan class="path" x="1111.0">.claude-plugin/marketplace.json</tspan>
+      <tspan x="1111.0" dy="18">1 changed file · +2/-2</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n3" data-path=".claude-plugin/plugin.json" data-kind="modified" data-files="1" role="img" aria-label="modified file: .claude-plugin/plugin.json · 1 changed file · +1/-1" x="984" y="118" width="218" height="58"/>
+    <text x="1093.0" y="141" aria-hidden="true">
+      <tspan class="path" x="1093.0">.claude-plugin/plugin.json</tspan>
+      <tspan x="1093.0" dy="18">1 changed file · +1/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n4" data-path=".codex-plugin/plugin.json" data-kind="modified" data-files="1" role="img" aria-label="modified file: .codex-plugin/plugin.json · 1 changed file · +1/-1" x="352" y="210" width="210" height="58"/>
+    <text x="457.0" y="233" aria-hidden="true">
+      <tspan class="path" x="457.0">.codex-plugin/plugin.json</tspan>
+      <tspan x="457.0" dy="18">1 changed file · +1/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n5" data-path="AGENTS.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: AGENTS.md · 1 changed file · +1/-0" x="352" y="302" width="189" height="58"/>
+    <text x="446.5" y="325" aria-hidden="true">
+      <tspan class="path" x="446.5">AGENTS.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +1/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n6" data-path="CONCEPTS.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: CONCEPTS.md · 1 changed file · +3/-0" x="352" y="394" width="189" height="58"/>
+    <text x="446.5" y="417" aria-hidden="true">
+      <tspan class="path" x="446.5">CONCEPTS.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +3/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n7" data-path="INSTALL_FOR_AGENTS.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: INSTALL_FOR_AGENTS.md · 1 changed file · +2/-0" x="352" y="486" width="189" height="58"/>
+    <text x="446.5" y="509" aria-hidden="true">
+      <tspan class="path" x="446.5">INSTALL_FOR_AGENTS.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +2/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n8" data-path="README.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: README.md · 1 changed file · +2/-0" x="352" y="578" width="189" height="58"/>
+    <text x="446.5" y="601" aria-hidden="true">
+      <tspan class="path" x="446.5">README.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +2/-0</tspan>
+    </text>
+    <rect class="node group" data-node-id="n9" data-path="docs" data-kind="group" data-files="2" role="img" aria-label="path group: docs · 2 changed files · +143/-0" x="352" y="716.0" width="210" height="58" rx="8"/>
+    <text x="457.0" y="739.0" aria-hidden="true">
+      <tspan class="path" x="457.0">docs</tspan>
+      <tspan x="457.0" dy="18">2 changed files · +143/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n10" data-path="docs/ceo-report-template.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: docs/ceo-report-template.md · 1 changed file · +23/-0" x="984" y="670" width="225" height="58"/>
+    <text x="1096.5" y="693" aria-hidden="true">
+      <tspan class="path" x="1096.5">docs/ceo-report-template.md</tspan>
+      <tspan x="1096.5" dy="18">1 changed file · +23/-0</tspan>
+    </text>
+    <rect class="node created" data-node-id="n11" data-path="docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md" data-kind="created" data-files="1" role="img" aria-label="created file: docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md · 1 changed file · +120/-0" x="984" y="762" width="714" height="58" rx="29"/>
+    <text x="1341.0" y="785" aria-hidden="true">
+      <tspan class="path" x="1341.0">docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md</tspan>
+      <tspan x="1341.0" dy="18">1 changed file · +120/-0</tspan>
+    </text>
+    <rect class="node created" data-node-id="n12" data-path="plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md" data-kind="created" data-files="1" role="img" aria-label="created file: plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md · 1 changed file · +581/-0" x="352" y="854" width="542" height="58" rx="29"/>
+    <text x="623.0" y="877" aria-hidden="true">
+      <tspan class="path" x="623.0">plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md</tspan>
+      <tspan x="623.0" dy="18">1 changed file · +581/-0</tspan>
+    </text>
+    <rect class="node group" data-node-id="n13" data-path="scripts" data-kind="group" data-files="3" role="img" aria-label="path group: scripts · 3 changed files · +190/-4" x="352" y="1038.0" width="210" height="58" rx="8"/>
+    <text x="457.0" y="1061.0" aria-hidden="true">
+      <tspan class="path" x="457.0">scripts</tspan>
+      <tspan x="457.0" dy="18">3 changed files · +190/-4</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n14" data-path="scripts/dzcto.py" data-kind="modified" data-files="1" role="img" aria-label="modified file: scripts/dzcto.py · 1 changed file · +9/-1" x="984" y="946" width="189" height="58"/>
+    <text x="1078.5" y="969" aria-hidden="true">
+      <tspan class="path" x="1078.5">scripts/dzcto.py</tspan>
+      <tspan x="1078.5" dy="18">1 changed file · +9/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n15" data-path="scripts/dzcto_artifact.py" data-kind="modified" data-files="1" role="img" aria-label="modified file: scripts/dzcto_artifact.py · 1 changed file · +180/-2" x="984" y="1038" width="210" height="58"/>
+    <text x="1089.0" y="1061" aria-hidden="true">
+      <tspan class="path" x="1089.0">scripts/dzcto_artifact.py</tspan>
+      <tspan x="1089.0" dy="18">1 changed file · +180/-2</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n16" data-path="scripts/dzcto_common.py" data-kind="modified" data-files="1" role="img" aria-label="modified file: scripts/dzcto_common.py · 1 changed file · +1/-1" x="984" y="1130" width="196" height="58"/>
+    <text x="1082.0" y="1153" aria-hidden="true">
+      <tspan class="path" x="1082.0">scripts/dzcto_common.py</tspan>
+      <tspan x="1082.0" dy="18">1 changed file · +1/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n17" data-path="skills/dzcto-init/SKILL.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: skills/dzcto-init/SKILL.md · 1 changed file · +3/-1" x="352" y="1222" width="218" height="58"/>
+    <text x="461.0" y="1245" aria-hidden="true">
+      <tspan class="path" x="461.0">skills/dzcto-init/SKILL.md</tspan>
+      <tspan x="461.0" dy="18">1 changed file · +3/-1</tspan>
+    </text>
+    <polygon class="node test" data-node-id="n18" data-path="tests/test_dzcto_artifact.py" data-kind="test" data-files="1" role="img" aria-label="test file: tests/test_dzcto_artifact.py · 1 changed file · +519/-6" points="376,1314 560,1314 584,1343.0 560,1372 376,1372 352,1343.0"/>
+    <text x="468.0" y="1337" aria-hidden="true">
+      <tspan class="path" x="468.0">tests/test_dzcto_artifact.py</tspan>
+      <tspan x="468.0" dy="18">1 changed file · +519/-6</tspan>
+    </text>
+  </g>
+</svg>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Questions / gaps</summary>
+        <div class="details-body">
+          <h3>Deferred in the plan</h3>
+          <ul>
+            <li>
+              Exact sample copy, including headline, progress items, and metric labels, was deferred until rendered output could be inspected.
+            </li>
+            <li>
+              Whether the sample card needs dedicated styling or can reuse empty-state styling was deferred to rendered-index review.
+            </li>
+            <li>
+              Whether <code>AGENTS.md</code> needed a new editing rule was deferred; the supplied changed-path list shows that file changed, so the reviewer should verify the final decision.
+            </li>
+            <li>
+              Resolution of any overlap with <code>dayzerocto-15-feature-exclude-no-work-and-discarded-runs-from</code> was deferred in case that branch landed first.
+            </li>
+          </ul>
+
+          <h3>Known gap left outside this change</h3>
+          <p>
+            The plan records a pre-existing company-name egress gap in shared page chrome: <code>dashboard_title(company)</code> bypasses <code>sanitize_current_report_data()</code>. The sample’s own JSON and body are sanitized, but fixing shared chrome was explicitly rejected as out of scope for this branch.
+          </p>
+
+          <h3>Scope-boundary source</h3>
+          <p>
+            <span class="fill">The plan contains no section titled “Scope Boundaries”; no additional boundaries can be extracted under that heading.</span>
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Commits</summary>
+        <div class="details-body">
+          <ol>
+            <li><code>1e0983b</code> — docs(solutions): capture the both-directions exclusion trap from DAYZEROCTO-19</li>
+            <li><code>004caa6</code> — fix(DAYZEROCTO-19): stop the sample report from diffing against real work [U2]</li>
+            <li><code>5c5574c</code> — docs(DAYZEROCTO-19): unwrap the plan's version-bump file list [U4]</li>
+            <li><code>f47bfed</code> — docs(DAYZEROCTO-19): document the sample report and bump to 0.9.4 [U4]</li>
+            <li><code>811ce03</code> — feat(DAYZEROCTO-19): surface the sample on the index without counting it [U3]</li>
+            <li><code>374f8fc</code> — feat(DAYZEROCTO-19): exclude the sample report from every evidence surface [U2]</li>
+            <li><code>3e0a53b</code> — feat(DAYZEROCTO-19): seed a labelled sample CEO report during init [U1]</li>
+            <li><code>e9458ca</code> — docs(DAYZEROCTO-19): add the implementation plan</li>
+          </ol>
+        </div>
+      </details>
+
+      <details>
+        <summary>Plan references</summary>
+        <div class="details-body">
+          <ul>
+            <li><code>DAYZEROCTO-19</code> — backlog issue named as the owner of acceptance criteria.</li>
+            <li><code>docs/ceo-report-template.md</code> — canonical report contract.</li>
+            <li><code>docs/solutions/architecture-patterns/shared-predicate-guardrail-single-dispatch-point-2026-07-09.md</code></li>
+            <li><code>docs/solutions/conventions/rendering-a-home-dir-config-value-breaks-test-hermeticity-2026-07-23.md</code></li>
+            <li><code>docs/solutions/conventions/absence-proxy-assertions-break-on-additive-rendering-2026-07-23.md</code></li>
+            <li><code>docs/solutions/architecture-patterns/helper-computes-agent-narrates-2026-07-03.md</code></li>
+            <li>Version-bump precedent: commit <code>8c9ae39</code> for DAYZEROCTO-13.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </main>
+
+  <footer>
+    PR review dossier generated from the supplied branch facts and plan on 2026-08-01. Unknown review metadata and unreported verification results remain visibly marked.
+  </footer>
+
+  <script>
+    (() => {
+      const rank = { low: 1, medium: 2, high: 3, critical: 4 };
+      const labels = {
+        none: "Routine review — no mapped risk flags",
+        low: "Low risk",
+        medium: "Medium risk",
+        high: "High risk",
+        critical: "Critical risk"
+      };
+      const active = [...document.querySelectorAll('.risk-flag[data-active="true"]')];
+      const level = active.reduce((highest, flag) => {
+        const severity = flag.dataset.severity;
+        return rank[severity] > rank[highest] ? severity : highest;
+      }, "none");
+      const banner = document.getElementById("risk-banner");
+      const levelNode = document.getElementById("risk-level");
+      const explanation = document.getElementById("risk-explanation");
+
+      banner.classList.add(`risk-${level}`);
+      levelNode.textContent = labels[level];
+      explanation.textContent = active.length
+        ? `${active.length} active mapped flag${active.length === 1 ? "" : "s"} determined this level.`
+        : "The supplied changed paths and plan do not activate any flag in the required mapping.";
+    })();
+  </script>
+</body>
+</html><svg viewBox="0 0 1728 1490" width="1728" height="1490" style="max-width:100%;height:auto" role="img" aria-labelledby="diagram-title diagram-desc">
+  <title id="diagram-title">Changed-path containment diagram</title>
+  <desc id="diagram-desc">Directory containment from left to right; shape identifies each changed file's kind and every label includes a changed-file count.</desc>
+  <style>
+    .edge { fill: none; stroke: #333333; stroke-width: 2; }
+    .node { stroke: #333333; stroke-width: 2; }
+    .group { fill: #E69F00; }
+    .created { fill: #009E73; }
+    .test { fill: #F0E442; }
+    .modified { fill: #56B4E9; }
+    .deleted { fill: #D55E00; }
+    text { fill: #000000; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; text-anchor: middle; }
+    .path { font-weight: 700; }
+  </style>
+  <g class="edges">
+    <path class="edge" data-from="n0" data-to="n1" d="M 262 722.0 C 307.0 722.0, 307.0 101.0, 352 101.0"/>
+    <path class="edge" data-from="n0" data-to="n4" d="M 262 722.0 C 307.0 722.0, 307.0 239, 352 239"/>
+    <path class="edge" data-from="n0" data-to="n5" d="M 262 722.0 C 307.0 722.0, 307.0 331, 352 331"/>
+    <path class="edge" data-from="n0" data-to="n6" d="M 262 722.0 C 307.0 722.0, 307.0 423, 352 423"/>
+    <path class="edge" data-from="n0" data-to="n7" d="M 262 722.0 C 307.0 722.0, 307.0 515, 352 515"/>
+    <path class="edge" data-from="n0" data-to="n8" d="M 262 722.0 C 307.0 722.0, 307.0 607, 352 607"/>
+    <path class="edge" data-from="n0" data-to="n9" d="M 262 722.0 C 307.0 722.0, 307.0 745.0, 352 745.0"/>
+    <path class="edge" data-from="n0" data-to="n12" d="M 262 722.0 C 307.0 722.0, 307.0 883, 352 883"/>
+    <path class="edge" data-from="n0" data-to="n13" d="M 262 722.0 C 307.0 722.0, 307.0 1067.0, 352 1067.0"/>
+    <path class="edge" data-from="n0" data-to="n17" d="M 262 722.0 C 307.0 722.0, 307.0 1251, 352 1251"/>
+    <path class="edge" data-from="n0" data-to="n18" d="M 262 722.0 C 307.0 722.0, 307.0 1343, 352 1343"/>
+    <path class="edge" data-from="n1" data-to="n2" d="M 548 101.0 C 766.0 101.0, 766.0 55, 984 55"/>
+    <path class="edge" data-from="n1" data-to="n3" d="M 548 101.0 C 766.0 101.0, 766.0 147, 984 147"/>
+    <path class="edge" data-from="n9" data-to="n10" d="M 562 745.0 C 773.0 745.0, 773.0 699, 984 699"/>
+    <path class="edge" data-from="n9" data-to="n11" d="M 562 745.0 C 773.0 745.0, 773.0 791, 984 791"/>
+    <path class="edge" data-from="n13" data-to="n14" d="M 562 1067.0 C 773.0 1067.0, 773.0 975, 984 975"/>
+    <path class="edge" data-from="n13" data-to="n15" d="M 562 1067.0 C 773.0 1067.0, 773.0 1067, 984 1067"/>
+    <path class="edge" data-from="n13" data-to="n16" d="M 562 1067.0 C 773.0 1067.0, 773.0 1159, 984 1159"/>
+  </g>
+  <g class="nodes">
+    <rect class="node group" data-node-id="n0" data-path="Changed paths" data-kind="group" data-files="15" role="img" aria-label="path group: Changed paths · 15 changed files · +1448/-15" x="30" y="693.0" width="232" height="58" rx="8"/>
+    <text x="146.0" y="716.0" aria-hidden="true">
+      <tspan class="path" x="146.0">Changed paths</tspan>
+      <tspan x="146.0" dy="18">15 changed files · +1448/-15</tspan>
+    </text>
+    <rect class="node group" data-node-id="n1" data-path=".claude-plugin" data-kind="group" data-files="2" role="img" aria-label="path group: .claude-plugin · 2 changed files · +3/-3" x="352" y="72.0" width="196" height="58" rx="8"/>
+    <text x="450.0" y="95.0" aria-hidden="true">
+      <tspan class="path" x="450.0">.claude-plugin</tspan>
+      <tspan x="450.0" dy="18">2 changed files · +3/-3</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n2" data-path=".claude-plugin/marketplace.json" data-kind="modified" data-files="1" role="img" aria-label="modified file: .claude-plugin/marketplace.json · 1 changed file · +2/-2" x="984" y="26" width="254" height="58"/>
+    <text x="1111.0" y="49" aria-hidden="true">
+      <tspan class="path" x="1111.0">.claude-plugin/marketplace.json</tspan>
+      <tspan x="1111.0" dy="18">1 changed file · +2/-2</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n3" data-path=".claude-plugin/plugin.json" data-kind="modified" data-files="1" role="img" aria-label="modified file: .claude-plugin/plugin.json · 1 changed file · +1/-1" x="984" y="118" width="218" height="58"/>
+    <text x="1093.0" y="141" aria-hidden="true">
+      <tspan class="path" x="1093.0">.claude-plugin/plugin.json</tspan>
+      <tspan x="1093.0" dy="18">1 changed file · +1/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n4" data-path=".codex-plugin/plugin.json" data-kind="modified" data-files="1" role="img" aria-label="modified file: .codex-plugin/plugin.json · 1 changed file · +1/-1" x="352" y="210" width="210" height="58"/>
+    <text x="457.0" y="233" aria-hidden="true">
+      <tspan class="path" x="457.0">.codex-plugin/plugin.json</tspan>
+      <tspan x="457.0" dy="18">1 changed file · +1/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n5" data-path="AGENTS.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: AGENTS.md · 1 changed file · +1/-0" x="352" y="302" width="189" height="58"/>
+    <text x="446.5" y="325" aria-hidden="true">
+      <tspan class="path" x="446.5">AGENTS.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +1/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n6" data-path="CONCEPTS.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: CONCEPTS.md · 1 changed file · +3/-0" x="352" y="394" width="189" height="58"/>
+    <text x="446.5" y="417" aria-hidden="true">
+      <tspan class="path" x="446.5">CONCEPTS.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +3/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n7" data-path="INSTALL_FOR_AGENTS.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: INSTALL_FOR_AGENTS.md · 1 changed file · +2/-0" x="352" y="486" width="189" height="58"/>
+    <text x="446.5" y="509" aria-hidden="true">
+      <tspan class="path" x="446.5">INSTALL_FOR_AGENTS.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +2/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n8" data-path="README.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: README.md · 1 changed file · +2/-0" x="352" y="578" width="189" height="58"/>
+    <text x="446.5" y="601" aria-hidden="true">
+      <tspan class="path" x="446.5">README.md</tspan>
+      <tspan x="446.5" dy="18">1 changed file · +2/-0</tspan>
+    </text>
+    <rect class="node group" data-node-id="n9" data-path="docs" data-kind="group" data-files="2" role="img" aria-label="path group: docs · 2 changed files · +143/-0" x="352" y="716.0" width="210" height="58" rx="8"/>
+    <text x="457.0" y="739.0" aria-hidden="true">
+      <tspan class="path" x="457.0">docs</tspan>
+      <tspan x="457.0" dy="18">2 changed files · +143/-0</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n10" data-path="docs/ceo-report-template.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: docs/ceo-report-template.md · 1 changed file · +23/-0" x="984" y="670" width="225" height="58"/>
+    <text x="1096.5" y="693" aria-hidden="true">
+      <tspan class="path" x="1096.5">docs/ceo-report-template.md</tspan>
+      <tspan x="1096.5" dy="18">1 changed file · +23/-0</tspan>
+    </text>
+    <rect class="node created" data-node-id="n11" data-path="docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md" data-kind="created" data-files="1" role="img" aria-label="created file: docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md · 1 changed file · +120/-0" x="984" y="762" width="714" height="58" rx="29"/>
+    <text x="1341.0" y="785" aria-hidden="true">
+      <tspan class="path" x="1341.0">docs/solutions/architecture-patterns/exclude-a-marked-artifact-in-both-directions-2026-08-01.md</tspan>
+      <tspan x="1341.0" dy="18">1 changed file · +120/-0</tspan>
+    </text>
+    <rect class="node created" data-node-id="n12" data-path="plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md" data-kind="created" data-files="1" role="img" aria-label="created file: plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md · 1 changed file · +581/-0" x="352" y="854" width="542" height="58" rx="29"/>
+    <text x="623.0" y="877" aria-hidden="true">
+      <tspan class="path" x="623.0">plans/dayzerocto-19-feature-generate-a-sample-report-on-first-run-to.md</tspan>
+      <tspan x="623.0" dy="18">1 changed file · +581/-0</tspan>
+    </text>
+    <rect class="node group" data-node-id="n13" data-path="scripts" data-kind="group" data-files="3" role="img" aria-label="path group: scripts · 3 changed files · +190/-4" x="352" y="1038.0" width="210" height="58" rx="8"/>
+    <text x="457.0" y="1061.0" aria-hidden="true">
+      <tspan class="path" x="457.0">scripts</tspan>
+      <tspan x="457.0" dy="18">3 changed files · +190/-4</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n14" data-path="scripts/dzcto.py" data-kind="modified" data-files="1" role="img" aria-label="modified file: scripts/dzcto.py · 1 changed file · +9/-1" x="984" y="946" width="189" height="58"/>
+    <text x="1078.5" y="969" aria-hidden="true">
+      <tspan class="path" x="1078.5">scripts/dzcto.py</tspan>
+      <tspan x="1078.5" dy="18">1 changed file · +9/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n15" data-path="scripts/dzcto_artifact.py" data-kind="modified" data-files="1" role="img" aria-label="modified file: scripts/dzcto_artifact.py · 1 changed file · +180/-2" x="984" y="1038" width="210" height="58"/>
+    <text x="1089.0" y="1061" aria-hidden="true">
+      <tspan class="path" x="1089.0">scripts/dzcto_artifact.py</tspan>
+      <tspan x="1089.0" dy="18">1 changed file · +180/-2</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n16" data-path="scripts/dzcto_common.py" data-kind="modified" data-files="1" role="img" aria-label="modified file: scripts/dzcto_common.py · 1 changed file · +1/-1" x="984" y="1130" width="196" height="58"/>
+    <text x="1082.0" y="1153" aria-hidden="true">
+      <tspan class="path" x="1082.0">scripts/dzcto_common.py</tspan>
+      <tspan x="1082.0" dy="18">1 changed file · +1/-1</tspan>
+    </text>
+    <rect class="node modified" data-node-id="n17" data-path="skills/dzcto-init/SKILL.md" data-kind="modified" data-files="1" role="img" aria-label="modified file: skills/dzcto-init/SKILL.md · 1 changed file · +3/-1" x="352" y="1222" width="218" height="58"/>
+    <text x="461.0" y="1245" aria-hidden="true">
+      <tspan class="path" x="461.0">skills/dzcto-init/SKILL.md</tspan>
+      <tspan x="461.0" dy="18">1 changed file · +3/-1</tspan>
+    </text>
+    <polygon class="node test" data-node-id="n18" data-path="tests/test_dzcto_artifact.py" data-kind="test" data-files="1" role="img" aria-label="test file: tests/test_dzcto_artifact.py · 1 changed file · +519/-6" points="376,1314 560,1314 584,1343.0 560,1372 376,1372 352,1343.0"/>
+    <text x="468.0" y="1337" aria-hidden="true">
+      <tspan class="path" x="468.0">tests/test_dzcto_artifact.py</tspan>
+      <tspan x="468.0" dy="18">1 changed file · +519/-6</tspan>
+    </text>
+  </g>
+</svg>

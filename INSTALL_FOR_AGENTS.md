@@ -26,6 +26,8 @@ reports/ceo-updates/
 
 When run against an existing artifact folder, `dzcto init` refreshes `index.html` and re-renders structured CEO report HTML from sibling `.json` files so older reports adopt the current report format. It does not rewrite report JSON; body-only legacy HTML without JSON is left unchanged.
 
+On a workspace with no CEO report yet, `dzcto init` also writes `reports/ceo-updates/sample-ceo-report.html` so the user can open generated output immediately and confirm the install. The sample is labelled as an example and is excluded from report counts, the weekly streak, prior-report comparison, and the since-last-report window; it is not written once a real report exists. Pass `--no-sample-report` to skip it.
+
 ## Codex Desktop
 
 ```bash

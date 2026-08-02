@@ -15,6 +15,7 @@ from unittest import mock
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
+import dzcto  # noqa: E402
 import dzcto_artifact as artifact  # noqa: E402
 
 GITHUB_TOKEN = "ghp_" + "AbCdEf1234567890AbCdEf1234567890AbCd"
@@ -1078,6 +1079,18 @@ class TestArtifactWritePath(unittest.TestCase):
     def reports_dir(self) -> Path:
         return self.workspace / "reports" / "ceo-updates"
 
+    def authored_reports(self, pattern: str = "*.html") -> list[Path]:
+        """Report artifacts this test authored, excluding init's first-run sample.
+
+        setUp runs `--init`, which now seeds a sample CEO report (DAYZEROCTO-19). The
+        blocked-write assertions below used to glob the whole folder as a proxy for "the
+        blocked run wrote nothing"; that proxy breaks the moment an unrelated, legitimate
+        artifact lives there. Naming what the assertion actually means preserves the
+        coverage instead of relaxing it -- see
+        docs/solutions/conventions/absence-proxy-assertions-break-on-additive-rendering-2026-07-23.md
+        """
+        return [path for path in self.reports_dir().glob(pattern) if path.stem != artifact.SAMPLE_REPORT_STEM]
+
     def test_open_flag_preserves_stdout_path_and_prints_share_recipe(self):
         with mock.patch.dict(os.environ, {"DZCTO_NO_OPEN": "1"}):
             result = self.generate(v1_report(), "CEO Report open and share", "--open")
@@ -1163,7 +1176,9 @@ class TestArtifactWritePath(unittest.TestCase):
         result = self.run_cli("--init", "--artifacts-dir", str(self.workspace), "--company-name", "Acme", "--no-save-preferences")
 
         refreshed = html.read_text(encoding="utf-8")
-        self.assertIn("refreshed 1 existing report", result.stderr)
+        # Two, not one: setUp's init seeded a sample report (DAYZEROCTO-19) and the format
+        # refresh deliberately includes it, so the sample never drifts off the current format.
+        self.assertIn("refreshed 2 existing reports", result.stderr)
         self.assertIn("report-body", refreshed)
         self.assertIn("Week over week", refreshed)
         self.assertNotIn("old report format", refreshed)
@@ -1263,8 +1278,8 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("secret detected in headline", result.stderr)
         self.assertIn("github_pat", result.stderr)
-        self.assertEqual(list(self.reports_dir().glob("*.html")), [])
-        self.assertEqual(list(self.reports_dir().glob("*.json")), [])
+        self.assertEqual(self.authored_reports(), [])
+        self.assertEqual(self.authored_reports("*.json"), [])
         self.assertFalse((self.reports_dir() / "data.json").exists())
 
     def test_high_confidence_secret_in_title_blocks_before_slug_write(self):
@@ -1293,7 +1308,7 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("metrics.deploy_key", result.stderr)
         self.assertIn("github_pat", result.stderr)
-        self.assertEqual(list(self.reports_dir().glob("*.html")), [])
+        self.assertEqual(self.authored_reports(), [])
 
     def test_high_confidence_secret_in_raw_body_blocks(self):
         body_file = self.workspace.parent / "body.html"
@@ -1306,7 +1321,7 @@ class TestArtifactWritePath(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("body@", result.stderr)
         self.assertIn("aws_access_key", result.stderr)
-        self.assertEqual(list(self.reports_dir().glob("*.html")), [])
+        self.assertEqual(self.authored_reports(), [])
 
     def test_low_confidence_secret_is_redacted_and_warned(self):
         result = self.generate(
@@ -1478,7 +1493,9 @@ class TestSettingsFlagParity(unittest.TestCase):
 
     # Operator/plumbing flags a CTO-facing settings page deliberately does not document.
     # Enumerated so the subset relationship is a decision, not an accident.
-    INTENTIONALLY_UNDOCUMENTED = {"--no-save-preferences", "--no-switch-default"}
+    # --no-sample-report is a one-shot init behavior with no stored config key, so it has no
+    # row on a page that maps flags to persisted profile values (DAYZEROCTO-19).
+    INTENTIONALLY_UNDOCUMENTED = {"--no-save-preferences", "--no-switch-default", "--no-sample-report"}
 
     def setUp(self):
         self.cli_source = (REPO / "scripts" / "dzcto.py").read_text(encoding="utf-8")
@@ -1727,6 +1744,502 @@ class TestWeeklyRangeLabel(unittest.TestCase):
 
     def test_unconfigured_range_reports_not_configured(self):
         self.assertIn("not_configured", artifact.weekly_range_label({}))
+
+
+class TestIsSampleReport(unittest.TestCase):
+    """DAYZEROCTO-19 U1: the one predicate every sample-aware surface routes through."""
+
+    def test_explicit_true_marker_is_the_only_match(self):
+        self.assertTrue(artifact.is_sample_report({"sample": True}))
+
+    def test_missing_false_and_truthy_non_true_markers_are_real_reports(self):
+        # Strictly opt-in: only a literal True marks a sample, so a stray truthy value in a
+        # real report can never silently exclude it from the streak or prior-report pool.
+        for data in ({}, {"sample": False}, {"sample": "yes"}, {"sample": 1}, v1_report()):
+            with self.subTest(data=data):
+                self.assertFalse(artifact.is_sample_report(data))
+
+    def test_non_dict_input_is_not_a_sample(self):
+        for data in (None, [], "sample", 0):
+            with self.subTest(data=data):
+                self.assertFalse(artifact.is_sample_report(data))
+
+
+class TestBuildSampleReportData(unittest.TestCase):
+    """DAYZEROCTO-19 U1: the sample payload and its `today` injection seam."""
+
+    FIXED_TODAY = dt.date(2026, 8, 1)
+
+    def build(self, company="Acme"):
+        return artifact.build_sample_report_data(company, today=self.FIXED_TODAY)
+
+    def test_marker_type_and_window_derive_from_the_injected_date(self):
+        data = self.build()
+        self.assertIs(data["sample"], True)
+        self.assertEqual(data["report_type"], "weekly")
+        self.assertEqual(data["company"], "Acme")
+        # A completed 7-day inclusive window ending the day before the run date.
+        self.assertEqual(data["window"], {"start": "2026-07-25", "end": "2026-07-31"})
+
+    def test_today_seam_is_load_bearing(self):
+        # Proves the default argument is a real seam, not decoration: a different injected
+        # date must move the window. Without this the suite would silently read the clock.
+        other = artifact.build_sample_report_data("Acme", today=dt.date(2026, 1, 15))
+        self.assertNotEqual(other["window"], self.build()["window"])
+        self.assertEqual(other["window"], {"start": "2026-01-08", "end": "2026-01-14"})
+
+    def test_same_injected_date_is_deterministic(self):
+        self.assertEqual(self.build()["window"], self.build()["window"])
+
+    def test_sources_are_empty_never_fabricated(self):
+        # The traceability guardrail: a sample must not invent citations. An empty list keeps
+        # the payload schema-conformant while leaving cited_evidence_sources() empty, so the
+        # existing thin-evidence banner still tells the truth.
+        data = self.build()
+        self.assertEqual(data["sources"], [])
+        self.assertEqual(artifact.cited_evidence_sources(data), [])
+
+    def test_payload_is_schema_v1_conformant(self):
+        self.assertEqual(artifact.validate_ceo_report(self.build()), [])
+
+
+class TestSampleReportRendering(unittest.TestCase):
+    """DAYZEROCTO-19 U1: the banner and its single dispatch point."""
+
+    def render(self, **overrides):
+        data = artifact.build_sample_report_data("Acme", today=dt.date(2026, 8, 1))
+        data.update(overrides)
+        return artifact.render_structured_report("ceo-updates", data, previous_data=None)
+
+    def test_sample_banner_renders_for_a_sample_report(self):
+        self.assertIn('<aside class="report-sample"', self.render())
+
+    def test_sample_banner_sits_above_the_thin_evidence_banner(self):
+        # Both banners are true and both render; "this is an example" must be read first.
+        html = self.render()
+        self.assertIn('<aside class="report-thin-evidence"', html)
+        self.assertLess(html.index("report-sample"), html.index("report-thin-evidence"))
+
+    def test_real_report_renders_no_sample_banner(self):
+        html = artifact.render_structured_report("ceo-updates", v1_report(), previous_data=None)
+        self.assertNotIn("report-sample", html)
+
+    def test_banner_avoids_the_metric_delta_arrow_sentinel(self):
+        # test_disjoint_metrics_render_no_delta uses the arrow as an absence proxy over report
+        # output, so no additive banner may spend it. See
+        # docs/solutions/conventions/absence-proxy-assertions-break-on-additive-rendering-2026-07-23.md
+        self.assertNotIn("→", artifact.render_sample_report_banner())
+
+    def test_banner_css_uses_only_defined_custom_properties(self):
+        css = artifact.base_css()
+        self.assertIn(".report-sample {", css)
+        declared = set(re.findall(r"(--[a-z0-9-]+):", css))
+        used = set(re.findall(r"var\((--[a-z0-9-]+)\)", css.split(".report-sample {", 1)[1].split("}", 1)[0]))
+        self.assertEqual(used - declared, set(), "sample banner CSS references an undefined token")
+
+
+class TestSampleReportOnInit(unittest.TestCase):
+    """DAYZEROCTO-19 U1: `dzcto init` seeds an openable, labelled sample report."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.addCleanup(self._tmp.cleanup)
+
+    def init(self, *extra, check=True):
+        return subprocess.run(
+            [
+                sys.executable, str(REPO / "scripts" / "dzcto_artifact.py"),
+                "--init", "--artifacts-dir", str(self.workspace),
+                "--company-name", "Acme", "--no-save-preferences", *extra,
+            ],
+            capture_output=True, text=True, check=check,
+        )
+
+    def reports_dir(self) -> Path:
+        return self.workspace / "reports" / "ceo-updates"
+
+    def sample_html(self) -> Path:
+        return self.reports_dir() / f"{artifact.SAMPLE_REPORT_STEM}.html"
+
+    def write_real_report(self, name="2026-06-25-ceo-report-real.json"):
+        return write_report(self.reports_dir(), name, v1_report())
+
+    def test_init_writes_a_labelled_sample_report(self):
+        result = self.init()
+        self.assertTrue(self.sample_html().exists())
+        self.assertTrue(self.sample_html().with_suffix(".json").exists())
+        self.assertIn("sample CEO report generated", result.stderr)
+        html = self.sample_html().read_text(encoding="utf-8")
+        self.assertIn('<aside class="report-sample"', html)
+        self.assertIn("Sample report", html)
+
+    def test_sample_json_carries_the_marker_and_no_fabricated_sources(self):
+        self.init()
+        data = json.loads(self.sample_html().with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIs(data["sample"], True)
+        self.assertEqual(data["sources"], [])
+        self.assertTrue(data["generated_at"])
+
+    def test_init_never_writes_the_rolling_latest_pointer(self):
+        # data.json is auto-loaded by `dzcto artifact` when no --data-file is given; writing it
+        # here would make a later REAL run silently render the sample's fabricated content.
+        self.init()
+        self.assertFalse((self.reports_dir() / "data.json").exists())
+
+    def test_rerunning_init_does_not_duplicate_the_sample(self):
+        self.init()
+        first = self.sample_html().read_text(encoding="utf-8")
+        self.init()
+        self.assertEqual(len(list(self.reports_dir().glob(f"{artifact.SAMPLE_REPORT_STEM}*.html"))), 1)
+        self.assertIn("report-sample", first)
+
+    def test_no_sample_report_flag_suppresses_it(self):
+        self.init("--no-sample-report")
+        self.assertFalse(self.sample_html().exists())
+
+    def test_wrapper_forwards_the_opt_out_flag(self):
+        subprocess.run(
+            [
+                sys.executable, str(REPO / "scripts" / "dzcto.py"), "init",
+                "--artifacts-dir", str(self.workspace), "--company-name", "Acme",
+                "--no-save-preferences", "--no-sample-report",
+            ],
+            capture_output=True, text=True, check=True,
+        )
+        self.assertFalse(self.sample_html().exists())
+
+    def test_workspace_with_a_real_report_gets_no_sample(self):
+        self.init("--no-sample-report")
+        self.write_real_report()
+        self.init()
+        self.assertFalse(self.sample_html().exists())
+
+    def test_sample_is_never_the_prior_report_for_the_first_real_report(self):
+        # The sharpest failure this feature must avoid: locate_prior_report() coerces unknown
+        # report_type values to ad_hoc, so nothing about report_type alone would exclude a
+        # sample -- the first real CEO report would diff against fabricated data.
+        self.init()
+        data_file = self.workspace.parent / "first-real.json"
+        data_file.write_text(json.dumps(v1_report()), encoding="utf-8")
+        subprocess.run(
+            [
+                sys.executable, str(REPO / "scripts" / "dzcto_artifact.py"),
+                "--artifacts-dir", str(self.workspace), "--kind", "ceo-updates",
+                "--title", "CEO Report 2026-06-19 to 2026-06-25", "--data-file", str(data_file),
+            ],
+            capture_output=True, text=True, check=True,
+        )
+        real = self.reports_dir() / "2026-06-25-ceo-report-2026-06-19-to-2026-06-25.html"
+        emitted = json.loads(real.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertIsNone(emitted["prior_report"])
+        self.assertIn("no prior baseline", real.read_text(encoding="utf-8"))
+
+    def test_secret_shaped_company_name_is_redacted_in_the_sample_data(self):
+        # The sample embeds a user-supplied company name and a report artifact is an egress
+        # point, so its report DATA runs through the same sanitizer as any other report.
+        #
+        # Scope note: the page chrome's sticky title is built from dashboard_title(company),
+        # which bypasses sanitize_current_report_data on EVERY report -- verified against a
+        # real report on main, so it predates this feature and is not something the sample
+        # introduces or worsens. Deliberately not asserted here and not fixed in this branch;
+        # filed on the issue instead of silently widening scope.
+        result = subprocess.run(
+            [
+                sys.executable, str(REPO / "scripts" / "dzcto_artifact.py"),
+                "--init", "--artifacts-dir", str(self.workspace),
+                "--company-name", f"Acme {LOW_GENERIC_SECRET}", "--no-save-preferences",
+            ],
+            capture_output=True, text=True, check=True,
+        )
+        emitted = self.sample_html().with_suffix(".json").read_text(encoding="utf-8")
+        self.assertNotIn(LOW_GENERIC_VALUE, emitted)
+        self.assertIn("[REDACTED:generic_assignment]", emitted)
+        self.assertEqual(result.returncode, 0)
+
+    def test_sample_is_refreshed_by_a_later_init(self):
+        # The one surface that deliberately INCLUDES the sample, so it never drifts off the
+        # current report format.
+        self.init()
+        self.sample_html().write_text("<!doctype html><title>Old</title><p>stale</p>", encoding="utf-8")
+        result = self.init()
+        refreshed = self.sample_html().read_text(encoding="utf-8")
+        self.assertIn("refreshed 1 existing report", result.stderr)
+        self.assertIn("report-sample", refreshed)
+        self.assertNotIn("stale", refreshed)
+
+
+class TestSampleReportIsNeverEvidence(unittest.TestCase):
+    """DAYZEROCTO-19 U2: every evidence-bearing selection surface skips the sample.
+
+    One test per consumer. A seventh reader of the reports glob added later without the
+    predicate should show up here as an obvious omission rather than as a wrong number on
+    someone's index six months from now.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.reports = self.workspace / "reports" / "ceo-updates"
+        self.reports.mkdir(parents=True)
+        # project_status_checks() resolves the workspace root by probing for .dzcto/ and
+        # otherwise falls back to <project>/knowledge/wiki. Without this sidecar the status
+        # assertions below would look at an empty directory and pass for the wrong reason.
+        (self.workspace / ".dzcto").mkdir(parents=True, exist_ok=True)
+        (self.workspace / ".dzcto" / "config.json").write_text(json.dumps({"companyName": "Acme"}), encoding="utf-8")
+        # render_index reads the global config for defaultProfile (DAYZEROCTO-14); pin it so
+        # these tests never depend on the developer's real ~/.dzcto/config.json.
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_sample(self, end="2026-07-31"):
+        data = artifact.build_sample_report_data("Acme", today=dt.date.fromisoformat(end) + dt.timedelta(days=1))
+        path = write_report(self.reports, f"{artifact.SAMPLE_REPORT_STEM}.json", data)
+        path.with_suffix(".html").write_text("<html>sample</html>", encoding="utf-8")
+        return path
+
+    def write_real_weekly(self, end="2026-07-31", start="2026-07-25"):
+        data = v1_report(window={"start": start, "end": end})
+        path = write_report(self.reports, f"{end}-ceo-report-real.json", data)
+        path.with_suffix(".html").write_text("<html>real</html>", encoding="utf-8")
+        return path
+
+    # 1. weekly streak
+    def test_sample_contributes_no_weekly_streak_date(self):
+        self.write_sample()
+        self.assertEqual(artifact.weekly_report_dates(self.reports), [])
+
+    def test_weekly_streak_is_zero_with_only_a_sample(self):
+        self.write_sample()
+        dates = artifact.weekly_report_dates(self.reports)
+        self.assertEqual(artifact.weekly_streak(dates, dt.date(2026, 8, 1), 7), 0)
+
+    def test_real_weekly_still_counts_alongside_a_sample(self):
+        self.write_sample()
+        self.write_real_weekly()
+        self.assertEqual(artifact.weekly_report_dates(self.reports), [dt.date(2026, 7, 31)])
+
+    # 2. prior report (landed in U1; pinned here beside its siblings)
+    def test_sample_is_never_selected_as_a_prior_report(self):
+        self.write_sample()
+        current = v1_report(window={"start": "2026-08-01", "end": "2026-08-07"})
+        path, data, eff, notes = artifact.locate_prior_report(self.reports / "2026-08-07-ceo-report-x.json", current)
+        self.assertIsNone(path)
+        self.assertIsNone(data)
+
+    def test_sample_never_gets_a_prior_report_of_its_own(self):
+        # The inverse direction, and the one that actually bit: the sample is excluded as a
+        # CANDIDATE, but nothing stopped it from being the CURRENT report. A re-init once real
+        # reports exist re-renders the sample, and locate_prior_report would hand it the reader's
+        # real report as a baseline -- rendering a week-over-week diff of fabricated content
+        # against real work, inside the shareable artifact.
+        self.write_real_weekly(end="2026-07-24", start="2026-07-18")
+        sample = artifact.build_sample_report_data("Acme", today=dt.date(2026, 8, 2))
+        path, data, eff, notes = artifact.locate_prior_report(
+            self.reports / f"{artifact.SAMPLE_REPORT_STEM}.json", sample
+        )
+        self.assertIsNone(path)
+        self.assertIsNone(data)
+        self.assertEqual(eff, "")
+        self.assertEqual(notes, [])
+
+    def test_refreshed_sample_renders_no_diff_against_real_work(self):
+        # End-to-end form of the same defect, through the refresh path that triggers it.
+        self.write_sample()
+        self.write_real_weekly(end="2026-07-24", start="2026-07-18")
+        artifact.refresh_existing_report_pages(self.workspace, "Acme")
+        html = (self.reports / f"{artifact.SAMPLE_REPORT_STEM}.html").read_text(encoding="utf-8")
+        self.assertIn("no prior baseline", html)
+        self.assertNotIn("since the last report was run", html)
+
+    def test_real_prior_still_wins_over_a_sample(self):
+        self.write_sample()
+        real = self.write_real_weekly()
+        current = v1_report(window={"start": "2026-08-01", "end": "2026-08-07"})
+        path, _data, _eff, _notes = artifact.locate_prior_report(self.reports / "2026-08-07-ceo-report-x.json", current)
+        self.assertEqual(path, real)
+
+    # 3. since-last-report cursor (scripts/dzcto.py)
+    def test_sample_is_not_a_since_last_report_cursor(self):
+        self.write_sample()
+        self.assertIsNone(dzcto.latest_weekly_report_cursor(self.workspace))
+
+    def test_since_last_report_falls_back_when_only_a_sample_exists(self):
+        self.write_sample()
+        resolved = dzcto.resolve_since_last_report_window(self.workspace, dt.date(2026, 8, 1))
+        self.assertIsNone(resolved["cursor"])
+        self.assertIsNone(resolved["start"])
+
+    def test_real_weekly_still_becomes_the_cursor_alongside_a_sample(self):
+        self.write_sample()
+        real = self.write_real_weekly()
+        cursor = dzcto.latest_weekly_report_cursor(self.workspace)
+        self.assertIsNotNone(cursor)
+        self.assertEqual(cursor[0], real)
+        self.assertEqual(cursor[1], dt.date(2026, 7, 31))
+
+    # 4. dzcto status
+    def test_status_reports_no_generated_reports_for_a_sample_only_workspace(self):
+        self.write_sample()
+        checks = {check["label"]: check for check in dzcto.project_status_checks(self.workspace)}
+        reports_check = checks["CEO reports"]
+        self.assertEqual(reports_check["status"], "warn")
+        self.assertIn("No CEO reports generated yet", reports_check["detail"])
+        self.assertIn("/dzcto-ceo-report-weekly", reports_check["command"])
+
+    def test_status_counts_real_reports_alongside_a_sample(self):
+        self.write_sample()
+        self.write_real_weekly()
+        checks = {check["label"]: check for check in dzcto.project_status_checks(self.workspace)}
+        self.assertEqual(checks["CEO reports"]["status"], "pass")
+        self.assertIn("1 generated report(s)", checks["CEO reports"]["detail"])
+
+    # 5. the one surface that deliberately INCLUDES the sample
+    def test_format_refresh_still_re_renders_the_sample(self):
+        sample = self.write_sample()
+        refreshed = artifact.refresh_existing_report_pages(self.workspace, "Acme")
+        self.assertEqual(refreshed, 1)
+        self.assertIn("report-sample", sample.with_suffix(".html").read_text(encoding="utf-8"))
+
+    # marker discipline
+    def test_a_report_without_the_marker_is_still_real_everywhere(self):
+        self.write_real_weekly()
+        self.assertEqual(artifact.weekly_report_dates(self.reports), [dt.date(2026, 7, 31)])
+        self.assertIsNotNone(dzcto.latest_weekly_report_cursor(self.workspace))
+
+
+class TestRenderIndexSampleReport(unittest.TestCase):
+    """DAYZEROCTO-19 U3: the index counts real work only, and badges the sample."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.reports = self.workspace / "reports" / "ceo-updates"
+        self.reports.mkdir(parents=True)
+        (self.workspace / ".dzcto").mkdir(parents=True, exist_ok=True)
+        (self.workspace / ".dzcto" / "config.json").write_text(json.dumps({"companyName": "Acme"}), encoding="utf-8")
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_sample(self):
+        data = artifact.build_sample_report_data("Acme", today=dt.date(2026, 8, 1))
+        path = write_report(self.reports, f"{artifact.SAMPLE_REPORT_STEM}.json", data)
+        path.with_suffix(".html").write_text(
+            "<!doctype html><title>CEO Report 2026-07-25 to 2026-07-31</title>", encoding="utf-8"
+        )
+        return path.with_suffix(".html")
+
+    def write_real(self, end="2026-07-31", start="2026-07-25"):
+        data = v1_report(window={"start": start, "end": end})
+        path = write_report(self.reports, f"{end}-ceo-report-real-{end}.json", data)
+        path.with_suffix(".html").write_text(f"<!doctype html><title>CEO Report {start} to {end}</title>", encoding="utf-8")
+        return path.with_suffix(".html")
+
+    def index_html(self) -> str:
+        artifact.render_index(self.workspace, self.workspace, today=dt.date(2026, 8, 1))
+        return (self.workspace / "index.html").read_text(encoding="utf-8")
+
+    def reports_section(self, html: str) -> str:
+        """The rendered CEO Reports section only.
+
+        Card-class assertions must never run against the whole page: base_css() ships a
+        `.report-sample-card` rule on every index, so `assertNotIn`/index-ordering checks over
+        the full document measure stylesheet order rather than card order and are silently
+        meaningless. Same trap as
+        docs/solutions/conventions/absence-proxy-assertions-break-on-additive-rendering-2026-07-23.md
+        """
+        self.assertIn('id="sec-reports"', html)
+        return html.split('id="sec-reports"', 1)[1].split("</details>", 1)[0]
+
+    def kpi(self, html: str) -> tuple[str, str]:
+        match = re.search(
+            r'CEO reports</div>\s*<div class="k-val">([^<]*)</div>\s*<div class="k-sub">([^<]*)</div>', html
+        )
+        self.assertIsNotNone(match, "CEO reports KPI tile not found")
+        return match.group(1), match.group(2)
+
+    def test_sample_only_workspace_reports_zero_and_keeps_the_empty_state(self):
+        # The defect this unit fixes: before U3 a fresh install rendered "1 / Unknown date".
+        self.write_sample()
+        html = self.index_html()
+        value, sub = self.kpi(html)
+        self.assertEqual(value, "0")
+        self.assertEqual(sub, "No reports yet")
+        self.assertIn("Start here", html)
+
+    def test_sample_only_workspace_still_offers_the_sample_to_open(self):
+        self.write_sample()
+        section = self.reports_section(self.index_html())
+        self.assertIn("report-sample-card", section)
+        self.assertIn(f"reports/ceo-updates/{artifact.SAMPLE_REPORT_STEM}.html", section)
+        self.assertIn("Sample report", section)
+
+    def test_real_reports_are_counted_and_the_sample_is_not(self):
+        self.write_sample()
+        self.write_real("2026-07-31", "2026-07-25")
+        self.write_real("2026-07-24", "2026-07-18")
+        value, sub = self.kpi(self.index_html())
+        self.assertEqual(value, "2")
+        self.assertEqual(sub, "2026-07-31")
+
+    def test_latest_pointer_never_targets_the_sample(self):
+        # sample-ceo-report.html sorts AFTER any 2026-*.html, so a reverse sort would hand the
+        # sample the primary slot and the latest-report link if it were not partitioned out.
+        self.write_sample()
+        real = self.write_real()
+        html = self.index_html()
+        match = re.search(r'<a class="kpi" href="([^"]*)">', html)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), f"reports/ceo-updates/{real.name}")
+
+    def test_sample_never_takes_the_primary_card_slot(self):
+        self.write_sample()
+        real = self.write_real()
+        html = self.index_html()
+        primary = re.search(r'<a class="report report-primary" href="([^"]*)"', html)
+        self.assertIsNotNone(primary, "a real report must hold the primary slot")
+        self.assertEqual(primary.group(1), f"reports/ceo-updates/{real.name}")
+        section = self.reports_section(html)
+        self.assertLess(section.index("report-primary"), section.index("report-sample-card"))
+
+    def test_sample_is_searchable_as_a_sample(self):
+        self.write_sample()
+        card = self.reports_section(self.index_html()).split("report-sample-card", 1)[1]
+        search_attr = re.search(r'data-search-text="([^"]*)"', card)
+        self.assertIsNotNone(search_attr)
+        self.assertIn("sample", search_attr.group(1).lower())
+
+    def test_workspace_without_a_sample_renders_no_sample_card(self):
+        self.write_real()
+        html = self.index_html()
+        value, _sub = self.kpi(html)
+        self.assertEqual(value, "1")
+        self.assertNotIn("report-sample-card", self.reports_section(html))
+
+    def test_sample_html_without_sibling_json_counts_as_a_real_report(self):
+        # Fail-safe direction: an unreadable marker must never silently hide a real report
+        # from the count. Mirrors test_malformed_json_does_not_block_index_write.
+        (self.reports / f"{artifact.SAMPLE_REPORT_STEM}.html").write_text("<html>orphan</html>", encoding="utf-8")
+        value, _sub = self.kpi(self.index_html())
+        self.assertEqual(value, "1")
+
+    def test_sample_card_css_uses_only_defined_custom_properties(self):
+        css = artifact.base_css()
+        self.assertIn(".report-sample-card", css)
+        declared = set(re.findall(r"(--[a-z0-9-]+):", css))
+        block = css.split(".report-sample-card", 1)[1].split("}", 1)[0]
+        self.assertEqual(set(re.findall(r"var\((--[a-z0-9-]+)\)", block)) - declared, set())
+
+    def test_index_and_status_agree_on_the_report_count(self):
+        self.write_sample()
+        self.write_real()
+        value, _sub = self.kpi(self.index_html())
+        checks = {check["label"]: check for check in dzcto.project_status_checks(self.workspace)}
+        self.assertIn(f"{value} generated report(s)", checks["CEO reports"]["detail"])
 
 
 if __name__ == "__main__":
