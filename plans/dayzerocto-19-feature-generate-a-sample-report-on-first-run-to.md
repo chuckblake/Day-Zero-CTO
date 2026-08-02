@@ -199,8 +199,10 @@ each names a concrete file and function.
 - `INSTALL_FOR_AGENTS.md` — init output description
 - `CONCEPTS.md` — "Sample report" entry
 - `AGENTS.md` — editing rule for the sample artifact (only if the rule set needs it)
-- `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `.claude-plugin/marketplace.json`,
-  `scripts/dzcto_common.py` — five version fields
+- `.claude-plugin/plugin.json` — release version field
+- `.codex-plugin/plugin.json` — release version field
+- `.claude-plugin/marketplace.json` — two release version fields
+- `scripts/dzcto_common.py` — `TOOL_VERSION`
 
 **Test**
 - `tests/test_dzcto_artifact.py` — all new coverage; also update
@@ -390,8 +392,10 @@ clearly-labelled sample card that opens the sample report.
 - Modify: `INSTALL_FOR_AGENTS.md`
 - Modify: `CONCEPTS.md`
 - Modify: `AGENTS.md` (only if a new editing rule is warranted)
-- Modify: `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
-  `.claude-plugin/marketplace.json`, `scripts/dzcto_common.py`
+- Modify: `.claude-plugin/plugin.json`
+- Modify: `.codex-plugin/plugin.json`
+- Modify: `.claude-plugin/marketplace.json`
+- Modify: `scripts/dzcto_common.py`
 - Test: `tests/test_dzcto_artifact.py`
 
 **Approach:**
