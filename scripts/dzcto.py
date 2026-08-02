@@ -19,6 +19,8 @@ from dzcto_artifact import (
     date_value,
     default_artifacts_dir_for_profile,
     default_artifacts_dir_from_global,
+    is_sample_report,
+    is_sample_report_path,
     normalize_report_folder,
     profile_from_global,
     read_json_file,
@@ -156,6 +158,9 @@ def latest_weekly_report_cursor(wiki_root: Path) -> tuple[Path, dt.date] | None:
             print(f"dzcto: skipping weekly-report cursor candidate {path.name} (unreadable JSON)", file=sys.stderr)
             continue
 
+        # Sample reports are weekly-shaped examples, not coverage cursors.
+        if is_sample_report(data):
+            continue
         # Coverage cursors are weekly-only. Prior-report diff selection may fall back to
         # another report type because comparison and coverage are deliberately different jobs.
         if data.get("report_type") != "weekly":
@@ -578,7 +583,7 @@ def project_status_checks(project: Path) -> list[dict[str, str]]:
     )
 
     reports_dir = wiki_root / "reports" / "ceo-updates"
-    report_count = len(list(reports_dir.glob("*.html")))
+    report_count = sum(1 for path in reports_dir.glob("*.html") if not is_sample_report_path(path))
     add(
         "pass" if report_count else "warn",
         "CEO reports",

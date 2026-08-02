@@ -1476,6 +1476,9 @@ def weekly_report_dates(reports_dir: Path) -> list[dt.date]:
         if not isinstance(data, dict):
             print(f"dzcto: skipping weekly-streak candidate {path.name} (unreadable JSON)", file=sys.stderr)
             continue
+        # Sample reports are weekly-shaped examples, not streak evidence.
+        if is_sample_report(data):
+            continue
         if data.get("report_type") != "weekly":
             continue
         effective_date = date_value(report_effective_date(path, data))
@@ -3119,6 +3122,7 @@ def refresh_existing_report_pages(wiki_root: Path, stable_title: str, *, report_
         return 0
 
     refreshed = 0
+    # Deliberately include sample reports so they never drift from the current report format.
     for json_path in sorted(reports_dir.glob("*.json")):
         if json_path.name == "data.json":
             continue

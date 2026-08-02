@@ -15,6 +15,7 @@ from unittest import mock
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
+import dzcto  # noqa: E402
 import dzcto_artifact as artifact  # noqa: E402
 
 GITHUB_TOKEN = "ghp_" + "AbCdEf1234567890AbCdEf1234567890AbCd"
@@ -1966,6 +1967,122 @@ class TestSampleReportOnInit(unittest.TestCase):
         self.assertIn("refreshed 1 existing report", result.stderr)
         self.assertIn("report-sample", refreshed)
         self.assertNotIn("stale", refreshed)
+
+
+class TestSampleReportIsNeverEvidence(unittest.TestCase):
+    """DAYZEROCTO-19 U2: every evidence-bearing selection surface skips the sample.
+
+    One test per consumer. A seventh reader of the reports glob added later without the
+    predicate should show up here as an obvious omission rather than as a wrong number on
+    someone's index six months from now.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.workspace = Path(self._tmp.name) / "ws"
+        self.reports = self.workspace / "reports" / "ceo-updates"
+        self.reports.mkdir(parents=True)
+        # project_status_checks() resolves the workspace root by probing for .dzcto/ and
+        # otherwise falls back to <project>/knowledge/wiki. Without this sidecar the status
+        # assertions below would look at an empty directory and pass for the wrong reason.
+        (self.workspace / ".dzcto").mkdir(parents=True, exist_ok=True)
+        (self.workspace / ".dzcto" / "config.json").write_text(json.dumps({"companyName": "Acme"}), encoding="utf-8")
+        # render_index reads the global config for defaultProfile (DAYZEROCTO-14); pin it so
+        # these tests never depend on the developer's real ~/.dzcto/config.json.
+        patcher = mock.patch.object(artifact, "read_global_config", dict)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_sample(self, end="2026-07-31"):
+        data = artifact.build_sample_report_data("Acme", today=dt.date.fromisoformat(end) + dt.timedelta(days=1))
+        path = write_report(self.reports, f"{artifact.SAMPLE_REPORT_STEM}.json", data)
+        path.with_suffix(".html").write_text("<html>sample</html>", encoding="utf-8")
+        return path
+
+    def write_real_weekly(self, end="2026-07-31", start="2026-07-25"):
+        data = v1_report(window={"start": start, "end": end})
+        path = write_report(self.reports, f"{end}-ceo-report-real.json", data)
+        path.with_suffix(".html").write_text("<html>real</html>", encoding="utf-8")
+        return path
+
+    # 1. weekly streak
+    def test_sample_contributes_no_weekly_streak_date(self):
+        self.write_sample()
+        self.assertEqual(artifact.weekly_report_dates(self.reports), [])
+
+    def test_weekly_streak_is_zero_with_only_a_sample(self):
+        self.write_sample()
+        dates = artifact.weekly_report_dates(self.reports)
+        self.assertEqual(artifact.weekly_streak(dates, dt.date(2026, 8, 1), 7), 0)
+
+    def test_real_weekly_still_counts_alongside_a_sample(self):
+        self.write_sample()
+        self.write_real_weekly()
+        self.assertEqual(artifact.weekly_report_dates(self.reports), [dt.date(2026, 7, 31)])
+
+    # 2. prior report (landed in U1; pinned here beside its siblings)
+    def test_sample_is_never_selected_as_a_prior_report(self):
+        self.write_sample()
+        current = v1_report(window={"start": "2026-08-01", "end": "2026-08-07"})
+        path, data, eff, notes = artifact.locate_prior_report(self.reports / "2026-08-07-ceo-report-x.json", current)
+        self.assertIsNone(path)
+        self.assertIsNone(data)
+
+    def test_real_prior_still_wins_over_a_sample(self):
+        self.write_sample()
+        real = self.write_real_weekly()
+        current = v1_report(window={"start": "2026-08-01", "end": "2026-08-07"})
+        path, _data, _eff, _notes = artifact.locate_prior_report(self.reports / "2026-08-07-ceo-report-x.json", current)
+        self.assertEqual(path, real)
+
+    # 3. since-last-report cursor (scripts/dzcto.py)
+    def test_sample_is_not_a_since_last_report_cursor(self):
+        self.write_sample()
+        self.assertIsNone(dzcto.latest_weekly_report_cursor(self.workspace))
+
+    def test_since_last_report_falls_back_when_only_a_sample_exists(self):
+        self.write_sample()
+        resolved = dzcto.resolve_since_last_report_window(self.workspace, dt.date(2026, 8, 1))
+        self.assertIsNone(resolved["cursor"])
+        self.assertIsNone(resolved["start"])
+
+    def test_real_weekly_still_becomes_the_cursor_alongside_a_sample(self):
+        self.write_sample()
+        real = self.write_real_weekly()
+        cursor = dzcto.latest_weekly_report_cursor(self.workspace)
+        self.assertIsNotNone(cursor)
+        self.assertEqual(cursor[0], real)
+        self.assertEqual(cursor[1], dt.date(2026, 7, 31))
+
+    # 4. dzcto status
+    def test_status_reports_no_generated_reports_for_a_sample_only_workspace(self):
+        self.write_sample()
+        checks = {check["label"]: check for check in dzcto.project_status_checks(self.workspace)}
+        reports_check = checks["CEO reports"]
+        self.assertEqual(reports_check["status"], "warn")
+        self.assertIn("No CEO reports generated yet", reports_check["detail"])
+        self.assertIn("/dzcto-ceo-report-weekly", reports_check["command"])
+
+    def test_status_counts_real_reports_alongside_a_sample(self):
+        self.write_sample()
+        self.write_real_weekly()
+        checks = {check["label"]: check for check in dzcto.project_status_checks(self.workspace)}
+        self.assertEqual(checks["CEO reports"]["status"], "pass")
+        self.assertIn("1 generated report(s)", checks["CEO reports"]["detail"])
+
+    # 5. the one surface that deliberately INCLUDES the sample
+    def test_format_refresh_still_re_renders_the_sample(self):
+        sample = self.write_sample()
+        refreshed = artifact.refresh_existing_report_pages(self.workspace, "Acme")
+        self.assertEqual(refreshed, 1)
+        self.assertIn("report-sample", sample.with_suffix(".html").read_text(encoding="utf-8"))
+
+    # marker discipline
+    def test_a_report_without_the_marker_is_still_real_everywhere(self):
+        self.write_real_weekly()
+        self.assertEqual(artifact.weekly_report_dates(self.reports), [dt.date(2026, 7, 31)])
+        self.assertIsNotNone(dzcto.latest_weekly_report_cursor(self.workspace))
 
 
 if __name__ == "__main__":
