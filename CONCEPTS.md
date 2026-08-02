@@ -10,6 +10,9 @@ The generated, shareable HTML page for a single report — the self-contained pr
 ### CEO report
 A report artifact addressed to a company's CEO, summarizing progress, risks, asks, and metrics in executive framing, rendered deterministically from structured report data rather than authored freehand. The two flavors are the recurring weekly report and the ad-hoc report.
 
+### Sample report
+The single illustrative report artifact `dzcto init` seeds into a new workspace so a first-time reader can open real generated output before any evidence is wired. It is a report artifact in every rendering sense and deliberately not one in every accounting sense: an explicit `sample` marker on its report JSON excludes it from report counts, the weekly streak, prior-report selection, and the since-last-report window, so illustrative content can never be mistaken for, or counted as, traceable engineering evidence.
+
 ### Prior report
 The previous report in the same cadence, selected as the comparison baseline so a new report can render an automatic week-over-week section. Its data is historical and outside the author's current control: it may predate current sanitization rules, so values carried forward from it are redacted if needed but are never allowed to block a new report.
 

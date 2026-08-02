@@ -50,9 +50,32 @@ Top-level keys (all required unless marked optional):
 | `metrics` | object (optional) | Flat `{ "label": scalar }` map. Scalars only — numeric values in consecutive reports get week-over-week deltas. |
 | `sources` | array | Strings — notes, commits, reports, or files used as evidence. |
 | `prior_report` | string or null | Recorded by the renderer: workspace-relative path (e.g. `reports/ceo-updates/<file>.json`) of the report diffed against, or null. Do not author this field. |
+| `sample` | boolean (optional) | Set only by `dzcto init` on the first-run sample report. Do not author this field. See "Sample reports" below. |
 
 Legacy reports with looser shapes (bare-string list items, missing metadata) still render —
 the renderer's alias tolerance is unchanged — but produce validation warnings on stderr.
+
+## Sample reports
+
+`dzcto init` seeds one illustrative report into a new workspace — `sample-ceo-report.html` with a
+sibling `.json` — so a first-time reader sees real generated output before any evidence is wired.
+It renders through the ordinary pipeline and therefore conforms to the spine above.
+
+Its report JSON carries `sample: true`. That marker is the single predicate
+(`is_sample_report`) every report-selecting surface routes through, so the sample is excluded from:
+
+- prior-report selection (`locate_prior_report`) — the exclusion cannot be inherited from
+  `report_type`, because unknown types are coerced to `ad_hoc`;
+- the weekly streak (`weekly_report_dates`);
+- the since-last-report coverage cursor (`latest_weekly_report_cursor`);
+- report counts on the index and in `dzcto status`.
+
+The format refresh deliberately **includes** it, so the sample never drifts off the current format.
+
+The sample ships `sources: []` rather than invented citations, so the ordinary thin-evidence banner
+fires on it; a dedicated sample banner renders above that. It is written only into a workspace with
+no real CEO report, never overwrites an existing one, and never writes the rolling `data.json`
+latest-pointer. `dzcto init --no-sample-report` skips it.
 
 ## Quiet windows
 

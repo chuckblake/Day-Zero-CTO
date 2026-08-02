@@ -515,6 +515,57 @@ Additional validation from AGENTS.md:
 
 ---
 
+## Decisions
+
+### U1 absorbed the `locate_prior_report` exclusion planned for U2 — 2026-08-01
+
+**Picked:** ship the prior-report exclusion inside U1, leaving U2 the other four surfaces.
+**Rejected:** the planned split (all five exclusions in U2).
+**Why:** `TestArtifactWritePath.setUp()` runs `--init`, so every test in that class sees a sample
+the moment U1 lands, and `test_first_report_derives_date_and_renders_placeholder` asserts
+`prior_report is None`. That only holds once samples are excluded from prior selection, so U1 could
+not commit green without it. Both units declare the same files, so the plan's scope contract is
+unchanged.
+
+### The sample's `report_type` stays `weekly` — 2026-08-01
+
+**Picked:** `sample: true` as the sole marker, with `report_type: "weekly"` retained.
+**Rejected:** a third `report_type` value of `"sample"`.
+**Why:** a new type would ripple into `CEO_REPORT_TYPES`, `validate_ceo_report`, the template doc,
+and the two SKILL.md schema blocks pinned byte-identical by `TestSkillSchemaLockstep` — while still
+leaving `locate_prior_report` unguarded, since it coerces unknown types to `ad_hoc`. The sample
+should also demonstrate what the weekly command actually produces.
+
+### A pre-existing company-name egress gap was flagged, not fixed — 2026-08-01
+
+**Picked:** narrow the test to the sample's report data, document the gap, and file it on the issue.
+**Rejected:** fixing it in this branch; asserting it in a sample test.
+**Why:** page chrome renders the company name through `dashboard_title(company)`, which bypasses
+`sanitize_current_report_data` on **every** report — verified against a real report, so it predates
+this feature. Fixing it is a separate change to shared chrome, well outside "generate a sample
+report". The sample's own JSON and body are correctly sanitized.
+
+### Four absence-proxy assertions were retargeted rather than relaxed — 2026-08-01
+
+**Picked:** an `authored_reports()` helper that excludes the sample stem, so the blocked-write tests
+assert "the blocked run wrote nothing".
+**Rejected:** passing `--no-sample-report` in `setUp` to hide the new artifact.
+**Why:** `glob("*.html") == []` was a proxy for a claim about the *blocked run*, not about the
+folder. Suppressing the sample would have made those tests pass while also removing the incidental
+coverage that a sample never becomes a prior report. See
+`docs/solutions/conventions/absence-proxy-assertions-break-on-additive-rendering-2026-07-23.md`.
+
+### A `.dzcto` sidecar was added to the U2 fixture after a false pass — 2026-08-01
+
+**Picked:** create the sidecar in `setUp`.
+**Rejected:** trusting the initially-green status test.
+**Why:** `project_status_checks()` resolves its workspace root by probing for `.dzcto/`, falling
+back to `<project>/knowledge/wiki`. Without the sidecar the sample-only status test passed against
+an empty directory — green before the implementation existed. A sibling test expecting a non-zero
+count exposed it.
+
+---
+
 ## Sources & References
 
 - Backlog issue: DAYZEROCTO-19 (owns the acceptance criteria)

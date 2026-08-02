@@ -56,9 +56,11 @@ For per-flag detail, open `settings.html` in the artifact folder; it shows each 
 
 When `dzcto init` runs against an existing artifact folder, it refreshes `index.html` and re-renders any existing structured reports under `reports/ceo-updates/` that have sibling `.json` files. Body-only legacy HTML without JSON is left unchanged.
 
+On a workspace that has no CEO report yet, the helper also writes one sample report at `reports/ceo-updates/sample-ceo-report.html` so the user can open real generated output immediately and confirm the install end to end. The sample is labelled as an example in the page itself and is excluded from report counts, the weekly streak, prior-report comparison, and the since-last-report window, so it can never be read or counted as real repo evidence. It is not written once a real report exists, and `--no-sample-report` skips it.
+
 ## Result
 
-Confirm only the created index path, the profile name, the global preferences path, the stored weekly range defaults, the stored tone guidance, and the next command to run:
+Confirm only the created index path, the sample report path when one was generated, the profile name, the global preferences path, the stored weekly range defaults, the stored tone guidance, and the next command to run:
 
 - `/dzcto-ceo-report-weekly` for the default weekly report.
 - `/dzcto-ceo-report` for a custom date range.

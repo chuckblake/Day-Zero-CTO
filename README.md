@@ -23,6 +23,8 @@ Everything else is legacy reference material for now. The old broad CTO workflow
 - CEO report tone guidance.
 - Optional read-only code repo paths for evidence.
 
+Init also writes one sample CEO report into a workspace that has no report yet, so you can open real generated output right after setup instead of wiring evidence first. It is labelled as an example in the page and is excluded from report counts, the weekly streak, prior-report comparison, and the since-last-report window, so it is never mistaken for or counted as real repo evidence. Pass `--no-sample-report` to skip it.
+
 The equivalent helper command is:
 
 ```bash
