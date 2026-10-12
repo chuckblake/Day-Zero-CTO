@@ -1,0 +1,57 @@
+# .cb/config.yml — per-repo cb workflow config (committed; NO secrets here).
+# Day Zero CTO: a stdlib-only Python tool (python3 -m unittest, no dependencies, no CI).
+# Modeled on ~/code/rewatchvault/.cb/config.yml and ~/code/smoketest/.cb/config.yml.
+project:   { key: DAYZEROCTO }
+backlog:
+  backend: markdown
+  dir: "${vault}/cb-dev/dzcto/backlog"
+  # The terminal lifecycle needs needs_attention, needs_input and done in the vocabulary;
+  # todo stays first because it is the create-time default.
+  statuses: [todo, shape, planning, in-progress, in-review, blocked, needs_attention, needs_input, done, canceled, archived]
+vault:     { dir: "${vault}/cb-dev/dzcto" }
+worktree:  { tool: tmux, base: main, tmux_cmd: 'codex -s workspace-write -a never' }
+worklog:   { enabled: false }
+timing:    { enabled: true, dest: "${vault}/cb-dev/dzcto/logs" }
+conventions: { enabled: false }
+ci:        { provider: none }
+ship:      { mode: pr }
+hooks:     { branch_guard: true, worklog_stop: false }
+reporting: { notion: { enabled: false } }
+
+# --- Terminal runner (`cb start`, `cb next`, `cb status`) ---
+runner:
+  schema_version: 1
+  # Activated by `cb init-runner` after its readiness audit (flips this to true).
+  enabled: true
+  base_branch: main
+  merge_method: squash
+  command_timeout: 1200
+  authority:
+    repository_id: chuckblake-day-zero-cto
+    authority_id: 03226634-2782-4857-8cc1-633e23ae0f8e
+    remote: origin
+  paths:
+    vault_dir: "~/.local/share/cb/runs/dzcto"
+  gate_policy:
+    # 2026-10-03 operator decision: the light lane is the default everywhere. Only
+    # auth, payments, security, data and migrations issues take the full lane.
+    lanes:
+      default: light
+      full_areas: [auth, payments, security, data, migrations]
+    independent_tests: true
+    required_checks:
+      # No third-party linter is installed for this stdlib-only repo; a byte-compile pass
+      # catches syntax errors before the suite.
+      lint: [python3, -m, compileall, -q, scripts, tests]
+      suite: [python3, -m, unittest, discover, -s, tests]
+    reusable_checks: [lint, suite]
+    reuse_ignore_paths:
+      lint: ["**/*.md"]
+      suite: ["plans/**", "docs/**", "**/*.md"]
+    required_knowledge:
+      - AGENTS.md
+    remote_checks: []
+    ci_provider: none
+    ui_required: false
+    custom_gates: []
+  disposable_ignored_paths: [tmp, __pycache__, .pytest_cache]
