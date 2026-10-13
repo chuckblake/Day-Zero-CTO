@@ -11,6 +11,7 @@ import math
 import os
 import re
 import shlex
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -303,13 +304,16 @@ def apply_init_metadata(
     write_json(config_path, config)
 
 
-def default_artifacts_dir_from_global() -> Path | None:
-    profile = profile_from_global()
+def artifacts_dir_for_profile_config(profile: dict[str, Any]) -> Path | None:
     for key in ("artifactsDir", "artifactDirectory", "defaultArtifactsDir", "wikiRoot"):
         value = str(profile.get(key) or "").strip()
         if value:
             return Path(value).expanduser().resolve()
     return None
+
+
+def default_artifacts_dir_from_global() -> Path | None:
+    return artifacts_dir_for_profile_config(profile_from_global())
 
 
 def profile_slug(value: str | None, fallback: str = "default") -> str:
@@ -430,6 +434,46 @@ def profiles_from_global(config: dict[str, Any] | None = None) -> dict[str, dict
     return profiles
 
 
+def current_repo_toplevel() -> Path | None:
+    """Return the canonical top-level directory of the cwd's Git repository, if any."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    value = result.stdout.strip()
+    if result.returncode != 0 or not value:
+        return None
+    try:
+        return Path(value).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
+def profiles_listing_repo(profiles: dict[str, dict[str, Any]], repo: Path) -> list[str]:
+    """Sorted names of profiles whose codeRepos name exactly this repository top level."""
+    matches: set[str] = set()
+    for name, profile in profiles.items():
+        repos = profile.get("codeRepos")
+        if not isinstance(repos, list):
+            continue
+        for entry in repos:
+            if not isinstance(entry, str) or not entry.strip():
+                continue
+            try:
+                candidate = Path(entry.strip()).expanduser().resolve()
+            except (OSError, RuntimeError):
+                continue
+            if candidate == repo:
+                matches.add(name)
+                break
+    return sorted(matches)
+
+
 def profile_from_global(profile_name: str | None = None) -> dict[str, Any]:
     config = read_global_config()
     profiles = profiles_from_global(config)
@@ -437,6 +481,19 @@ def profile_from_global(profile_name: str | None = None) -> dict[str, Any]:
         return {}
     if profile_name and profile_name.strip():
         return profiles.get(profile_slug(profile_name), {})
+    # Without --profile, the profile that lists the current repository wins over
+    # defaultProfile; an ambiguous listing is an error, never a guess or a prompt.
+    repo = current_repo_toplevel()
+    if repo is not None:
+        matches = profiles_listing_repo(profiles, repo)
+        if len(matches) == 1:
+            return profiles[matches[0]]
+        if len(matches) > 1:
+            print(
+                f"dzcto: {repo} is listed in more than one profile ({', '.join(matches)}); pass --profile",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
     name = profile_slug(str(config.get("defaultProfile") or ""))
     if name in profiles:
         return profiles[name]
@@ -444,12 +501,7 @@ def profile_from_global(profile_name: str | None = None) -> dict[str, Any]:
 
 
 def default_artifacts_dir_for_profile(profile_name: str | None = None) -> Path | None:
-    profile = profile_from_global(profile_name)
-    for key in ("artifactsDir", "artifactDirectory", "defaultArtifactsDir", "wikiRoot"):
-        value = str(profile.get(key) or "").strip()
-        if value:
-            return Path(value).expanduser().resolve()
-    return None
+    return artifacts_dir_for_profile_config(profile_from_global(profile_name))
 
 
 def save_global_preferences(wiki_root: Path, project_folder: Path, profile_name: str | None = None, *, set_default: bool = True) -> str:
@@ -3803,6 +3855,10 @@ def main(argv: list[str]) -> int:
         else:
             profile_hint = f" for profile {args.profile!r}" if args.profile else ""
             parser.error(f"--project, --artifacts-dir, or --home is required. Run dzcto init --artifacts-dir <path>{profile_hint} once to save preferences.")
+    elif not args.init and not args.profile:
+        # An explicit destination must not hide an ambiguous repository profile
+        # match; fail before anything below creates folders or writes files.
+        profile_from_global()
 
     if args.artifacts_dir:
         wiki_root = Path(args.artifacts_dir).expanduser().resolve()

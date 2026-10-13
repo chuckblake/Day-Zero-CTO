@@ -16,9 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from dzcto_artifact import (
+    artifacts_dir_for_profile_config,
     date_value,
-    default_artifacts_dir_for_profile,
-    default_artifacts_dir_from_global,
     is_sample_report,
     is_sample_report_path,
     normalize_report_folder,
@@ -103,13 +102,13 @@ def parse_commit_rows(output: str) -> list[dict[str, str]]:
 
 
 def artifact_folder_and_profile(args: argparse.Namespace) -> tuple[Path | None, dict[str, Any]]:
+    # Resolve the profile once so the implicit folder and the profile's evidence
+    # settings always come from the same (explicit, repo-matched or default) profile.
     profile = profile_from_global(args.profile)
     if args.artifacts_dir:
         wiki_root = Path(args.artifacts_dir).expanduser().resolve()
-    elif args.profile:
-        wiki_root = default_artifacts_dir_for_profile(args.profile)
     else:
-        wiki_root = default_artifacts_dir_from_global()
+        wiki_root = artifacts_dir_for_profile_config(profile)
 
     return wiki_root, profile
 
@@ -482,7 +481,8 @@ def command_reference_text(project: Path | None = None) -> str:
               Weekly range values: previous_completed_week, last_7_days, since_last_report.
           dzcto artifact --profile <name> --kind ceo-updates --title <title>
                          [--date YYYY-MM-DD] [--data-file <json>] [--body-file <html>]
-              Render a CEO report and refresh the index. If --profile is omitted, use defaultProfile.
+              Render a CEO report and refresh the index. If --profile is omitted, use the profile whose codeRepos lists
+              the current Git repository, else defaultProfile.
           dzcto setup
               Install the local Codex plugin marketplace entry.
           dzcto install-command
