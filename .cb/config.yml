@@ -54,4 +54,6 @@ runner:
     ci_provider: none
     ui_required: false
     custom_gates: []
-  disposable_ignored_paths: [tmp, __pycache__, .pytest_cache]
+  # Bytecode is written into every package directory (scripts/__pycache__, tests/__pycache__);
+  # a file-name pattern matches it at any depth.
+  disposable_ignored_paths: [tmp, .pytest_cache, "*.pyc"]
