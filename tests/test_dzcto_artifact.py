@@ -50,6 +50,23 @@ def write_report(folder: Path, name: str, data) -> Path:
     return path
 
 
+def hermetic_cli(root: Path) -> dict:
+    """subprocess.run kwargs that keep a CLI run off the real ~/.dzcto and enclosing checkout.
+
+    Without --profile, report runs consult the global profiles and the cwd's Git repository
+    (DAYZEROCTO-20), so an inherited HOME or the test runner's cwd would let the operator's
+    own config change the outcome. See
+    docs/solutions/conventions/rendering-a-home-dir-config-value-breaks-test-hermeticity-2026-07-23.md
+    """
+    root = root.resolve()
+    home = root / "home"
+    home.mkdir(exist_ok=True)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env["HOME"] = str(home)
+    env["GIT_CEILING_DIRECTORIES"] = str(root)
+    return {"cwd": root, "env": env}
+
+
 class TestValidateCeoReport(unittest.TestCase):
     def test_valid_v1_report_has_no_warnings(self):
         self.assertEqual(artifact.validate_ceo_report(v1_report()), [])
@@ -1532,6 +1549,7 @@ class TestArtifactWritePath(unittest.TestCase):
             capture_output=True,
             text=True,
             check=check,
+            **hermetic_cli(Path(self._tmp.name)),
         )
 
     def generate(self, data, title, *extra, check=True):
@@ -1593,6 +1611,7 @@ class TestArtifactWritePath(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 check=True,
+                **hermetic_cli(Path(self._tmp.name)),
             )
 
         self.assertEqual(len(result.stdout.splitlines()), 1)
@@ -1743,6 +1762,7 @@ class TestArtifactWritePath(unittest.TestCase):
             capture_output=True,
             text=True,
             check=True,
+            **hermetic_cli(Path(self._tmp.name)),
         )
 
         stdout_lines = result.stdout.splitlines()
@@ -1769,6 +1789,7 @@ class TestArtifactWritePath(unittest.TestCase):
             capture_output=True,
             text=True,
             check=True,
+            **hermetic_cli(Path(self._tmp.name)),
         )
 
         stdout_lines = result.stdout.splitlines()
@@ -2553,7 +2574,7 @@ class TestSampleReportOnInit(unittest.TestCase):
                 "--init", "--artifacts-dir", str(self.workspace),
                 "--company-name", "Acme", "--no-save-preferences", *extra,
             ],
-            capture_output=True, text=True, check=check,
+            capture_output=True, text=True, check=check, **hermetic_cli(Path(self._tmp.name)),
         )
 
     def reports_dir(self) -> Path:
@@ -2605,7 +2626,7 @@ class TestSampleReportOnInit(unittest.TestCase):
                 "--artifacts-dir", str(self.workspace), "--company-name", "Acme",
                 "--no-save-preferences", "--no-sample-report",
             ],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, **hermetic_cli(Path(self._tmp.name)),
         )
         self.assertFalse(self.sample_html().exists())
 
@@ -2628,7 +2649,7 @@ class TestSampleReportOnInit(unittest.TestCase):
                 "--artifacts-dir", str(self.workspace), "--kind", "ceo-updates",
                 "--title", "CEO Report 2026-06-19 to 2026-06-25", "--data-file", str(data_file),
             ],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, **hermetic_cli(Path(self._tmp.name)),
         )
         real = self.reports_dir() / "2026-06-25-ceo-report-2026-06-19-to-2026-06-25.html"
         emitted = json.loads(real.with_suffix(".json").read_text(encoding="utf-8"))
@@ -2650,7 +2671,7 @@ class TestSampleReportOnInit(unittest.TestCase):
                 "--init", "--artifacts-dir", str(self.workspace),
                 "--company-name", f"Acme {LOW_GENERIC_SECRET}", "--no-save-preferences",
             ],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, **hermetic_cli(Path(self._tmp.name)),
         )
         emitted = self.sample_html().with_suffix(".json").read_text(encoding="utf-8")
         self.assertNotIn(LOW_GENERIC_VALUE, emitted)

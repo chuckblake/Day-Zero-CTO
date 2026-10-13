@@ -11,7 +11,7 @@ so this skill works even where `docs/` is not installed).
 
 ## Workflow
 
-1. Resolve the profile and artifact/report folder. First read `~/.dzcto/config.json`; if the user named a profile, use `profiles.<name>.artifactsDir`, otherwise use `defaultProfile`. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
+1. Resolve the profile and artifact/report folder. First read `~/.dzcto/config.json`; if the user named a profile, use `profiles.<name>.artifactsDir`. Otherwise match the current repository before falling back: take its top-level directory (`git rev-parse --show-toplevel`) and compare it with every `profiles.*.codeRepos` entry after `~` expansion and path resolution (exact top-level match only, not subdirectories). Use the one matching profile; if more than one profile matches, ask the user which profile to use; use `defaultProfile` only when no profile matches or you are outside a Git repository. If the user provided a folder, prefer that. If no folder is known, ask one concise question.
 2. Resolve the reporting window before interpreting weekly defaults or collecting evidence. Run `dzcto window` first:
 
 ```bash

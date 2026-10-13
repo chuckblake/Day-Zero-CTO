@@ -103,7 +103,7 @@ one. It needs no `startDay` / `endDay`:
 "weeklyReportDefaults": { "range": "since_last_report" }
 ```
 
-When no `--profile` is provided, report commands use `defaultProfile`. Use `--profile getmusic` to select a profile explicitly.
+When no `--profile` is provided, report commands use the profile whose `codeRepos` lists the current Git repository's top-level directory, and fall back to `defaultProfile` when no profile lists it (or outside a Git repository). If two or more profiles list the repository, the command exits with status 2 and asks you to pass `--profile`. Use `--profile getmusic` to select a profile explicitly.
 
 ## CEO Reports
 
@@ -237,7 +237,7 @@ The slash commands are the primary interface. The local helper still exists for 
 | Command | Purpose |
 | --- | --- |
 | `dzcto init --artifacts-dir <dir> --profile <name> --company-description <summary>` | Create or refresh one CEO report workspace and save/update a global profile. |
-| `dzcto artifact --profile <name> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report using a named global profile. If `--profile` is omitted, the helper uses `defaultProfile`. |
+| `dzcto artifact --profile <name> --kind ceo-updates --title <title> --data-file <json>` | Render a CEO report using a named global profile. If `--profile` is omitted, the helper uses the profile listing the current repository in `codeRepos`, else `defaultProfile`. |
 | `dzcto install-command` | Create `~/.local/bin/dzcto`. |
 | `dzcto setup` | Install the local Codex plugin entry. |
 | `dzcto update` | Pull/refresh a local install and run doctor. |
