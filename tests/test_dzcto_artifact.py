@@ -103,7 +103,7 @@ class TestValidateCeoReport(unittest.TestCase):
         data = v1_report(progress=[], risks_blockers=[], asks_decisions=[], next=[], sources=[])
         warnings = artifact.validate_ceo_report(data)
         self.assertEqual([warning for warning in warnings if "no structured content" in warning], [
-            "report has no structured content; if the window was quiet, say so in headline"
+            "report has no structured content; if the window was quiet, state the zero counts in headline"
         ])
 
     def test_carried_forward_risk_suppresses_empty_report_warning(self):
@@ -124,6 +124,87 @@ class TestValidateCeoReport(unittest.TestCase):
         self.assertIn("missing required field: asks_decisions", joined)
         self.assertIn("missing required field: next", joined)
         self.assertIn("no structured content", joined)
+
+
+MOOD_WARNING_PREFIX = "headline characterizes the window"
+MOOD_WORDS = (
+    "quiet", "slow", "light", "busy", "heavy", "heaviest", "high-output",
+    "stalled", "focused", "smaller", "big", "strong", "productive",
+)
+
+
+class TestHeadlineMoodLabel(unittest.TestCase):
+    """DAYZEROCTO-21: headlines state facts, so a mood label before the period noun warns."""
+
+    def mood_warnings(self, headline):
+        warnings = artifact.validate_ceo_report(v1_report(headline=headline))
+        return [warning for warning in warnings if warning.startswith(MOOD_WARNING_PREFIX)]
+
+    def assert_matched(self, headline, phrase):
+        self.assertEqual(self.mood_warnings(headline), [
+            f'headline characterizes the window ("{phrase}"); state counts and what shipped instead'
+        ])
+
+    def test_quiet_week_headline_warns(self):
+        self.assert_matched("A quiet week: no commits landed.", "quiet week")
+
+    def test_mood_word_with_an_intervening_word_keeps_the_whole_phrase(self):
+        self.assert_matched("A heavy hardening week: four gates shipped.", "heavy hardening week")
+
+    def test_mood_word_after_the_period_noun_does_not_warn(self):
+        self.assertEqual(self.mood_warnings("This two-week window was mostly quiet"), [])
+
+    def test_factual_headline_does_not_warn(self):
+        headline = "15 PRs merged: weekly featured and popular pipelines automated."
+        self.assertEqual(self.mood_warnings(headline), [])
+        self.assertEqual(artifact.validate_ceo_report(v1_report(headline=headline)), [])
+
+    def test_uppercase_headline_warns_once_and_keeps_its_case(self):
+        self.assert_matched("HEAVIEST SHIPPING WEEK YET", "HEAVIEST SHIPPING WEEK")
+
+    def test_every_mood_word_matches_every_period_noun(self):
+        for word in MOOD_WORDS:
+            for noun in ("week", "window", "period"):
+                with self.subTest(word=word, noun=noun):
+                    self.assert_matched(f"A {word} {noun} for the team.", f"{word} {noun}")
+
+    def test_mostly_quiet_week_matches_through_quiet(self):
+        self.assert_matched("Mostly quiet week.", "quiet week")
+
+    def test_mood_word_matches_up_to_three_words_before_the_noun(self):
+        self.assert_matched("A busy release week.", "busy release week")
+        self.assert_matched("A busy two release week.", "busy two release week")
+        self.assertEqual(self.mood_warnings("A busy one two three week."), [])
+
+    def test_hyphenated_high_output_is_one_word(self):
+        self.assert_matched("A High-Output Week of fixes.", "High-Output Week")
+        self.assertEqual(self.mood_warnings("Output week stayed flat."), [])
+
+    def test_only_whole_words_match(self):
+        self.assertEqual(self.mood_warnings("Work moved quietly week to week."), [])
+        self.assertEqual(self.mood_warnings("A quiet weekend release shipped."), [])
+        self.assertEqual(self.mood_warnings("Lightweight builds landed this week."), [])
+
+    def test_matched_phrase_preserves_spacing_and_punctuation(self):
+        self.assert_matched("A Strong,  steady Window: 4 PRs merged.", "Strong,  steady Window")
+
+    def test_several_mood_phrases_produce_one_warning(self):
+        self.assert_matched("A quiet week after a busy period.", "quiet week")
+
+    def test_missing_empty_or_non_string_headline_never_warns(self):
+        data = v1_report()
+        del data["headline"]
+        missing = artifact.validate_ceo_report(data)
+        self.assertFalse(any(warning.startswith(MOOD_WARNING_PREFIX) for warning in missing))
+        for headline in ("", None, 3):
+            with self.subTest(headline=headline):
+                self.assertEqual(self.mood_warnings(headline), [])
+
+    def test_validation_does_not_mutate_the_report(self):
+        data = v1_report(headline="A quiet week: no commits landed.")
+        before = json.dumps(data, sort_keys=True)
+        artifact.validate_ceo_report(data)
+        self.assertEqual(json.dumps(data, sort_keys=True), before)
 
 
 class TestReportEffectiveDate(unittest.TestCase):
@@ -1529,9 +1610,60 @@ class TestSkillQuietWindowInstructions(unittest.TestCase):
         self.assertNotIn("streak", text)
 
     def test_ad_hoc_skill_uses_window_neutral_quiet_language(self):
+        # The schema's headline line names 'a quiet week' as a forbidden example, so only
+        # the workflow guidance above the schema must stay window-neutral.
         text = self.skill_text("dzcto-ceo-report")
-        self.assertNotIn("quiet week", text)
+        workflow = text.split("## report json schema", 1)[0]
+        self.assertNotIn("quiet week", workflow)
         self.assertIn("quiet-window report", text)
+
+
+class TestSkillFactualHeadlineGuidance(unittest.TestCase):
+    """DAYZEROCTO-21: both skills ask for facts in the headline and keep the honesty rules."""
+
+    SKILLS = ("dzcto-ceo-report", "dzcto-ceo-report-weekly")
+    QUIET_INSTRUCTION = (
+        "state the zero counts plainly in `headline`, for example "
+        "`No commits, PRs, or releases landed between <start> and <end>.`"
+    )
+    HEADLINE_SCHEMA_LINE = (
+        "- `headline`: one sentence of facts — counts and what shipped or changed; never a "
+        "characterization of the window such as 'a quiet week' or 'a heavy week'."
+    )
+
+    def skill_text(self, skill: str) -> str:
+        return (REPO / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_both_skills_carry_the_factual_headline_guidance(self):
+        for skill in self.SKILLS:
+            with self.subTest(skill=skill):
+                text = self.skill_text(skill)
+                self.assertIn(self.QUIET_INSTRUCTION, text)
+                self.assertIn(self.HEADLINE_SCHEMA_LINE, text.splitlines())
+                self.assertNotIn("state that plainly in `headline`", text)
+                self.assertNotIn("the most important engineering truth for the CEO", text)
+
+    def test_both_skills_keep_the_honest_reporting_rules(self):
+        shared = (
+            "; never pad by manufacturing progress, inflating minor work, or restating old wins as new.",
+            "Keep `metrics` with explicit zero values such as `prs_merged: 0` instead of dropping the key, "
+            "and leave genuinely empty sections empty because the renderer labels them.",
+            "state it plainly in `headline`, `progress.status`, or `risks_blockers`; "
+            "do not soften reversals, red CI, slipped work, or descopes.",
+        )
+        honest_quiet = {
+            "dzcto-ceo-report": "- Prefer an honest quiet-window report over skipping the requested range.",
+            "dzcto-ceo-report-weekly": "- Prefer an honest quiet-week report over skipping the week.",
+        }
+        for skill in self.SKILLS:
+            with self.subTest(skill=skill):
+                text = self.skill_text(skill)
+                for clause in shared:
+                    self.assertIn(clause, text)
+                self.assertIn(honest_quiet[skill], text.splitlines())
+
+    def test_weekly_skill_keeps_separating_facts_from_judgment(self):
+        self.assertIn("Separate known facts from judgment.", self.skill_text("dzcto-ceo-report-weekly"))
 
 
 class TestArtifactWritePath(unittest.TestCase):
@@ -1659,10 +1791,41 @@ class TestArtifactWritePath(unittest.TestCase):
     def written_json(self, result):
         return json.loads(Path(result.stdout.splitlines()[0]).with_suffix(".json").read_text(encoding="utf-8"))
 
+    def test_mood_headline_warns_on_stderr_and_still_writes_the_report(self):
+        headline = "A quiet week: no commits landed."
+        data_file = self.workspace.parent / "mood-headline.json"
+        data_file.write_text(json.dumps(v1_report(headline=headline)), encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO / "scripts" / "dzcto.py"),
+                "artifact",
+                "--artifacts-dir", str(self.workspace),
+                "--kind", "ceo-updates",
+                "--title", "CEO Report mood headline",
+                "--data-file", str(data_file),
+            ],
+            capture_output=True,
+            text=True,
+            **hermetic_cli(Path(self._tmp.name)),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            'dzcto: ceo-report schema warning: headline characterizes the window ("quiet week")',
+            result.stderr,
+        )
+        report_path = Path(result.stdout.splitlines()[0])
+        self.assertTrue(report_path.is_file())
+        self.assertIn(headline, report_path.read_text(encoding="utf-8"))
+        self.assertEqual(self.written_json(result)["headline"], headline)
+
     def test_quiet_evidence_stamps_work_facts_and_drops_the_report_from_the_streak(self):
         snapshot = self.evidence_snapshot("quiet-evidence.json", commits=0)
-        result = self.generate(v1_report(), "CEO Report quiet week", "--evidence-file", str(snapshot))
+        factual = v1_report(headline="No commits, PRs, or releases landed between 2026-06-19 and 2026-06-25.")
+        result = self.generate(factual, "CEO Report quiet week", "--evidence-file", str(snapshot))
 
+        self.assertNotIn("headline characterizes the window", result.stderr)
         self.assertEqual(
             self.written_json(result)["work_evidence"],
             {"quiet": True, "commits": 0, "merges": 0},

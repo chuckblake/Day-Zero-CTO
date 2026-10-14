@@ -44,7 +44,7 @@ Top-level keys (all required unless marked optional):
 | `company` | string | Company/product name. Filled from the profile when absent. |
 | `window` | object | `{ "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" }`. ISO dates only; no free-text `label`. |
 | `generated_at` | string | UTC ISO timestamp. Stamped by the renderer when absent. |
-| `headline` | string | The most important engineering truth for the CEO. Renders as the lede. |
+| `headline` | string | One sentence of facts — counts and what shipped or changed; never a characterization of the window such as "a quiet week" or "a heavy week". Renders as the lede. |
 | `progress` | array | Objects: `{ "area", "status", "summary", "items": [] }`. |
 | `risks_blockers` | array | Objects: `{ "risk", "detail", "severity" }`. |
 | `asks_decisions` | array | Objects: `{ "ask", "context", "owner" }`. |
@@ -82,9 +82,10 @@ latest-pointer. `dzcto init --no-sample-report` skips it.
 ## Quiet windows
 
 A quiet window is a low-activity reporting period: little or no shipped work, few or no commits,
-PRs, or merges, and no meaningful new engineering movement to dress up. The agent states that
-plainly in `headline` and never pads the report by manufacturing progress, inflating minor work,
-or restating old wins as new.
+PRs, or merges, and no meaningful new engineering movement to dress up. The agent states the zero
+counts plainly in `headline` — for example `No commits, PRs, or releases landed between <start> and
+<end>.` — rather than labelling the window "quiet", and never pads the report by manufacturing
+progress, inflating minor work, or restating old wins as new.
 
 Quiet does not mean blank. Still-true risks, asks, and next items carry forward verbatim so the
 week-over-week diff reads as continuity instead of churn. Genuinely empty required sections stay
@@ -150,13 +151,18 @@ authors it (mechanical diffs cannot hallucinate).
 
 **Verifiable (enforced or warned by the renderer):** the section spine and order, required
 JSON keys and their v1 shapes, required-section empty labels, ISO date discipline, filename
-derivation, week-over-week selection rules, and the empty-report tripwire warning. Violations warn
-on stderr; rendering never aborts.
+derivation, week-over-week selection rules, the empty-report tripwire warning, and the headline
+mood-label warning. That last check is a word rule: it warns when `quiet`, `slow`, `light`, `busy`,
+`heavy`, `heaviest`, `high-output`, `stalled`, `focused`, `smaller`, `big`, `strong`, or
+`productive` appears within the three words before `week`, `window`, or `period`. It does not catch
+a mood word placed after the period noun ("this window was mostly quiet"); the skills cover that.
+Violations warn on stderr; rendering never aborts.
 
 **Aspirational (prompted in the skills, not machine-checked):** tone, keeping technical
 detail subordinate to CEO judgment, what counts as a risk vs. a blocker, surfacing bad news
 plainly in `headline`, `progress.status`, or `risks_blockers` when the evidence shows reverts,
-red CI, or slipped or descoped work, stating quiet windows honestly without padding, and editorial
+red CI, or slipped or descoped work, stating quiet windows honestly as zero counts without padding,
+keeping every headline to facts rather than characterizations of the window, and editorial
 quality of delta narration. The skills also instruct the agent to carry still-true items forward
 verbatim — stable wording is what keeps the mechanical diff readable.
 

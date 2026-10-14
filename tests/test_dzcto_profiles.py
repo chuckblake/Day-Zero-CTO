@@ -506,6 +506,21 @@ class TestPackagedHelper(ProfileFixture):
         )
         self.assertEqual(snapshot(self.root), before)
 
+    def test_packaged_helper_warns_on_a_mood_headline_and_still_renders(self):
+        headline = "A heavy hardening week: four gates shipped."
+        self.data_file.write_text(json.dumps(dict(v1_report(), headline=headline)), encoding="utf-8")
+        self.write_matching("alpha")
+
+        result = self.run_packaged(self.repo)
+
+        self.assert_report_only_in(result, "alpha")
+        self.assertIn(
+            'dzcto: ceo-report schema warning: headline characterizes the window ("heavy hardening week")',
+            result.stderr,
+        )
+        [report] = self.reports_in(self.workspaces["alpha"])
+        self.assertIn(headline, report.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
