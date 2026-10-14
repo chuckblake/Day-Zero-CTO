@@ -68,7 +68,7 @@ Pass the resolver's `start` and `end` verbatim for `mode: "since_last_report"` w
 
 If the collector reports no configured repositories, continue with the secondary evidence sources instead of treating that as an error.
 5. Read the most recent prior report JSON in the report folder (when one exists) for narrative continuity. Carry still-true risks, asks, and next items forward verbatim — stable wording keeps the automatic week-over-week diff readable — and express continuity in the `headline` prose.
-6. Write a CEO-facing report. Keep it business-facing: progress, impact, risk, asks, and what happens next. If the selected week is a quiet week, state that plainly in `headline`; never pad by manufacturing progress, inflating minor work, or restating old wins as new. Keep `metrics` with explicit zero values such as `prs_merged: 0` instead of dropping the key, and leave genuinely empty sections empty because the renderer labels them. If the selected week contains bad news, state it plainly in `headline`, `progress.status`, or `risks_blockers`; do not soften reversals, red CI, slipped work, or descopes. Do not include implementation detail unless it changes a CEO decision. Save structured JSON per the schema below, with `report_type` set to `"weekly"`.
+6. Write a CEO-facing report. Keep it business-facing: progress, impact, risk, asks, and what happens next. If the selected week is a quiet week, state the zero counts plainly in `headline`, for example `No commits, PRs, or releases landed between <start> and <end>.`; never pad by manufacturing progress, inflating minor work, or restating old wins as new. Keep `metrics` with explicit zero values such as `prs_merged: 0` instead of dropping the key, and leave genuinely empty sections empty because the renderer labels them. If the selected week contains bad news, state it plainly in `headline`, `progress.status`, or `risks_blockers`; do not soften reversals, red CI, slipped work, or descopes. Do not include implementation detail unless it changes a CEO decision. Save structured JSON per the schema below, with `report_type` set to `"weekly"`.
 7. Render the artifact (the report date is derived from `window.end`; do not pass `--date`). Pass the saved evidence snapshot with `--evidence-file` so the renderer can record whether the window had real work:
 
 ```bash
@@ -108,7 +108,7 @@ Save structured JSON with these fields:
 - `report_type`: `"weekly"` for the weekly skill, `"ad_hoc"` for the date-range skill.
 - `company`: company or product name.
 - `window`: `{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}` — ISO dates only, no label text.
-- `headline`: one sentence — the most important engineering truth for the CEO.
+- `headline`: one sentence of facts — counts and what shipped or changed; never a characterization of the window such as 'a quiet week' or 'a heavy week'.
 - `progress`: array of `{"area", "status", "summary", "items": []}` objects.
 - `risks_blockers`: array of `{"risk", "detail", "severity"}` objects.
 - `asks_decisions`: array of `{"ask", "context", "owner"}` objects.

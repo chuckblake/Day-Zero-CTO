@@ -1508,6 +1508,14 @@ CEO_REPORT_SCHEMA_VERSION = "ceo-report/1"
 CEO_REPORT_TYPES = ("weekly", "ad_hoc")
 DEFAULT_WEEKLY_CADENCE_DAYS = 7
 NORTH_STAR_STREAK_WEEKS = 3
+# A headline has a mood label when one of these words appears within the three
+# words before a period noun. The skills carry the broader "facts, not mood" rule.
+HEADLINE_MOOD_WORDS = frozenset(
+    ("quiet", "slow", "light", "busy", "heavy", "heaviest", "high-output", "stalled", "focused", "smaller", "big", "strong", "productive")
+)
+HEADLINE_PERIOD_NOUNS = frozenset(("week", "window", "period"))
+HEADLINE_MOOD_LOOKAHEAD = 3
+HEADLINE_WORD_PATTERN = re.compile(r"\b\w+(?:-\w+)*\b")
 
 
 def build_sample_report_data(company: str, today: dt.date | None = None) -> dict[str, Any]:
@@ -1549,6 +1557,20 @@ def build_sample_report_data(company: str, today: dt.date | None = None) -> dict
     }
 
 
+def headline_mood_phrase(headline: Any) -> str | None:
+    """First mood-label phrase in a headline, sliced as written, or None."""
+    if not isinstance(headline, str):
+        return None
+    words = list(HEADLINE_WORD_PATTERN.finditer(headline))
+    for index, word in enumerate(words):
+        if word.group(0).lower() not in HEADLINE_MOOD_WORDS:
+            continue
+        for target in words[index + 1 : index + 1 + HEADLINE_MOOD_LOOKAHEAD]:
+            if target.group(0).lower() in HEADLINE_PERIOD_NOUNS:
+                return headline[word.start() : target.end()]
+    return None
+
+
 def validate_ceo_report(data: dict[str, Any]) -> list[str]:
     """Warn-only schema v1 check for ceo-updates report JSON (docs/ceo-report-template.md)."""
     warnings: list[str] = []
@@ -1583,7 +1605,10 @@ def validate_ceo_report(data: dict[str, Any]) -> list[str]:
     # quiet window from forgotten structure, and carried-forward risks correctly
     # suppress it.
     if not any(array_value(data.get(field)) for field in ("progress", "risks_blockers", "asks_decisions", "next")):
-        warnings.append("report has no structured content; if the window was quiet, say so in headline")
+        warnings.append("report has no structured content; if the window was quiet, state the zero counts in headline")
+    mood_phrase = headline_mood_phrase(data.get("headline"))
+    if mood_phrase:
+        warnings.append(f'headline characterizes the window ("{mood_phrase}"); state counts and what shipped instead')
     metrics = data.get("metrics")
     if metrics is not None:
         if not isinstance(metrics, dict):

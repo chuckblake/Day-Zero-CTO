@@ -126,7 +126,7 @@ Agents should write structured JSON (schema v1) with these fields:
 | `company` | Company/product name. Filled from the profile when absent. |
 | `window` | `{ "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" }` — ISO dates for the report period. |
 | `generated_at` | UTC ISO timestamp. Stamped by the renderer when absent. |
-| `headline` | The most important engineering truth for the CEO. |
+| `headline` | One sentence of facts — counts and what shipped or changed; never a characterization of the window such as "a quiet week". The renderer warns, without blocking, on a mood label before `week`, `window`, or `period`. |
 | `progress` | Array of `{ "area", "status", "summary", "items": [] }`. |
 | `risks_blockers` | Array of `{ "risk", "detail", "severity" }`. |
 | `asks_decisions` | Array of `{ "ask", "context", "owner" }`. |
