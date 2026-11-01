@@ -20,6 +20,9 @@ reporting: { notion: { enabled: false } }
 
 # --- Terminal runner (`cb start`, `cb next`, `cb status`) ---
 runner:
+  # Automatic groups (CBW-1008) are off: grouping was not faster (operator, 2026-11-01).
+  scheduler:
+    batch: false
   schema_version: 1
   # Activated by `cb init-runner` after its readiness audit (flips this to true).
   enabled: true
